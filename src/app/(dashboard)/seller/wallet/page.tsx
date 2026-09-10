@@ -363,7 +363,7 @@ export default function SellerWalletPage() {
                   style={{ background: "#FFFBEB", border: "1px solid #FDE68A" }}>
                   <Clock className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: "#D97706" }} />
                   <p className="text-xs" style={{ color: "#92400E" }}>
-                    A withdrawal request is already pending. Wait for it to be processed before submitting another.
+                    A withdrawal request is already pending. Amount will be transferred within 24–48 hours.
                   </p>
                 </div>
               )}
@@ -398,7 +398,7 @@ export default function SellerWalletPage() {
                 </button>
               </form>
               {wdError   && <p className="text-xs" style={{ color: "#EF4444" }}>{wdError}</p>}
-              {wdSuccess && <p className="text-xs" style={{ color: "#16A34A" }}>Request submitted! Admin will process within 2–3 business days.</p>}
+              {wdSuccess && <p className="text-xs" style={{ color: "#16A34A" }}>Request submitted! Amount will be transferred within 24–48 hours.</p>}
             </div>
 
           </div>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
+import { calculateSettlement } from "@/lib/settlement-service";
 
 // GET: unremitted orders OR history
 export async function GET(req: NextRequest) {
@@ -120,17 +121,72 @@ export async function POST(req: NextRequest) {
   });
 
   for (const o of includedOrders) {
+    const productCost    = parseFloat(o.productCost)    || 0;
+    const shippingCharge = parseFloat(o.shippingCharge) || 0;
+    const packingCharge  = parseFloat(o.packingCharge)  || 0;
+    const rtoCharge      = parseFloat(o.rtoCharge)      || 0;
+    const isRTO          = o.isRTO as boolean;
+
     await prisma.order.update({
       where: { id: o.id },
       data: {
-        productCost: parseFloat(o.productCost) || 0,
-        shippingCharge: parseFloat(o.shippingCharge) || 0,
-        packingCharge: parseFloat(o.packingCharge) || 0,
-        rtoCharge: parseFloat(o.rtoCharge) || 0,
+        productCost,
+        shippingCharge,
+        packingCharge,
+        rtoCharge,
         remittedAt: now,
         remittanceTxId: tx.id,
       },
     });
+
+    // Create a Settlement record so the seller's breakdown view is populated
+    const existingSettlement = await prisma.settlement.findUnique({ where: { orderId: o.id } });
+    if (!existingSettlement) {
+      try {
+        const orderRecord = await prisma.order.findUnique({
+          where: { id: o.id },
+          select: { totalAmount: true, productCost: true, shippingCharge: true, packingCharge: true, rtoCharge: true, source: true, supplierId: true, sellerId: true, externalOrderId: true },
+        });
+        if (orderRecord) {
+          const breakdown = await calculateSettlement({
+            totalAmount:    orderRecord.totalAmount,
+            productCost:    isRTO ? 0 : productCost,
+            shippingCharge: isRTO ? 0 : shippingCharge,
+            packingCharge,
+            rtoCharge:      isRTO ? rtoCharge : 0,
+            source:         orderRecord.source,
+          });
+          await prisma.settlement.create({
+            data: {
+              orderId:          o.id,
+              sellerId:         orderRecord.sellerId,
+              supplierId:       orderRecord.supplierId ?? undefined,
+              marketplace:      orderRecord.source,
+              sellingPrice:     isRTO ? 0 : breakdown.sellingPrice,
+              productCost:      isRTO ? 0 : breakdown.productCost,
+              shippingCharge:   isRTO ? 0 : breakdown.shippingCharge,
+              packingCharge:    breakdown.packingCharge,
+              platformFee:      isRTO ? 0 : breakdown.platformFee,
+              gstOnFees:        isRTO ? 0 : breakdown.gstOnFees,
+              codFee:           0,
+              marketplaceFee:   0,
+              adSpend:          0,
+              rtoCharge:        isRTO ? rtoCharge : 0,
+              otherDeductions:  0,
+              grossProfit:      isRTO ? -(productCost + rtoCharge + packingCharge) : breakdown.grossProfit,
+              netProfit:        isRTO ? -(productCost + rtoCharge + packingCharge) : breakdown.netProfit,
+              netPayable:       isRTO ? -(productCost + rtoCharge + packingCharge) : breakdown.netPayable,
+              platformEarnings: isRTO ? 0 : breakdown.platformEarnings,
+              supplierPayable:  isRTO ? 0 : breakdown.supplierPayable,
+              walletTxId:       tx.id,
+              status:           "SETTLED",
+            },
+          });
+        }
+      } catch (err) {
+        console.error("[remittance] settlement create failed for order", o.id, err);
+      }
+    }
   }
 
   return NextResponse.json({ success: true, transaction: tx, totalRemittance });

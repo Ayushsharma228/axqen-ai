@@ -49,9 +49,9 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
 
-  // Calculate available balance (paid transactions only — bankTxId set)
+  // Available balance = all credits minus all debits (matches wallet page display)
   const txns = await prisma.walletTransaction.findMany({
-    where: { sellerId, bankTxId: { not: null } },
+    where: { sellerId },
   });
   const available = txns.reduce(
     (acc, t) => (t.type === "CREDIT" ? acc + t.amount : acc - t.amount), 0

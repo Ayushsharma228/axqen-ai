@@ -44,10 +44,10 @@ export async function calculateSettlement(
     source:         string;
   }
 ): Promise<SettlementBreakdown> {
-  // Commission rate: % of gross sale. Default 5%.
-  const commissionRate = await getConfig("COMMISSION_RATE", 5);
+  // Flat platform fee per delivered order. Default ₹20.
+  const platformFeeFlat = await getConfig("PLATFORM_FEE", 20);
   const defaultShipping = await getConfig("DEFAULT_SHIPPING_CHARGE", 50);
-  const defaultPacking  = await getConfig("DEFAULT_PACKING_CHARGE", 20);
+  const defaultPacking  = await getConfig("DEFAULT_PACKING_CHARGE", 0);
   const gstRate         = await getConfig("GST_ON_FEES_RATE", 18);
 
   const sellingPrice   = order.totalAmount;
@@ -56,7 +56,7 @@ export async function calculateSettlement(
   const packingCharge  = order.packingCharge  ?? defaultPacking;
   const rtoCharge      = order.rtoCharge      ?? 0;
 
-  const platformFee    = parseFloat(((sellingPrice * commissionRate) / 100).toFixed(2));
+  const platformFee    = platformFeeFlat;
   const gstOnFees      = parseFloat(((platformFee * gstRate) / 100).toFixed(2));
   const codFee         = 0;        // COD fee not tracked per-order yet
   const marketplaceFee = 0;        // Amazon/Flipkart: 0 for now (direct settlement)

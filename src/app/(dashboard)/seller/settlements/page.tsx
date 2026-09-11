@@ -184,7 +184,7 @@ export default function SellerSettlementsPage() {
             style={{ background: "#F5F3FF", borderColor: "#DDD6FE" }}>
             <Clock className="w-4 h-4 flex-shrink-0" style={{ color: "#7C3AED" }} />
             <p className="text-sm font-medium" style={{ color: "#5B21B6" }}>
-              <strong>{fmt(up.amount)}</strong> across {up.count} settled order{up.count !== 1 ? "s" : ""} is pending release — typically credited within 3–5 business days.
+              <strong>{fmt(up.amount)}</strong> across {up.count} settled order{up.count !== 1 ? "s" : ""} is pending release — typically credited within 24–48 hours.
             </p>
           </div>
         )}
@@ -287,7 +287,7 @@ export default function SellerSettlementsPage() {
                             </p>
                             <span className="px-2 py-0.5 rounded-full text-xs font-semibold"
                               style={{ background: badge.bg, color: badge.color }}>
-                              {s.status}
+                              {s.status === "SETTLED" ? "Under Review" : s.status}
                             </span>
                             {s.marketplace && (
                               <span className="px-1.5 py-0.5 rounded text-xs"

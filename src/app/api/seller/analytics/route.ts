@@ -151,18 +151,17 @@ export async function GET(req: NextRequest) {
     .sort((a, b) => b.rto - a.rto)
     .slice(0, 15);
 
-  // Revenue stats
+  // Revenue stats — gross across all orders (for KPI card)
   const totalRevenue = orders.reduce((s, o) => s + o.totalAmount, 0);
   const avgRevenue = total > 0 ? totalRevenue / total : 0;
 
-  // Earnings computed from orders (packingCharge = platform charges deducted from seller)
-  const totalGMV        = orders.reduce((s, o) => s + o.totalAmount, 0);
-  const totalFees       = orders.reduce((s, o) => s + (o.packingCharge  ?? 0), 0);
-  const totalProductCost = orders.reduce((s, o) => s + (o.productCost   ?? 0), 0);
-  const totalShipping   = orders.reduce((s, o) => s + (o.shippingCharge ?? 0), 0);
-  const totalRtoCharge  = orders
-    .filter((o) => o.status === "RTO")
-    .reduce((s, o) => s + (o.rtoCharge ?? 0), 0);
+  // P&L earnings — DELIVERED orders only (revenue only realised on delivery)
+  // RTO charges come from RTO orders (a real cost regardless of revenue)
+  const totalGMV        = delivered.reduce((s, o) => s + o.totalAmount, 0);
+  const totalFees       = delivered.reduce((s, o) => s + (o.packingCharge  ?? 0), 0);
+  const totalProductCost = delivered.reduce((s, o) => s + (o.productCost   ?? 0), 0);
+  const totalShipping   = delivered.reduce((s, o) => s + (o.shippingCharge ?? 0), 0);
+  const totalRtoCharge  = rto.reduce((s, o) => s + (o.rtoCharge ?? 0), 0);
 
   // Actual money received = paid wallet CREDITs (bankTxId set = confirmed transfer)
   const totalEarned = walletTxns
@@ -177,9 +176,9 @@ export async function GET(req: NextRequest) {
     adSpendByDay.set(day, (adSpendByDay.get(day) ?? 0) + r.amount);
   }
 
-  // Daily earnings trend from orders — now includes product cost + ad spend for profit line
+  // Daily earnings trend — delivered orders only so the profit line is real
   const earningsTrendMap = new Map<string, { gmv: number; platformCharges: number; productCost: number; adSpend: number; count: number }>();
-  for (const o of orders) {
+  for (const o of delivered) {
     const day = o.createdAt.toISOString().slice(0, 10);
     const cur = earningsTrendMap.get(day) ?? { gmv: 0, platformCharges: 0, productCost: 0, adSpend: 0, count: 0 };
     cur.gmv             += o.totalAmount;

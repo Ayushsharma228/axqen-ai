@@ -1273,12 +1273,12 @@ export default function SellerDashboard() {
               const margin = e.totalGMV > 0 ? (net / e.totalGMV) * 100 : 0;
               const profit = net >= 0;
               const rows   = [
-                { label: "Revenue (GMV)",  value: e.totalGMV,         color: "#4361EE", sign: "+" },
-                { label: "Product Cost",   value: e.totalProductCost, color: "#EF4444", sign: "−" },
-                { label: "Shipping",       value: e.totalShipping,    color: "#EF4444", sign: "−" },
-                { label: "Platform Fee",   value: e.totalFees,        color: "#EF4444", sign: "−" },
-                { label: "RTO Losses",     value: e.totalRtoCharge,   color: "#EF4444", sign: "−" },
-                { label: "Ad Spend (30d)", value: adSpend,            color: "#7C3AED", sign: "−" },
+                { label: "Revenue (Delivered orders)", value: e.totalGMV,         color: "#4361EE", sign: "+" },
+                { label: "Product Cost",               value: e.totalProductCost, color: "#EF4444", sign: "−" },
+                { label: "Shipping",                   value: e.totalShipping,    color: "#EF4444", sign: "−" },
+                { label: "Platform Fee",               value: e.totalFees,        color: "#EF4444", sign: "−" },
+                { label: "RTO Losses",                 value: e.totalRtoCharge,   color: "#EF4444", sign: "−" },
+                { label: "Ad Spend (30d)",             value: adSpend,            color: "#7C3AED", sign: "−" },
               ];
               return (
                 <div className="bg-white px-6 py-5" style={{ borderTop: "1px solid #F3F4F6" }}>
@@ -1318,7 +1318,7 @@ export default function SellerDashboard() {
                       <div>
                         <p className="text-sm font-black" style={{ color: "#1e1b4b" }}>Estimated Profit</p>
                         <p className="text-[10px] mt-0.5" style={{ color: "#9CA3AF" }}>
-                          Refunds &amp; other costs not yet included
+                          Delivered orders only · refunds not yet included
                         </p>
                       </div>
                       <p className="text-sm font-black" style={{ color: profit ? "#4361EE" : "#EF4444" }}>

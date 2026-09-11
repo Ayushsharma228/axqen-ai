@@ -1436,7 +1436,7 @@ export default function SellerDashboard() {
                         {aiActivity.timeSavedLabel}
                       </p>
                       <p className="text-[10px] mt-1" style={{ color: "rgba(165,180,252,0.5)" }}>
-                        Based on {(aiActivity.autoDispatched * 8) + (axqenAutoHandled * 5) + (aiActivity.ndrEscalated * 5) + (aiActivity.supplierDelays * 4)} automated task-minutes at configured rates
+                        Based on {(aiActivity.autoDispatched * 8) + ((analytics?.autoHandledCount ?? 0) * 5) + (aiActivity.ndrEscalated * 5) + (aiActivity.supplierDelays * 4)} automated task-minutes at configured rates
                       </p>
                     </div>
                   </div>

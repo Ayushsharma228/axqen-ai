@@ -395,7 +395,7 @@ export default function AdminRemittancePage() {
                   <IndianRupee className="w-4 h-4 text-gray-400" />
                   <h2 className="font-semibold text-gray-700">Manual Adjustments</h2>
                 </div>
-                {otherHistory.map((e) => <HistoryCard key={e.transaction.id} entry={e} showMarkPaid={false} />)}
+                {otherHistory.map((e) => <HistoryCard key={e.transaction.id} entry={e} showMarkPaid={true} />)}
               </div>
             )}
           </div>

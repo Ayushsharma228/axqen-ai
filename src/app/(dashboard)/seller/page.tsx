@@ -214,7 +214,7 @@ export default function SellerDashboard() {
               {getGreeting()}, {name}! 👋
             </h1>
             <p className="text-sm mt-1" style={{ color: "#9CA3AF" }}>
-              Your current sales summary and activity
+              Here&apos;s what needs your attention today.
             </p>
           </div>
         </div>

@@ -140,7 +140,6 @@ export default function SellerSettlementsPage() {
             {[
               { label: "Gross Revenue", value: s ? fmt(s.grossRevenue) : "—", color: "#16A34A", sub: null },
               { label: "Platform Fee",  value: s ? fmt(s.platformFee)  : "—", color: "#3B82F6", sub: null },
-              { label: "Net Payable",   value: s ? fmt(s.netPayable)   : "—", color: "#A78BFA", sub: null },
               { label: "Net Profit",    value: s ? fmt(s.netProfit)    : "—", color: "#F59E0B", sub: null },
               {
                 label: "Upcoming Payout",
@@ -304,7 +303,7 @@ export default function SellerSettlementsPage() {
                         </div>
                         <div className="text-right flex-shrink-0">
                           <p className="text-sm font-bold" style={{ color: "#16A34A" }}>{fmt(s.sellingPrice)}</p>
-                          <p className="text-xs" style={{ color: "#A78BFA" }}>→ {fmt(s.netPayable)} to you</p>
+                          <p className="text-xs" style={{ color: "#16A34A" }}>Net: {fmt(s.netProfit ?? 0)}</p>
                         </div>
                         {isOpen ? <ChevronUp className="w-4 h-4 flex-shrink-0" style={{ color: "var(--text-300)" }} />
                                 : <ChevronDown className="w-4 h-4 flex-shrink-0" style={{ color: "var(--text-300)" }} />}
@@ -337,14 +336,8 @@ export default function SellerSettlementsPage() {
                             {[
                               { label: "Selling Price",   value: fmt(s.sellingPrice),        color: "#16A34A" },
                               { label: "Platform Fee",    value: fmt(s.platformFee),          color: "#3B82F6" },
-                              { label: "GST (18%)",       value: fmt(s.gstOnFees),            color: "#6366F1" },
                               { label: "Shipping",        value: fmt(s.shippingCharge),       color: "#8B5CF6" },
-                              { label: "Packing",         value: fmt(s.packingCharge),        color: "#EC4899" },
-                              { label: "COD Fee",         value: fmt(s.codFee),               color: "#F97316" },
                               { label: "Ad Spend",        value: fmt(s.adSpend),              color: "#EF4444" },
-                              { label: "Marketplace Fee", value: fmt(s.marketplaceFee),       color: "#DC2626" },
-                              { label: "Other Deductions",value: fmt(s.otherDeductions ?? 0), color: "#9CA3AF" },
-                              { label: "Net Payable",     value: fmt(s.netPayable),           color: "#A78BFA" },
                               { label: "Net Profit",      value: fmt(s.netProfit ?? 0),       color: (s.netProfit ?? 0) >= 0 ? "#16A34A" : "#EF4444" },
                               ...(s.settledAt ? [{ label: "Settled On", value: fmtDate(s.settledAt) ?? "—", color: "var(--text-500)" }] : []),
                             ].map(({ label, value, color }) => (

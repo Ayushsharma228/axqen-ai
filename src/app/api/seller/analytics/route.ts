@@ -2,6 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 
+async function getPlatformFeePerOrder(): Promise<number> {
+  try {
+    const cfg = await prisma.platformConfig.findUnique({ where: { key: "PLATFORM_FEE" } });
+    if (cfg) return parseFloat(cfg.value) || 20;
+  } catch { /* ignore */ }
+  return 20;
+}
+
 export async function GET(req: NextRequest) {
   const session = await getRouteSession(req);
   if (!session || session.user.role !== "SELLER") {
@@ -19,7 +27,6 @@ export async function GET(req: NextRequest) {
   });
   const dataStart = seller?.dataStartDate ?? null;
 
-  // Effective lower bound: max(dataStartDate, from) so the hard floor always applies
   const fromDate = from ? new Date(from) : null;
   const gteDate = dataStart && fromDate
     ? (dataStart > fromDate ? dataStart : fromDate)
@@ -32,8 +39,7 @@ export async function GET(req: NextRequest) {
     },
   } : {};
 
-  // Orders, wallet, ad spend, store — parallel
-  const [orders, walletTxns, adSpendRows, store] = await Promise.all([
+  const [orders, walletTxns, adSpendRows, store, platformFeePerOrder] = await Promise.all([
     prisma.order.findMany({
       where: { sellerId, ...dateWhere },
       select: {
@@ -53,6 +59,8 @@ export async function GET(req: NextRequest) {
         customerAddress: true,
         ndrStatus: true,
         ndrActionTaken: true,
+        paymentMode: true,
+        confirmationStatus: true,
         items: { select: { name: true, sku: true, quantity: true } },
       },
       orderBy: { createdAt: "asc" },
@@ -67,13 +75,13 @@ export async function GET(req: NextRequest) {
     }),
     prisma.shopifyStore.findFirst({
       where: { sellerId },
-      select: { storeUrl: true, storeName: true },
+      select: { storeUrl: true, storeName: true, lastSyncAt: true, lastSyncError: true },
     }),
+    getPlatformFeePerOrder(),
   ]);
 
   const total = orders.length;
 
-  // Correct status buckets
   const delivered  = orders.filter((o) => o.status === "DELIVERED");
   const rto        = orders.filter((o) => o.status === "RTO");
   const cancelled  = orders.filter((o) => o.status === "CANCELLED");
@@ -81,7 +89,6 @@ export async function GET(req: NextRequest) {
 
   const pct = (n: number) => total > 0 ? Math.round((n / total) * 100) : 0;
 
-  // Daily trend
   const trendMap = new Map<string, { delivered: number; rto: number; cancelled: number; total: number }>();
   for (const o of orders) {
     const day = o.createdAt.toISOString().slice(0, 10);
@@ -94,7 +101,6 @@ export async function GET(req: NextRequest) {
   }
   const trend = Array.from(trendMap.entries()).map(([date, v]) => ({ date, ...v }));
 
-  // Product breakdown
   const productMap = new Map<string, { orders: number; units: number; delivered: number; rto: number }>();
   const skuMap = new Map<string, string>();
   for (const o of orders) {
@@ -126,7 +132,6 @@ export async function GET(req: NextRequest) {
     value: p.orders,
   }));
 
-  // RTO by state — customerAddress is JSON { state?, city?, zip? }
   type AddrJson = { state?: string; province?: string; city?: string; zip?: string } | null;
   const stateMap = new Map<string, { total: number; rto: number }>();
   for (const o of orders) {
@@ -141,7 +146,7 @@ export async function GET(req: NextRequest) {
     stateMap.set(key, cur);
   }
   const rtoByState = Array.from(stateMap.entries())
-    .filter(([, v]) => v.total >= 2)           // drop noise (single-order states)
+    .filter(([, v]) => v.total >= 2)
     .map(([state, v]) => ({
       state,
       total: v.total,
@@ -151,24 +156,29 @@ export async function GET(req: NextRequest) {
     .sort((a, b) => b.rto - a.rto)
     .slice(0, 15);
 
-  // Revenue stats — gross across all orders (for KPI card)
+  // Gross revenue (all orders, for the KPI card)
   const totalRevenue = orders.reduce((s, o) => s + o.totalAmount, 0);
   const avgRevenue = total > 0 ? totalRevenue / total : 0;
 
-  // P&L earnings — DELIVERED orders only (revenue only realised on delivery)
-  // RTO charges come from RTO orders (a real cost regardless of revenue)
-  const totalGMV        = delivered.reduce((s, o) => s + o.totalAmount, 0);
-  const totalFees       = delivered.reduce((s, o) => s + (o.packingCharge  ?? 0), 0);
-  const totalProductCost = delivered.reduce((s, o) => s + (o.productCost   ?? 0), 0);
-  const totalShipping   = delivered.reduce((s, o) => s + (o.shippingCharge ?? 0), 0);
-  const totalRtoCharge  = rto.reduce((s, o) => s + (o.rtoCharge ?? 0), 0);
+  // P&L — DELIVERED orders only (realised revenue).
+  // Track whether cost data is actually available so the UI can show "—" vs ₹0.
+  const deliveredWithProductCost = delivered.filter(o => o.productCost !== null && o.productCost !== undefined);
+  const deliveredWithShipping    = delivered.filter(o => o.shippingCharge !== null && o.shippingCharge !== undefined);
 
-  // Actual money received = paid wallet CREDITs (bankTxId set = confirmed transfer)
+  const totalGMV         = delivered.reduce((s, o) => s + o.totalAmount, 0);
+  const totalProductCost = delivered.reduce((s, o) => s + (o.productCost ?? 0), 0);
+  const totalShipping    = delivered.reduce((s, o) => s + (o.shippingCharge ?? 0), 0);
+  const totalPackingCost = delivered.reduce((s, o) => s + (o.packingCharge ?? 0), 0);
+  const totalRtoCharge   = rto.reduce((s, o) => s + (o.rtoCharge ?? 0), 0);
+
+  // AXQEN platform fee: flat ₹{platformFeePerOrder} per delivered order (from PlatformConfig)
+  // This is distinct from packingCharge (a fulfilment/packaging cost owned by the supplier).
+  const totalPlatformFee = delivered.length * platformFeePerOrder;
+
   const totalEarned = walletTxns
     .filter((t) => t.type === "CREDIT" && t.bankTxId !== null)
     .reduce((acc, t) => acc + t.amount, 0);
 
-  // Ad spend totals
   const totalAdSpend = adSpendRows.reduce((s, r) => s + r.amount, 0);
   const adSpendByDay = new Map<string, number>();
   for (const r of adSpendRows) {
@@ -176,31 +186,29 @@ export async function GET(req: NextRequest) {
     adSpendByDay.set(day, (adSpendByDay.get(day) ?? 0) + r.amount);
   }
 
-  // Daily earnings trend — delivered orders only so the profit line is real
-  const earningsTrendMap = new Map<string, { gmv: number; platformCharges: number; productCost: number; adSpend: number; count: number }>();
+  // Daily earnings trend — delivered orders only
+  const earningsTrendMap = new Map<string, { gmv: number; platformFee: number; productCost: number; adSpend: number; count: number }>();
   for (const o of delivered) {
     const day = o.createdAt.toISOString().slice(0, 10);
-    const cur = earningsTrendMap.get(day) ?? { gmv: 0, platformCharges: 0, productCost: 0, adSpend: 0, count: 0 };
-    cur.gmv             += o.totalAmount;
-    cur.platformCharges += o.packingCharge ?? 0;
-    cur.productCost     += o.productCost ?? 0;
+    const cur = earningsTrendMap.get(day) ?? { gmv: 0, platformFee: 0, productCost: 0, adSpend: 0, count: 0 };
+    cur.gmv         += o.totalAmount;
+    cur.platformFee += platformFeePerOrder;   // AXQEN fee per delivered order
+    cur.productCost += o.productCost ?? 0;
     cur.count++;
     earningsTrendMap.set(day, cur);
   }
-  // Merge ad spend into same day buckets
   for (const [day, spend] of adSpendByDay) {
-    const cur = earningsTrendMap.get(day) ?? { gmv: 0, platformCharges: 0, productCost: 0, adSpend: 0, count: 0 };
+    const cur = earningsTrendMap.get(day) ?? { gmv: 0, platformFee: 0, productCost: 0, adSpend: 0, count: 0 };
     cur.adSpend = spend;
     earningsTrendMap.set(day, cur);
   }
   const earningsTrend = Array.from(earningsTrendMap.entries())
     .map(([date, v]) => ({
       date, ...v,
-      netProfit: v.gmv - v.productCost - v.platformCharges - v.adSpend,
+      netProfit: v.gmv - v.productCost - v.platformFee - v.adSpend,
     }))
     .sort((a, b) => a.date.localeCompare(b.date));
 
-  // Wallet balance (paid txns only)
   const walletBalance = walletTxns
     .filter(t => t.bankTxId !== null)
     .reduce((acc, t) => t.type === "CREDIT" ? acc + t.amount : acc - t.amount, 0);
@@ -209,7 +217,6 @@ export async function GET(req: NextRequest) {
     .filter(t => t.bankTxId === null && t.type === "CREDIT")
     .reduce((acc, t) => acc + t.amount, 0);
 
-  // Previous period — same duration immediately before current window
   let prevPeriod: {
     totalOrders: number; deliveryRate: number; rtoRate: number; totalRevenue: number; netProfit: number;
   } | null = null;
@@ -225,28 +232,24 @@ export async function GET(req: NextRequest) {
     const pt  = prevOrders.length;
     const pd  = prevOrders.filter(o => o.status === "DELIVERED").length;
     const pr  = prevOrders.filter(o => o.status === "RTO").length;
-    const pgmv = prevOrders.reduce((s, o) => s + o.totalAmount, 0);
-    const ppc  = prevOrders.reduce((s, o) => s + (o.productCost  ?? 0), 0);
-    const pfe  = prevOrders.reduce((s, o) => s + (o.packingCharge ?? 0), 0);
-    const psh  = prevOrders.reduce((s, o) => s + (o.shippingCharge ?? 0), 0);
+    const pgmv = prevOrders.filter(o => o.status === "DELIVERED").reduce((s, o) => s + o.totalAmount, 0);
+    const ppc  = prevOrders.filter(o => o.status === "DELIVERED").reduce((s, o) => s + (o.productCost  ?? 0), 0);
+    const psh  = prevOrders.filter(o => o.status === "DELIVERED").reduce((s, o) => s + (o.shippingCharge ?? 0), 0);
+    const ppf  = pd * platformFeePerOrder;
     const prtc = prevOrders.filter(o => o.status === "RTO").reduce((s, o) => s + (o.rtoCharge ?? 0), 0);
     prevPeriod = {
       totalOrders:  pt,
       deliveryRate: pt > 0 ? Math.round(pd / pt * 100) : 0,
       rtoRate:      pt > 0 ? Math.round(pr / pt * 100) : 0,
       totalRevenue: pgmv,
-      netProfit:    pgmv - ppc - pfe - psh - prtc,
+      netProfit:    pgmv - ppc - psh - ppf - prtc,
     };
   }
 
-  // Orders that truly need human action (NEW with no supplier assigned)
   const unassignedNewOrders = orders.filter(o => o.status === "NEW" && !o.supplierId);
   const unassignedCount = unassignedNewOrders.length;
-
-  // Orders AXQEN is already handling (NEW but supplier already assigned via webhook)
   const autoHandledCount = orders.filter(o => o.status === "NEW" && !!o.supplierId).length;
 
-  // Supplier delays: supplier assigned but no progress update in 24h
   const delayThreshold = new Date(Date.now() - 24 * 3600000);
   const supplierDelayCount = orders.filter(o =>
     o.supplierId !== null &&
@@ -254,7 +257,6 @@ export async function GET(req: NextRequest) {
     o.updatedAt < delayThreshold
   ).length;
 
-  // Fulfillment pipeline counts
   const pipeline = {
     new:        orders.filter(o => o.status === "NEW").length,
     confirmed:  orders.filter(o => o.supplierStatus === "ACCEPTED" || o.supplierStatus === "ASSIGNED").length,
@@ -286,20 +288,31 @@ export async function GET(req: NextRequest) {
     topProducts,
     productDistribution,
     rtoByState,
-    store,
+    store: store ? {
+      storeUrl: store.storeUrl,
+      storeName: store.storeName,
+      lastSyncAt: store.lastSyncAt?.toISOString() ?? null,
+      lastSyncError: store.lastSyncError ?? null,
+    } : null,
     earnings: {
       totalGMV,
-      totalFees,
       totalProductCost,
       totalShipping,
-      totalEarned,
+      totalPackingCost,       // separate from platform fee
+      totalPlatformFee,       // AXQEN flat fee = platformFeePerOrder × delivered.length
+      platformFeePerOrder,    // for UI display
       totalRtoCharge,
+      totalEarned,
       totalAdSpend,
-      netProfit: totalGMV - totalProductCost - totalFees - totalShipping - totalRtoCharge - totalAdSpend,
+      // Availability flags — UI should show "—" not "₹0" when cost data not tracked
+      productCostTracked: deliveredWithProductCost.length,   // count of delivered orders with cost data
+      shippingTracked:    deliveredWithShipping.length,
+      deliveredCount: delivered.length,
+      netProfit: totalGMV - totalProductCost - totalShipping - totalPlatformFee - totalRtoCharge - totalAdSpend,
       margin: totalGMV > 0
-        ? Math.round(((totalGMV - totalProductCost - totalFees - totalShipping - totalRtoCharge - totalAdSpend) / totalGMV) * 100)
+        ? Math.round(((totalGMV - totalProductCost - totalShipping - totalPlatformFee - totalRtoCharge - totalAdSpend) / totalGMV) * 100)
         : 0,
-      settledCount: orders.filter((o) => o.status === "DELIVERED").length,
+      settledCount: delivered.length,
       earningsTrend,
     },
     wallet: { balance: walletBalance, upcoming: upcomingAmount },

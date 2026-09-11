@@ -21,25 +21,33 @@ interface Analytics {
   rtoRate: number;
   totalRevenue: number;
   trend: { date: string; total: number; delivered: number; rto: number }[];
-  store: { storeUrl: string; storeName: string } | null;
+  store: { storeUrl: string; storeName: string; lastSyncAt: string | null; lastSyncError: string | null } | null;
   earnings: {
     totalGMV: number;
     totalProductCost: number;
     totalShipping: number;
-    totalFees: number;
+    totalPackingCost: number;
+    totalPlatformFee: number;
+    platformFeePerOrder: number;
     totalRtoCharge: number;
     totalEarned: number;
+    totalAdSpend: number;
+    // Availability flags — number of delivered orders that have cost data populated
+    productCostTracked: number;
+    shippingTracked: number;
+    deliveredCount: number;
+    netProfit: number;
+    margin: number;
   };
   pipeline?: {
     new: number; confirmed: number; processing: number;
     shipped: number; inTransit: number; delivered: number;
     ndr: number; rtoRisk: number; cancelled: number;
   };
-  // Operational intelligence — from analytics API
-  unassignedCount?: number;  // NEW orders with no supplier (true human action required)
-  autoHandledCount?: number; // NEW orders already auto-assigned by AXQEN
-  supplierDelayCount?: number; // supplier assigned but no progress >24h
-  computedAt?: string;       // ISO timestamp when data was calculated
+  unassignedCount?: number;
+  autoHandledCount?: number;
+  supplierDelayCount?: number;
+  computedAt?: string;       // ISO timestamp when DB data was computed (server clock)
 }
 
 interface WalletData { balance: number; totalRemittance: number; totalDeductions: number }
@@ -127,8 +135,7 @@ export default function SellerDashboard() {
     updatedAt?: string;
     supplierId?: string | null;
     supplierStatus?: string | null;
-    paymentMode?: string | null;
-    paymentReference?: string | null;
+    paymentMode?: "COD" | "PREPAID" | "UNKNOWN" | null;
     ndrStatus?: string | null;
     ndrActionTaken?: string | null;
     customerOrderCount?: number;
@@ -148,10 +155,12 @@ export default function SellerDashboard() {
   const [chartDays, setChartDays]       = useState(14);
   const [showFinancials, setShowFinancials] = useState(false);
   const [aiActivity, setAiActivity] = useState<{
-    autoDispatched: number; codOrdersToday: number; ndrEscalated: number;
-    supplierDelays: number; humanActions: number;
+    autoDispatched: number; newOrdersToday: number; ndrOpenedToday: number;
+    supplierDelaysDetectedToday: number; humanActionsNeeded: number;
     timeSaved: number; timeSavedLabel: string;
+    timeSavedRates: { autoDispatchedMinutes: number; newOrderIngestedMinutes: number; ndrOpenedMinutes: number; supplierDelayMinutes: number };
   } | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Marketplace-specific
   const [listingStats, setListingStats] = useState<{
@@ -166,9 +175,10 @@ export default function SellerDashboard() {
 
   useEffect(() => {
     setLoading(true);
+    setLoadError(null);
     if (isMarketplace) {
       Promise.all([
-        fetch("/api/seller/analytics").then(r => r.json()),
+        fetch("/api/seller/analytics").then(r => { if (!r.ok) throw new Error("analytics"); return r.json(); }),
         fetch("/api/seller/wallet").then(r => r.json()),
         fetch("/api/seller/listings").then(r => r.json()),
         fetch("/api/seller/amazon/status").then(r => r.json()),
@@ -183,10 +193,13 @@ export default function SellerDashboard() {
         setMetaConnected(ads.metaConnected ?? false);
         setLoading(false);
         setLastFetchedAt(new Date());
-      }).catch(() => setLoading(false));
+      }).catch(() => {
+        setLoadError("Unable to load latest data. Check your connection and refresh.");
+        setLoading(false);
+      });
     } else {
       Promise.all([
-        fetch("/api/seller/analytics").then(r => r.json()),
+        fetch("/api/seller/analytics").then(r => { if (!r.ok) throw new Error("analytics"); return r.json(); }),
         fetch("/api/seller/wallet").then(r => r.json()),
         fetch("/api/seller/ad-spend").then(r => r.json()),
         fetch("/api/seller/ndr").then(r => r.json()),
@@ -199,7 +212,10 @@ export default function SellerDashboard() {
         setNdrOrders(ndr.pending?.slice(0, 5) ?? []);
         setLoading(false);
         setLastFetchedAt(new Date());
-      }).catch(() => setLoading(false));
+      }).catch(() => {
+        setLoadError("Unable to load latest data. Check your connection and refresh.");
+        setLoading(false);
+      });
     }
     fetch("/api/seller/orders?status=NEW&limit=5")
       .then(r => r.json()).then(d => {
@@ -263,17 +279,25 @@ export default function SellerDashboard() {
               Here&apos;s what needs your attention today.
             </p>
           </div>
-          {/* Last updated + refresh */}
-          <div className="flex flex-col items-end gap-1.5 flex-shrink-0 pt-1">
-            {lastFetchedAt && (
+          {/* Data freshness + refresh */}
+          <div className="flex flex-col items-end gap-1 flex-shrink-0 pt-1">
+            {analytics?.computedAt && (
               <p className="text-[10px]" style={{ color: "#9CA3AF" }}>
-                Updated {Math.round((Date.now() - lastFetchedAt.getTime()) / 1000) < 60
-                  ? `${Math.round((Date.now() - lastFetchedAt.getTime()) / 1000)}s ago`
-                  : `${Math.round((Date.now() - lastFetchedAt.getTime()) / 60000)}m ago`}
+                Data as of {new Date(analytics.computedAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+              </p>
+            )}
+            {analytics?.store?.lastSyncAt && (
+              <p className="text-[10px]" style={{ color: analytics.store.lastSyncError ? "#EF4444" : "#9CA3AF" }}>
+                {analytics.store.lastSyncError
+                  ? "Shopify sync failed"
+                  : `Shopify sync ${(() => {
+                      const mins = Math.round((Date.now() - new Date(analytics.store!.lastSyncAt!).getTime()) / 60000);
+                      return mins < 2 ? "just now" : `${mins}m ago`;
+                    })()}`}
               </p>
             )}
             <button
-              onClick={() => { setLoading(true); setRefreshKey(k => k + 1); }}
+              onClick={() => { setLoading(true); setLoadError(null); setRefreshKey(k => k + 1); }}
               disabled={loading}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-opacity"
               style={{ background: "rgba(67,97,238,0.08)", color: "#4361EE", opacity: loading ? 0.5 : 1 }}>
@@ -282,6 +306,35 @@ export default function SellerDashboard() {
             </button>
           </div>
         </div>
+
+        {/* API/database failure banner */}
+        {!loading && loadError && (
+          <div className="mt-4 flex items-center gap-2.5 px-4 py-3 rounded-2xl"
+            style={{ background: "#FEF2F2", border: "1px solid #FECACA" }}>
+            <span className="text-base flex-shrink-0">⚠️</span>
+            <div className="flex-1">
+              <p className="text-sm font-semibold" style={{ color: "#991B1B" }}>{loadError}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Shopify sync failure banner */}
+        {!loading && analytics?.store?.lastSyncError && (
+          <div className="mt-4 flex items-center justify-between gap-3 px-4 py-3 rounded-2xl"
+            style={{ background: "#FFF7ED", border: "1px solid #FED7AA" }}>
+            <div className="flex items-center gap-2.5">
+              <span className="text-base flex-shrink-0">🔄</span>
+              <div>
+                <p className="text-sm font-semibold" style={{ color: "#92400E" }}>Shopify sync failed</p>
+                <p className="text-xs" style={{ color: "#B45309" }}>
+                  {analytics.store.lastSyncAt
+                    ? `Last successful sync: ${new Date(analytics.store.lastSyncAt).toLocaleString("en-IN")}`
+                    : "No successful sync recorded"}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Demo mode banner — no store connected and no orders */}
         {!loading && !analytics?.store && (analytics?.totalOrders ?? 0) === 0 && (
@@ -1175,8 +1228,8 @@ export default function SellerDashboard() {
 
               {recentOrders.map((order, idx) => {
                 const cfg = STATUS_CONFIG[order.status] ?? STATUS_CONFIG.NEW;
-                // paymentMode is not a DB field yet — check paymentReference string
-                const isCod     = String(order.paymentReference ?? "").toUpperCase().includes("COD");
+                // paymentMode is a proper DB field (PaymentMode enum: COD | PREPAID | UNKNOWN)
+                const isCod     = order.paymentMode === "COD";
                 const hasNdr    = !!order.ndrStatus && !order.ndrActionTaken;
                 const isRto     = order.status === "RTO";
                 const isNew     = order.status === "NEW";
@@ -1219,12 +1272,17 @@ export default function SellerDashboard() {
                     </span>
 
                     {/* Payment mode */}
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 hidden md:inline"
-                      style={isCod
-                        ? { background: "#FFF7ED", color: "#D97706" }
-                        : { background: "#F0FDF4", color: "#059669" }}>
-                      {isCod ? "COD" : "Prepaid"}
-                    </span>
+                    {order.paymentMode && order.paymentMode !== "UNKNOWN" ? (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 hidden md:inline"
+                        style={isCod
+                          ? { background: "#FFF7ED", color: "#D97706" }
+                          : { background: "#F0FDF4", color: "#059669" }}>
+                        {isCod ? "COD" : "Prepaid"}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full flex-shrink-0 hidden md:inline"
+                        style={{ background: "#F3F4F6", color: "#9CA3AF" }}>—</span>
+                    )}
 
                     {/* Status */}
                     <span className="text-xs font-semibold px-2.5 py-1 rounded-full flex-shrink-0 hidden md:inline"
@@ -1269,16 +1327,21 @@ export default function SellerDashboard() {
             />
             {showFinancials && (() => {
               const e = analytics.earnings;
-              const net    = (e.totalGMV - e.totalProductCost - e.totalShipping - e.totalFees - e.totalRtoCharge) - adSpend;
+              const net    = e.netProfit - adSpend;
               const margin = e.totalGMV > 0 ? (net / e.totalGMV) * 100 : 0;
               const profit = net >= 0;
-              const rows   = [
-                { label: "Revenue (Delivered orders)", value: e.totalGMV,         color: "#4361EE", sign: "+" },
-                { label: "Product Cost",               value: e.totalProductCost, color: "#EF4444", sign: "−" },
-                { label: "Shipping",                   value: e.totalShipping,    color: "#EF4444", sign: "−" },
-                { label: "Platform Fee",               value: e.totalFees,        color: "#EF4444", sign: "−" },
-                { label: "RTO Losses",                 value: e.totalRtoCharge,   color: "#EF4444", sign: "−" },
-                { label: "Ad Spend (30d)",             value: adSpend,            color: "#7C3AED", sign: "−" },
+              // Show "—" for cost rows where data is not tracked for any delivered orders
+              const noProductCost = e.productCostTracked === 0;
+              const noShipping    = e.shippingTracked === 0;
+
+              type FinRow = { label: string; value: number | null; color: string; sign: string; note?: string };
+              const rows: FinRow[] = [
+                { label: "Revenue (Delivered orders)", value: e.totalGMV,        color: "#4361EE", sign: "+" },
+                { label: "Product Cost",               value: noProductCost ? null : e.totalProductCost, color: "#EF4444", sign: "−", note: noProductCost ? "Not tracked" : undefined },
+                { label: "Shipping",                   value: noShipping    ? null : e.totalShipping,    color: "#EF4444", sign: "−", note: noShipping ? "Not tracked" : undefined },
+                { label: `AXQEN Platform Fee (₹${e.platformFeePerOrder}×${e.deliveredCount})`, value: e.totalPlatformFee, color: "#EF4444", sign: "−" },
+                { label: "RTO Losses",                 value: e.totalRtoCharge, color: "#EF4444", sign: "−" },
+                { label: "Ad Spend",                   value: adSpend,          color: "#7C3AED", sign: "−" },
               ];
               return (
                 <div className="bg-white px-6 py-5" style={{ borderTop: "1px solid #F3F4F6" }}>
@@ -1311,14 +1374,18 @@ export default function SellerDashboard() {
                       <div key={r.label} className="flex items-center justify-between py-2.5"
                         style={{ borderBottom: "1px solid #F9FAFB" }}>
                         <p className="text-xs font-medium" style={{ color: "#6B7280" }}>{r.label}</p>
-                        <p className="text-xs font-bold" style={{ color: r.color }}>{r.sign}₹{fmt(r.value)}</p>
+                        {r.value === null ? (
+                          <p className="text-xs font-semibold" style={{ color: "#D1D5DB" }}>{r.note ?? "—"}</p>
+                        ) : (
+                          <p className="text-xs font-bold" style={{ color: r.color }}>{r.sign}₹{fmt(r.value)}</p>
+                        )}
                       </div>
                     ))}
                     <div className="flex items-center justify-between pt-3">
                       <div>
                         <p className="text-sm font-black" style={{ color: "#1e1b4b" }}>Estimated Profit</p>
                         <p className="text-[10px] mt-0.5" style={{ color: "#9CA3AF" }}>
-                          Delivered orders only · refunds not yet included
+                          Delivered orders only · refunds not yet included{(noProductCost || noShipping) ? " · some costs not tracked" : ""}
                         </p>
                       </div>
                       <p className="text-sm font-black" style={{ color: profit ? "#4361EE" : "#EF4444" }}>
@@ -1374,25 +1441,23 @@ export default function SellerDashboard() {
               </span>
             </div>
 
-            {/* Activity list */}
+            {/* Activity list — all counts are today-scoped (actual events, not standing state) */}
             {(() => {
               const a = aiActivity;
-              // autoHandledCount from analytics = NEW orders with supplier auto-assigned
-              const axqenAutoHandled = analytics?.autoHandledCount ?? 0;
               const items = [
-                { count: a?.autoDispatched ?? 0,  label: "shipments auto-dispatched",        icon: "📦" },
-                { count: axqenAutoHandled,         label: "new orders auto-assigned by AXQEN",icon: "⚡" },
-                { count: a?.ndrEscalated   ?? 0,  label: "NDR cases escalated",              icon: "⚠️" },
-                { count: a?.supplierDelays ?? 0,  label: "supplier delays detected",         icon: "🔍" },
-                { count: a?.humanActions   ?? 0,  label: "items need your attention",        icon: "🤝" },
+                { count: a?.autoDispatched            ?? 0, label: "shipments auto-dispatched today",     icon: "📦" },
+                { count: a?.newOrdersToday            ?? 0, label: "new orders ingested today",           icon: "⚡" },
+                { count: a?.ndrOpenedToday            ?? 0, label: "NDR cases opened today",              icon: "⚠️" },
+                { count: a?.supplierDelaysDetectedToday ?? 0, label: "supplier delays detected today",   icon: "🔍" },
+                { count: a?.humanActionsNeeded        ?? 0, label: "items currently need your attention", icon: "🤝" },
               ];
-              const loading = !a;
+              const activityLoading = !a;
 
               return (
                 <div className="space-y-2.5 mb-5">
                   {items.map((item, i) => (
                     <div key={i} className="flex items-center gap-3">
-                      {loading ? (
+                      {activityLoading ? (
                         <div className="h-5 w-full rounded-lg animate-pulse"
                           style={{ background: "rgba(255,255,255,0.08)" }} />
                       ) : item.count === 0 ? (
@@ -1423,22 +1488,24 @@ export default function SellerDashboard() {
             {/* Divider */}
             <div className="mb-4" style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }} />
 
-            {/* Time saved */}
+            {/* Time saved — formula from API; caption reproduces exactly same calculation */}
             {aiActivity ? (
               aiActivity.timeSaved > 0 ? (
                 <div className="flex items-center gap-3">
                   <div className="flex-1">
-                    <div>
-                      <p className="text-sm font-semibold" style={{ color: "rgba(255,255,255,0.55)" }}>
-                        Estimated time saved today
-                      </p>
-                      <p className="text-2xl font-black mt-0.5" style={{ color: "white" }}>
-                        {aiActivity.timeSavedLabel}
-                      </p>
-                      <p className="text-[10px] mt-1" style={{ color: "rgba(165,180,252,0.5)" }}>
-                        Based on {(aiActivity.autoDispatched * 8) + ((analytics?.autoHandledCount ?? 0) * 5) + (aiActivity.ndrEscalated * 5) + (aiActivity.supplierDelays * 4)} automated task-minutes at configured rates
-                      </p>
-                    </div>
+                    <p className="text-sm font-semibold" style={{ color: "rgba(255,255,255,0.55)" }}>
+                      Estimated time saved today
+                    </p>
+                    <p className="text-2xl font-black mt-0.5" style={{ color: "white" }}>
+                      {aiActivity.timeSavedLabel}
+                    </p>
+                    <p className="text-[10px] mt-1" style={{ color: "rgba(165,180,252,0.5)" }}>
+                      {aiActivity.autoDispatched}×{aiActivity.timeSavedRates.autoDispatchedMinutes}m dispatch
+                      {" + "}{aiActivity.newOrdersToday}×{aiActivity.timeSavedRates.newOrderIngestedMinutes}m ingestion
+                      {" + "}{aiActivity.ndrOpenedToday}×{aiActivity.timeSavedRates.ndrOpenedMinutes}m NDR
+                      {" + "}{aiActivity.supplierDelaysDetectedToday}×{aiActivity.timeSavedRates.supplierDelayMinutes}m delays
+                      {" = "}{aiActivity.timeSaved}min
+                    </p>
                   </div>
                   <div className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0"
                     style={{ background: "rgba(99,102,241,0.25)" }}>

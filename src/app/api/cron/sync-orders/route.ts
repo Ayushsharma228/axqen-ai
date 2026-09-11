@@ -9,14 +9,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const results: { sellerId: string; shopify?: number | string; amazon?: number | string }[] = [];
+  const results: { sellerId: string; shopify?: { created: number; updated: number; pages: number } | string; amazon?: number | string }[] = [];
 
-  // All sellers with Shopify connected
-  const shopifySellers = await prisma.shopifyStore.findMany({
-    select: { sellerId: true },
-  });
-
-  // All sellers with Amazon connected
+  const shopifySellers = await prisma.shopifyStore.findMany({ select: { sellerId: true } });
   const amazonSellers = await prisma.marketplaceAccount.findMany({
     where: { platform: "AMAZON", isActive: true },
     select: { sellerId: true },
@@ -30,8 +25,7 @@ export async function GET(req: NextRequest) {
   for (const sellerId of sellerIds) {
     const row: (typeof results)[0] = { sellerId };
 
-    const hasShopify = shopifySellers.some((s) => s.sellerId === sellerId);
-    if (hasShopify) {
+    if (shopifySellers.some((s) => s.sellerId === sellerId)) {
       try {
         row.shopify = await syncShopifyOrders(sellerId);
       } catch (err) {
@@ -39,8 +33,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const hasAmazon = amazonSellers.some((s) => s.sellerId === sellerId);
-    if (hasAmazon) {
+    if (amazonSellers.some((s) => s.sellerId === sellerId)) {
       try {
         const r = await syncAmazonOrders(sellerId);
         row.amazon = r.created + r.updated;

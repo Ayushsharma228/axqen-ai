@@ -53,7 +53,19 @@ export async function GET(req: NextRequest) {
       },
       orderBy: { createdAt: "desc" },
       ...(limitNum ? { take: limitNum } : {}),
-      include: { items: true },
+      select: {
+        id: true, externalOrderId: true, source: true, status: true,
+        customerName: true, customerEmail: true, customerAddress: true,
+        totalAmount: true, currency: true, awbNumber: true, trackingUrl: true, courier: true,
+        paymentMode: true,
+        ndrStatus: true, ndrActionTaken: true, ndrAttempts: true, ndrCreatedAt: true,
+        supplierId: true, supplierStatus: true,
+        confirmationStatus: true,
+        productCost: true, shippingCharge: true, packingCharge: true, rtoCharge: true,
+        utmSource: true, utmMedium: true, utmCampaign: true,
+        createdAt: true, updatedAt: true,
+        items: { select: { id: true, name: true, sku: true, quantity: true, price: true } },
+      },
     });
 
     const totalRevenue = orders.reduce((s, o) => s + o.totalAmount, 0);

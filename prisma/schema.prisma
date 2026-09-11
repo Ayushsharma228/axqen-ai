@@ -106,6 +106,20 @@ enum OrderStatus {
   RTO
 }
 
+enum PaymentMode {
+  COD
+  PREPAID
+  UNKNOWN
+}
+
+enum ConfirmationStatus {
+  NOT_REQUIRED
+  PENDING
+  CONFIRMED
+  FAILED
+  CANCELLED
+}
+
 enum OrderSource {
   SHOPIFY
   AMAZON
@@ -538,16 +552,18 @@ model WalletTransaction {
 }
 
 model ShopifyStore {
-  id           String   @id @default(cuid())
-  sellerId     String   @unique
-  seller       User     @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  id           String    @id @default(cuid())
+  sellerId     String    @unique
+  seller       User      @relation(fields: [sellerId], references: [id], onDelete: Cascade)
   storeName    String
   storeUrl     String
   accessToken  String
   clientId     String?
   clientSecret String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  lastSyncAt   DateTime?  // timestamp of the last SUCCESSFUL sync
+  lastSyncError String?   // error message from the most recent failed sync (null if last sync succeeded)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   @@map("shopify_stores")
 }
@@ -655,6 +671,14 @@ model Order {
   ndrAttempts     Int          @default(0)
   ndrActionTaken  String?
   ndrCreatedAt    DateTime?
+  // Payment classification — set from Shopify gateway at ingestion time
+  paymentMode     PaymentMode  @default(UNKNOWN)
+  // HillTeck confirmation workflow state
+  confirmationStatus          ConfirmationStatus @default(NOT_REQUIRED)
+  confirmationRequestedAt     DateTime?
+  confirmationCompletedAt     DateTime?
+  confirmationFailedAt        DateTime?
+  confirmationChannel         String?   // WHATSAPP | IVR | MANUAL
   // Supplier fulfillment fields
   supplierId           String?
   supplier             User?                @relation("SupplierOrders", fields: [supplierId], references: [id])
@@ -902,11 +926,13 @@ model OrderTimeline {
   order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   actorId   String?
   actorRole String?
-  event     String
+  event     String            // free-text description (human-readable)
+  eventType String?           // structured machine-readable type — see ORDER_EVENTS constants
   details   String?
   metadata  Json?
   createdAt DateTime @default(now())
 
+  @@index([orderId, eventType])
   @@map("order_timeline")
 }
 

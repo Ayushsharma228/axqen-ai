@@ -60,6 +60,7 @@ interface NdrOrder {
 interface AttentionNewOrder {
   id: string; externalOrderId: string; customerName: string; totalAmount: number;
   createdAt: string; supplierId?: string | null;
+  paymentMode?: string | null; confirmationStatus?: string | null;
 }
 
 function getGreeting() {
@@ -136,6 +137,7 @@ export default function SellerDashboard() {
     supplierId?: string | null;
     supplierStatus?: string | null;
     paymentMode?: "COD" | "PREPAID" | "UNKNOWN" | null;
+    confirmationStatus?: string | null;
     ndrStatus?: string | null;
     ndrActionTaken?: string | null;
     customerOrderCount?: number;
@@ -681,6 +683,10 @@ export default function SellerDashboard() {
             return "Call customer and reschedule delivery";
           };
 
+          // COD orders with supplier assigned but confirmation still pending
+          const codConfirmPending = attentionNewOrders.filter(
+            o => o.paymentMode === "COD" && !!o.supplierId && o.confirmationStatus === "PENDING"
+          );
           // Only include unassigned new orders (AXQEN hasn't handled them)
           const unassignedNew = attentionNewOrders.filter(o => !o.supplierId);
 
@@ -725,6 +731,21 @@ export default function SellerDashboard() {
               recommendation: "Assign to supplier or auto-dispatch",
               amount: o.totalAmount,
               href: "/seller/orders?status=NEW",
+            })),
+            // ATTENTION: COD orders with supplier assigned but confirmation pending
+            // HillTeck is handling the call — seller does not need to contact the customer.
+            // Card informs of the state without asking for manual action.
+            ...codConfirmPending.slice(0, 3).map(o => ({
+              id: `cod-confirm-${o.id}`,
+              priority: "ATTENTION" as Priority,
+              type: "COD_CONFIRM",
+              externalOrderId: o.externalOrderId,
+              badge: "COD Confirm",
+              title: "COD confirmation pending",
+              problem: "Awaiting customer confirmation before dispatch",
+              recommendation: "HillTeck is handling customer confirmation — no action needed from you",
+              amount: o.totalAmount,
+              href: `/seller/orders/${o.id}`,
             })),
           ];
 
@@ -1240,15 +1261,18 @@ export default function SellerDashboard() {
 
                 // AXQEN signal — priority order matters, all rules are explicit
                 const isAutoHandled = isNew && !!order.supplierId; // AXQEN already assigned
+                // COD + supplier assigned + confirmation still pending → not yet fully auto-handled
+                const isConfirmPending = isNew && isCod && !!order.supplierId && order.confirmationStatus === "PENDING";
                 type Signal = { dot: string; label: string | null; color: string; bg: string };
                 const signal: Signal = (() => {
-                  if (hasNdr)            return { dot: "#EF4444", label: "NDR",          color: "#EF4444", bg: "#FEF2F2" };
-                  if (isRto)             return { dot: "#EF4444", label: "RTO",          color: "#EF4444", bg: "#FEF2F2" };
-                  if (isStale)           return { dot: "#EAB308", label: "Stale 48h+",  color: "#A16207", bg: "#FEFCE8" };
+                  if (hasNdr)             return { dot: "#EF4444", label: "NDR",             color: "#EF4444", bg: "#FEF2F2" };
+                  if (isRto)              return { dot: "#EF4444", label: "RTO",             color: "#EF4444", bg: "#FEF2F2" };
+                  if (isStale)            return { dot: "#EAB308", label: "Stale 48h+",     color: "#A16207", bg: "#FEFCE8" };
                   if (isNew && !order.supplierId) return { dot: "#F59E0B", label: "Unassigned", color: "#D97706", bg: "#FFFBEB" };
-                  if (isAutoHandled)     return { dot: "#6366F1", label: "Auto-handled", color: "#4338CA", bg: "rgba(99,102,241,0.08)" };
-                  if (isRepeat && isNew) return { dot: "#6366F1", label: "Repeat",       color: "#4338CA", bg: "rgba(99,102,241,0.08)" };
-                  return                        { dot: "#059669", label: null,            color: "#059669", bg: "#ECFDF5" };
+                  if (isConfirmPending)   return { dot: "#F59E0B", label: "Confirm pending", color: "#D97706", bg: "#FFFBEB" };
+                  if (isAutoHandled)      return { dot: "#6366F1", label: "Auto-handled",    color: "#4338CA", bg: "rgba(99,102,241,0.08)" };
+                  if (isRepeat && isNew)  return { dot: "#6366F1", label: "Repeat",          color: "#4338CA", bg: "rgba(99,102,241,0.08)" };
+                  return                         { dot: "#059669", label: null,               color: "#059669", bg: "#ECFDF5" };
                 })();
 
                 return (

@@ -30,9 +30,23 @@ interface Analytics {
     totalRtoCharge: number;
     totalEarned: number;
   };
+  pipeline?: {
+    new: number; confirmed: number; processing: number;
+    shipped: number; inTransit: number; delivered: number;
+    ndr: number; rtoRisk: number; cancelled: number;
+  };
 }
 
 interface WalletData { balance: number; totalRemittance: number; totalDeductions: number }
+
+interface NdrOrder {
+  id: string; externalOrderId: string; customerName: string;
+  totalAmount: number; ndrReason: string | null; ndrAttempts: number;
+  ndrCreatedAt: string | null;
+}
+interface AttentionNewOrder {
+  id: string; externalOrderId: string; customerName: string; totalAmount: number; createdAt: string;
+}
 
 function getGreeting() {
   const h = new Date().getHours();
@@ -104,17 +118,29 @@ export default function SellerDashboard() {
   const [recentOrders, setRecentOrders] = useState<{
     id: string; externalOrderId: string; customerName: string;
     totalAmount: number; status: string; createdAt: string;
+    paymentMode?: string | null;
+    ndrStatus?: string | null;
+    ndrActionTaken?: string | null;
+    supplierStatus?: string | null;
+    customerOrderCount?: number;
   }[]>([]);
   const [loading, setLoading]           = useState(true);
   const [adSpend, setAdSpend]           = useState(0);
   const [adRevenue, setAdRevenue]       = useState(0);
   const [metaConnected, setMetaConnected] = useState(false);
   const [openNdrs, setOpenNdrs]         = useState(0);
+  const [ndrOrders, setNdrOrders]       = useState<NdrOrder[]>([]);
   const [newOrdersCount, setNewOrdersCount] = useState(0);
+  const [attentionNewOrders, setAttentionNewOrders] = useState<AttentionNewOrder[]>([]);
   const [orderFilter, setOrderFilter]   = useState("ALL");
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [chartDays, setChartDays]       = useState(14);
   const [showFinancials, setShowFinancials] = useState(false);
+  const [aiActivity, setAiActivity] = useState<{
+    autoDispatched: number; codOrdersToday: number; ndrEscalated: number;
+    supplierDelays: number; humanActions: number;
+    timeSaved: number; timeSavedLabel: string;
+  } | null>(null);
 
   // Marketplace-specific
   const [listingStats, setListingStats] = useState<{
@@ -157,11 +183,17 @@ export default function SellerDashboard() {
         setAdRevenue(ads.last30DaysRevenue ?? 0);
         setMetaConnected(ads.metaConnected ?? false);
         setOpenNdrs(ndr.pending?.length ?? 0);
+        setNdrOrders(ndr.pending?.slice(0, 5) ?? []);
         setLoading(false);
       });
     }
-    fetch("/api/seller/orders?status=NEW&limit=1")
-      .then(r => r.json()).then(d => setNewOrdersCount(d.total ?? 0)).catch(() => {});
+    fetch("/api/seller/orders?status=NEW&limit=3")
+      .then(r => r.json()).then(d => {
+        setNewOrdersCount(d.stats?.totalOrders ?? d.total ?? 0);
+        setAttentionNewOrders(d.orders ?? []);
+      }).catch(() => {});
+    fetch("/api/seller/ai-activity")
+      .then(r => r.json()).then(d => setAiActivity(d)).catch(() => {});
   }, [isMarketplace]);
 
   useEffect(() => {
@@ -352,117 +384,161 @@ export default function SellerDashboard() {
           </div>
 
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="space-y-4">
 
-          {/* Total Orders — featured blue gradient */}
-          <div className="rounded-3xl px-6 py-5"
-            style={{ background: "linear-gradient(135deg, #4361EE 0%, #3752D3 100%)" }}>
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex-1 min-w-0">
+            {/* ── Row 1: 4 operational cards ── */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+
+              {/* 1. Total Orders */}
+              <div className="rounded-3xl px-5 py-5"
+                style={{ background: "linear-gradient(135deg, #4361EE 0%, #3752D3 100%)" }}>
                 <p className="text-xs font-semibold mb-3 uppercase tracking-wide"
                   style={{ color: "rgba(255,255,255,0.65)" }}>Total Orders</p>
-                <div className="flex items-end gap-2.5 mb-1.5 flex-wrap">
-                  {loading ? (
-                    <div className="h-10 w-20 rounded-xl animate-pulse" style={{ background: "rgba(255,255,255,0.2)" }} />
-                  ) : (
-                    <>
-                      <p className="text-4xl font-black leading-none" style={{ color: "white" }}>
-                        {fmt(analytics?.totalOrders ?? 0)}
-                      </p>
+                {loading ? (
+                  <div className="h-9 w-16 rounded-xl animate-pulse" style={{ background: "rgba(255,255,255,0.2)" }} />
+                ) : (
+                  <>
+                    <p className="text-4xl font-black leading-none mb-1.5" style={{ color: "white" }}>
+                      {fmt(analytics?.totalOrders ?? 0)}
+                    </p>
+                    <p className="text-xs flex items-center gap-1.5 flex-wrap" style={{ color: "rgba(255,255,255,0.65)" }}>
                       {weekOverWeek !== 0 && (
-                        <span className="mb-1 text-xs font-bold px-2 py-0.5 rounded-full"
-                          style={{ background: "rgba(255,255,255,0.22)", color: "white" }}>
+                        <span className="font-bold" style={{ color: weekOverWeek >= 0 ? "#A7F3D0" : "#FCA5A5" }}>
                           {weekOverWeek >= 0 ? "+" : ""}{weekOverWeek}%
                         </span>
                       )}
-                    </>
-                  )}
-                </div>
-                <p className="text-xs" style={{ color: "rgba(255,255,255,0.55)" }}>
-                  Last week: {fmt(prior7Total)}
-                </p>
+                      vs last week
+                    </p>
+                  </>
+                )}
               </div>
-              <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
-                style={{ background: "rgba(255,255,255,0.2)" }}>
-                <ShoppingCart className="w-5 h-5" style={{ color: "white" }} />
-              </div>
-            </div>
-          </div>
 
-          {/* Delivered Orders */}
-          <div className="rounded-3xl px-6 py-5"
-            style={{ background: "white", border: "1px solid #E5E7EB", boxShadow: "0 1px 12px rgba(0,0,0,0.04)" }}>
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold mb-3 uppercase tracking-wide" style={{ color: "#9CA3AF" }}>
-                  Delivered Orders
-                </p>
-                <div className="flex items-end gap-2.5 mb-1.5 flex-wrap">
-                  {loading ? (
-                    <div className="h-10 w-16 rounded-xl bg-gray-100 animate-pulse" />
-                  ) : (
-                    <>
-                      <p className="text-4xl font-black leading-none" style={{ color: "#1e1b4b" }}>
-                        {fmt(analytics?.deliveredCount ?? 0)}
-                      </p>
-                      {deliveryRate > 0 && (
-                        <span className="mb-1 text-xs font-bold px-2 py-0.5 rounded-full"
-                          style={{
-                            background: deliveryRate >= 70 ? "rgba(67,97,238,0.1)" : "#FEF2F2",
-                            color: deliveryRate >= 70 ? "#4361EE" : "#EF4444",
-                          }}>
-                          {deliveryRate.toFixed(1)}%
-                        </span>
-                      )}
-                    </>
-                  )}
-                </div>
-                <p className="text-xs" style={{ color: "#9CA3AF" }}>
-                  This week: {fmt(last7Delivered)}
-                </p>
-              </div>
-              <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
-                style={{ background: "#F3F5FF" }}>
-                <CheckCircle2 className="w-5 h-5" style={{ color: "#4361EE" }} />
-              </div>
-            </div>
-          </div>
+              {/* 2. Needs Action */}
+              {(() => {
+                const needsAction = newOrdersCount + openNdrs;
+                const urgent = openNdrs;
+                const isUrgent = urgent > 0;
+                return (
+                  <Link href="/seller/orders" className="rounded-3xl px-5 py-5 block"
+                    style={{
+                      background: isUrgent ? "linear-gradient(135deg, #EF4444 0%, #DC2626 100%)" : "white",
+                      border: isUrgent ? "none" : "1px solid #E5E7EB",
+                      boxShadow: "0 1px 12px rgba(0,0,0,0.04)",
+                    }}>
+                    <p className="text-xs font-semibold mb-3 uppercase tracking-wide"
+                      style={{ color: isUrgent ? "rgba(255,255,255,0.7)" : "#9CA3AF" }}>
+                      Needs Action
+                    </p>
+                    {loading ? (
+                      <div className="h-9 w-12 rounded-xl bg-gray-100 animate-pulse" />
+                    ) : (
+                      <>
+                        <p className="text-4xl font-black leading-none mb-1.5"
+                          style={{ color: isUrgent ? "white" : (needsAction > 0 ? "#EF4444" : "#1e1b4b") }}>
+                          {needsAction}
+                        </p>
+                        <p className="text-xs" style={{ color: isUrgent ? "rgba(255,255,255,0.7)" : "#9CA3AF" }}>
+                          {urgent > 0 ? `${urgent} NDR urgent` : needsAction > 0 ? `${newOrdersCount} new orders` : "All caught up ✓"}
+                        </p>
+                      </>
+                    )}
+                  </Link>
+                );
+              })()}
 
-          {/* Ads Spent */}
-          <div className="rounded-3xl px-6 py-5"
-            style={{ background: "white", border: "1px solid #E5E7EB", boxShadow: "0 1px 12px rgba(0,0,0,0.04)" }}>
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex-1 min-w-0">
+              {/* 3. In Fulfillment */}
+              {(() => {
+                const total = analytics?.totalOrders ?? 0;
+                const inFulfillment = Math.max(0, total - (analytics?.deliveredCount ?? 0) - (analytics?.rtoCount ?? 0) - (analytics?.cancelledCount ?? 0));
+                const pct = total > 0 ? Math.round((inFulfillment / total) * 100) : 0;
+                return (
+                  <div className="rounded-3xl px-5 py-5"
+                    style={{ background: "white", border: "1px solid #E5E7EB", boxShadow: "0 1px 12px rgba(0,0,0,0.04)" }}>
+                    <p className="text-xs font-semibold mb-3 uppercase tracking-wide" style={{ color: "#9CA3AF" }}>
+                      In Fulfillment
+                    </p>
+                    {loading ? (
+                      <div className="h-9 w-12 rounded-xl bg-gray-100 animate-pulse" />
+                    ) : (
+                      <>
+                        <p className="text-4xl font-black leading-none mb-1.5" style={{ color: "#1e1b4b" }}>
+                          {fmt(inFulfillment)}
+                        </p>
+                        <p className="text-xs" style={{ color: "#9CA3AF" }}>
+                          {pct}% of total orders
+                        </p>
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* 4. Delivered */}
+              <div className="rounded-3xl px-5 py-5"
+                style={{ background: "white", border: "1px solid #E5E7EB", boxShadow: "0 1px 12px rgba(0,0,0,0.04)" }}>
                 <p className="text-xs font-semibold mb-3 uppercase tracking-wide" style={{ color: "#9CA3AF" }}>
-                  Ads Spent
+                  Delivered
                 </p>
-                <div className="flex items-end gap-2.5 mb-1.5 flex-wrap">
-                  {loading ? (
-                    <div className="h-10 w-24 rounded-xl bg-gray-100 animate-pulse" />
-                  ) : (
-                    <>
-                      <p className="text-4xl font-black leading-none" style={{ color: "#1e1b4b" }}>
-                        ₹{fmt(adSpend)}
-                      </p>
-                      {adRevenue > 0 && adSpend > 0 && (
-                        <span className="mb-1 text-xs font-bold px-2 py-0.5 rounded-full"
-                          style={{ background: "rgba(67,97,238,0.1)", color: "#4361EE" }}>
-                          {(adRevenue / adSpend).toFixed(1)}x ROAS
-                        </span>
-                      )}
-                    </>
-                  )}
-                </div>
-                <p className="text-xs" style={{ color: "#9CA3AF" }}>
-                  {metaConnected ? `₹${fmt(adRevenue)} revenue tracked` : "Connect Meta to track"}
-                </p>
+                {loading ? (
+                  <div className="h-9 w-12 rounded-xl bg-gray-100 animate-pulse" />
+                ) : (
+                  <>
+                    <p className="text-4xl font-black leading-none mb-1.5" style={{ color: "#059669" }}>
+                      {fmt(analytics?.deliveredCount ?? 0)}
+                    </p>
+                    <p className="text-xs" style={{ color: "#9CA3AF" }}>
+                      {deliveryRate > 0 ? `${deliveryRate.toFixed(1)}% delivery rate` : "No data yet"}
+                    </p>
+                  </>
+                )}
               </div>
-              <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
-                style={{ background: "#F3F5FF" }}>
-                <Megaphone className="w-5 h-5" style={{ color: "#4361EE" }} />
-              </div>
+
             </div>
-          </div>
+
+            {/* ── Row 2: COD / RTO / Revenue ── */}
+            <div className="grid grid-cols-3 gap-4">
+
+              {/* COD Revenue */}
+              <div className="rounded-2xl px-5 py-4"
+                style={{ background: "white", border: "1px solid #E5E7EB", boxShadow: "0 1px 8px rgba(0,0,0,0.03)" }}>
+                <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "#9CA3AF" }}>COD Revenue</p>
+                {loading ? <div className="h-7 w-24 rounded-lg bg-gray-100 animate-pulse" /> : (
+                  <>
+                    <p className="text-2xl font-black" style={{ color: "#1e1b4b" }}>₹{fmt(analytics?.totalRevenue ?? 0)}</p>
+                    <p className="text-xs mt-0.5" style={{ color: "#9CA3AF" }}>Gross from all orders</p>
+                  </>
+                )}
+              </div>
+
+              {/* RTO */}
+              <div className="rounded-2xl px-5 py-4"
+                style={{ background: "white", border: "1px solid #E5E7EB", boxShadow: "0 1px 8px rgba(0,0,0,0.03)" }}>
+                <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "#9CA3AF" }}>RTO</p>
+                {loading ? <div className="h-7 w-16 rounded-lg bg-gray-100 animate-pulse" /> : (
+                  <>
+                    <p className="text-2xl font-black" style={{ color: rtoRate > 20 ? "#EF4444" : "#1e1b4b" }}>
+                      {fmt(analytics?.rtoCount ?? 0)}
+                    </p>
+                    <p className="text-xs mt-0.5" style={{ color: "#9CA3AF" }}>
+                      {rtoRate > 0 ? `${rtoRate.toFixed(1)}% return rate` : "No RTOs yet"}
+                    </p>
+                  </>
+                )}
+              </div>
+
+              {/* Net Earnings */}
+              <div className="rounded-2xl px-5 py-4"
+                style={{ background: "white", border: "1px solid #E5E7EB", boxShadow: "0 1px 8px rgba(0,0,0,0.03)" }}>
+                <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "#9CA3AF" }}>Wallet Balance</p>
+                {loading ? <div className="h-7 w-20 rounded-lg bg-gray-100 animate-pulse" /> : (
+                  <>
+                    <p className="text-2xl font-black" style={{ color: "#059669" }}>₹{fmt(wallet?.balance ?? 0)}</p>
+                    <p className="text-xs mt-0.5" style={{ color: "#9CA3AF" }}>Available to withdraw</p>
+                  </>
+                )}
+              </div>
+
+            </div>
 
           </div>
         )}
@@ -471,7 +547,161 @@ export default function SellerDashboard() {
       {/* ── Body ───────────────────────────────────────── */}
       <div className="px-4 md:px-8 py-6 space-y-5">
 
-        {/* Analytics Chart */}
+        {/* ── AXQEN Needs Your Attention ── */}
+        {(() => {
+          // Build unified attention items
+          type Priority = "HIGH" | "ATTENTION" | "MONITOR";
+          interface AttentionItem {
+            id: string; priority: Priority; type: string;
+            externalOrderId: string; badge: string; title: string;
+            recommendation: string; amount?: number; href: string;
+          }
+          const items: AttentionItem[] = [
+            ...ndrOrders.map(o => ({
+              id: o.id,
+              priority: "HIGH" as Priority,
+              type: "NDR",
+              externalOrderId: o.externalOrderId,
+              badge: "NDR",
+              title: o.ndrReason
+                ? `Delivery failed — ${o.ndrReason}`
+                : `Delivery attempt failed (${o.ndrAttempts} attempt${o.ndrAttempts !== 1 ? "s" : ""})`,
+              recommendation: "Contact customer and reschedule delivery",
+              amount: o.totalAmount,
+              href: "/seller/ndr",
+            })),
+            ...attentionNewOrders.map(o => ({
+              id: o.id,
+              priority: "ATTENTION" as Priority,
+              type: "NEW_ORDER",
+              externalOrderId: o.externalOrderId,
+              badge: "New",
+              title: "Awaiting fulfillment",
+              recommendation: "Forward to supplier for processing",
+              amount: o.totalAmount,
+              href: "/seller/orders?status=NEW",
+            })),
+          ];
+
+          const highCount      = items.filter(i => i.priority === "HIGH").length;
+          const attentionCount = items.filter(i => i.priority === "ATTENTION").length;
+          const monitorCount   = 0; // future: delayed processing orders
+
+          const priorityStyle: Record<Priority, { dot: string; text: string; bg: string; border: string }> = {
+            HIGH:      { dot: "#EF4444", text: "#EF4444", bg: "#FEF2F2",             border: "#FECACA" },
+            ATTENTION: { dot: "#F59E0B", text: "#D97706", bg: "#FFFBEB",             border: "#FDE68A" },
+            MONITOR:   { dot: "#EAB308", text: "#A16207", bg: "rgba(234,179,8,0.08)", border: "#FEF08A" },
+          };
+
+          if (items.length === 0 && !loading) return null;
+
+          return (
+            <div className="rounded-3xl overflow-hidden"
+              style={{ background: "white", border: "1px solid #E5E7EB", boxShadow: "0 1px 12px rgba(0,0,0,0.04)" }}>
+
+              {/* Header */}
+              <div className="px-6 pt-5 pb-4 flex items-center justify-between flex-wrap gap-3"
+                style={{ borderBottom: "1px solid #F3F4F6" }}>
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+                    style={{ background: highCount > 0 ? "#FEF2F2" : "#FFF7ED" }}>
+                    <span className="text-base">{highCount > 0 ? "🔴" : "🟠"}</span>
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold tracking-tight" style={{ color: "#1e1b4b" }}>
+                      AXQEN Needs Your Attention
+                    </h2>
+                    {loading ? (
+                      <div className="h-3 w-32 rounded mt-1 bg-gray-100 animate-pulse" />
+                    ) : (
+                      <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                        {highCount > 0 && (
+                          <span className="flex items-center gap-1 text-xs font-semibold" style={{ color: "#EF4444" }}>
+                            <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />
+                            {highCount} High priority
+                          </span>
+                        )}
+                        {attentionCount > 0 && (
+                          <span className="flex items-center gap-1 text-xs font-semibold" style={{ color: "#D97706" }}>
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" />
+                            {attentionCount} Attention required
+                          </span>
+                        )}
+                        {monitorCount > 0 && (
+                          <span className="flex items-center gap-1 text-xs font-semibold" style={{ color: "#A16207" }}>
+                            <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 inline-block" />
+                            {monitorCount} Monitor
+                          </span>
+                        )}
+                        {items.length === 0 && (
+                          <span className="text-xs" style={{ color: "#9CA3AF" }}>All caught up ✓</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <Link href="/seller/orders"
+                  className="text-xs font-semibold flex items-center gap-1 transition-opacity hover:opacity-70"
+                  style={{ color: "#4361EE" }}>
+                  View all <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
+              </div>
+
+              {/* Cards */}
+              <div className="p-4 space-y-3">
+                {loading ? (
+                  [1, 2].map(i => (
+                    <div key={i} className="h-20 rounded-2xl animate-pulse" style={{ background: "#F9FAFB" }} />
+                  ))
+                ) : items.length === 0 ? (
+                  <div className="py-10 flex flex-col items-center gap-2">
+                    <span className="text-2xl">✅</span>
+                    <p className="text-sm font-semibold" style={{ color: "#1e1b4b" }}>All orders are on track</p>
+                    <p className="text-xs" style={{ color: "#9CA3AF" }}>Nothing needs your attention right now</p>
+                  </div>
+                ) : (
+                  items.slice(0, 5).map(item => {
+                    const s = priorityStyle[item.priority];
+                    return (
+                      <div key={item.id} className="rounded-2xl px-4 py-3.5 flex items-start justify-between gap-3"
+                        style={{ background: s.bg, border: `1px solid ${s.border}` }}>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <span className="text-xs font-bold" style={{ color: "#1e1b4b" }}>
+                              #{item.externalOrderId}
+                            </span>
+                            <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                              style={{ background: "white", color: s.text, border: `1px solid ${s.border}` }}>
+                              {item.badge}
+                            </span>
+                            {item.amount != null && (
+                              <span className="text-xs font-semibold" style={{ color: "#6B7280" }}>
+                                ₹{fmt(item.amount)}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm font-medium mb-0.5 leading-snug" style={{ color: "#374151" }}>
+                            {item.title}
+                          </p>
+                          <p className="text-xs" style={{ color: s.text }}>
+                            AXQEN recommends: {item.recommendation}
+                          </p>
+                        </div>
+                        <Link href={item.href}
+                          className="flex-shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold transition-opacity hover:opacity-80"
+                          style={{ background: "white", color: s.text, border: `1px solid ${s.border}` }}>
+                          Review
+                        </Link>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Order Health */}
         <div className="rounded-3xl overflow-hidden"
           style={{ background: "white", border: "1px solid #E5E7EB", boxShadow: "0 1px 12px rgba(0,0,0,0.04)" }}>
 
@@ -479,7 +709,7 @@ export default function SellerDashboard() {
           <div className="px-6 pt-5 pb-4 flex items-center justify-between flex-wrap gap-3"
             style={{ borderBottom: "1px solid #F3F4F6" }}>
             <div>
-              <h2 className="text-base font-bold" style={{ color: "#1e1b4b" }}>Order Trends</h2>
+              <h2 className="text-base font-bold" style={{ color: "#1e1b4b" }}>Order Health</h2>
               <div className="flex items-center gap-4 mt-1">
                 {[
                   { label: "Orders",    color: "#4361EE" },
@@ -503,6 +733,52 @@ export default function SellerDashboard() {
               ))}
             </div>
           </div>
+
+          {/* Operational State Strip */}
+          {(() => {
+            const total       = analytics?.totalOrders ?? 0;
+            const confirmed   = newOrdersCount; // NEW = placed but not yet assigned
+            const delivered   = analytics?.deliveredCount ?? 0;
+            const rto         = analytics?.rtoCount ?? 0;
+            const cancelled   = analytics?.cancelledCount ?? 0;
+            const shipped     = analytics?.inTransitCount ?? 0;
+            const processing  = Math.max(0, total - confirmed - shipped - delivered - rto - cancelled);
+            const ndrCount    = openNdrs;
+
+            const states = [
+              { label: "Orders",     count: total,      color: "#4361EE", bg: "rgba(67,97,238,0.08)"  },
+              { label: "Confirmed",  count: confirmed,  color: "#6366F1", bg: "rgba(99,102,241,0.08)" },
+              { label: "Processing", count: processing, color: "#F59E0B", bg: "#FFFBEB"               },
+              { label: "Shipped",    count: shipped,    color: "#7C3AED", bg: "rgba(124,58,237,0.08)" },
+              { label: "Delivered",  count: delivered,  color: "#059669", bg: "#ECFDF5"               },
+              { label: "NDR",        count: ndrCount,   color: "#F97316", bg: "#FFF7ED"               },
+              { label: "RTO",        count: rto,        color: "#EF4444", bg: "#FEF2F2"               },
+            ];
+
+            return (
+              <div className="px-4 py-3 overflow-x-auto" style={{ borderBottom: "1px solid #F3F4F6" }}>
+                <div className="flex items-center gap-2 min-w-max">
+                  {loading ? (
+                    Array.from({ length: 7 }).map((_, i) => (
+                      <div key={i} className="h-9 w-20 rounded-xl animate-pulse" style={{ background: "#F3F4F6" }} />
+                    ))
+                  ) : (
+                    states.map(s => (
+                      <div key={s.label} className="flex flex-col items-center px-3.5 py-1.5 rounded-xl"
+                        style={{ background: s.bg, minWidth: 72 }}>
+                        <span className="text-base font-black leading-tight" style={{ color: s.color }}>
+                          {fmt(s.count)}
+                        </span>
+                        <span className="text-[10px] font-semibold mt-0.5" style={{ color: s.color, opacity: 0.75 }}>
+                          {s.label}
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Chart */}
           <div className="px-6 pt-5 pb-3">
@@ -635,6 +911,101 @@ export default function SellerDashboard() {
           </div>
         </div>
 
+        {/* ── Fulfillment Health ── */}
+        {!isMarketplace && (
+          <div className="rounded-3xl overflow-hidden"
+            style={{ background: "white", border: "1px solid #E5E7EB", boxShadow: "0 1px 12px rgba(0,0,0,0.04)" }}>
+
+            {/* Header */}
+            <div className="px-6 pt-5 pb-4 flex items-center justify-between"
+              style={{ borderBottom: "1px solid #F3F4F6" }}>
+              <div>
+                <h2 className="text-base font-bold" style={{ color: "#1e1b4b" }}>Fulfillment Pipeline</h2>
+                <p className="text-xs mt-0.5" style={{ color: "#9CA3AF" }}>Where are your orders right now?</p>
+              </div>
+              <Link href="/seller/orders"
+                className="text-xs font-semibold flex items-center gap-1 transition-opacity hover:opacity-70"
+                style={{ color: "#4361EE" }}>
+                View orders <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+
+            <div className="px-6 py-5 space-y-5">
+              {/* Pipeline flow */}
+              {(() => {
+                const p = analytics?.pipeline;
+                const stages = [
+                  { label: "New",        count: p?.new        ?? newOrdersCount, color: "#4361EE", bg: "rgba(67,97,238,0.08)"  },
+                  { label: "Confirmed",  count: p?.confirmed  ?? 0,              color: "#6366F1", bg: "rgba(99,102,241,0.08)" },
+                  { label: "Processing", count: p?.processing ?? 0,              color: "#F59E0B", bg: "#FFFBEB"               },
+                  { label: "Shipped",    count: p?.shipped    ?? 0,              color: "#7C3AED", bg: "rgba(124,58,237,0.08)" },
+                  { label: "In Transit", count: p?.inTransit  ?? (analytics?.inTransitCount ?? 0), color: "#0891B2", bg: "#ECFEFF" },
+                  { label: "Delivered",  count: p?.delivered  ?? (analytics?.deliveredCount  ?? 0), color: "#059669", bg: "#ECFDF5" },
+                ];
+
+                return (
+                  <div className="overflow-x-auto">
+                    <div className="flex items-stretch gap-0 min-w-max">
+                      {stages.map((stage, i) => (
+                        <div key={stage.label} className="flex items-center">
+                          {/* Stage box */}
+                          <div className="flex flex-col items-center px-5 py-4 rounded-2xl"
+                            style={{
+                              background: loading || stage.count === 0 ? "#F9FAFB" : stage.bg,
+                              minWidth: 88,
+                              opacity: loading ? 0.5 : 1,
+                            }}>
+                            {loading ? (
+                              <div className="h-8 w-8 rounded-lg animate-pulse bg-gray-200 mb-2" />
+                            ) : (
+                              <span className="text-3xl font-black leading-none mb-1"
+                                style={{ color: stage.count === 0 ? "#D1D5DB" : stage.color }}>
+                                {fmt(stage.count)}
+                              </span>
+                            )}
+                            <span className="text-[10px] font-bold uppercase tracking-wide"
+                              style={{ color: stage.count === 0 ? "#D1D5DB" : stage.color }}>
+                              {stage.label}
+                            </span>
+                          </div>
+                          {/* Arrow connector */}
+                          {i < stages.length - 1 && (
+                            <span className="px-1 text-lg font-light flex-shrink-0" style={{ color: "#D1D5DB" }}>→</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Problem states row */}
+              <div className="grid grid-cols-3 gap-3 pt-1" style={{ borderTop: "1px solid #F3F4F6" }}>
+                {[
+                  { label: "NDR",       count: analytics?.pipeline?.ndr       ?? openNdrs, color: "#F97316", bg: "#FFF7ED", border: "#FED7AA", desc: "Action needed" },
+                  { label: "RTO Risk",  count: analytics?.pipeline?.rtoRisk   ?? 0,        color: "#EF4444", bg: "#FEF2F2", border: "#FECACA", desc: "Monitor closely" },
+                  { label: "Cancelled", count: analytics?.pipeline?.cancelled ?? (analytics?.cancelledCount ?? 0), color: "#6B7280", bg: "#F9FAFB", border: "#E5E7EB", desc: "This period" },
+                ].map(s => (
+                  <div key={s.label} className="rounded-2xl px-4 py-3 flex items-center gap-3"
+                    style={{ background: s.bg, border: `1px solid ${s.border}` }}>
+                    <div>
+                      {loading ? (
+                        <div className="h-7 w-10 rounded animate-pulse" style={{ background: s.border }} />
+                      ) : (
+                        <p className="text-2xl font-black leading-none" style={{ color: s.color }}>
+                          {fmt(s.count)}
+                        </p>
+                      )}
+                      <p className="text-xs font-bold mt-0.5" style={{ color: s.color }}>{s.label}</p>
+                      <p className="text-[10px] mt-0.5" style={{ color: s.color, opacity: 0.7 }}>{s.desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Recent Orders */}
         <div className="rounded-3xl overflow-hidden"
           style={{ background: "white", border: "1px solid #E5E7EB", boxShadow: "0 1px 12px rgba(0,0,0,0.04)" }}>
@@ -690,47 +1061,106 @@ export default function SellerDashboard() {
               )}
             </div>
           ) : (
-            <div>
+            <>
+              {/* Column headers */}
+              <div className="px-6 py-2 grid items-center gap-3 hidden md:grid"
+                style={{
+                  gridTemplateColumns: "1fr 80px 76px 80px 100px",
+                  borderBottom: "1px solid #F3F4F6",
+                  background: "#FAFBFF",
+                }}>
+                <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "#9CA3AF" }}>Order / Customer</span>
+                <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "#9CA3AF" }}>Amount</span>
+                <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "#9CA3AF" }}>Payment</span>
+                <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "#9CA3AF" }}>Status</span>
+                <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: "#4361EE" }}>AXQEN</span>
+              </div>
+
               {recentOrders.map((order, idx) => {
                 const cfg = STATUS_CONFIG[order.status] ?? STATUS_CONFIG.NEW;
+                const isCod     = (order.paymentMode ?? "").toUpperCase().includes("COD");
+                const hasNdr    = !!order.ndrStatus && !order.ndrActionTaken;
+                const isRto     = order.status === "RTO";
+                const isNew     = order.status === "NEW";
+                const ageHours  = (Date.now() - new Date(order.createdAt).getTime()) / 3600000;
+                const isStale   = isNew && ageHours > 24;
+                const isRepeat  = (order.customerOrderCount ?? 1) > 1;
+
+                // Derive AXQEN signal — priority order matters
+                type Signal = { dot: string; label: string | null; color: string; bg: string };
+                const signal: Signal = (() => {
+                  if (hasNdr)                return { dot: "#EF4444", label: "NDR",     color: "#EF4444", bg: "#FEF2F2" };
+                  if (isRto)                 return { dot: "#EF4444", label: "RTO",     color: "#EF4444", bg: "#FEF2F2" };
+                  if (isNew && isCod)        return { dot: "#F59E0B", label: "Confirm", color: "#D97706", bg: "#FFFBEB" };
+                  if (isStale)               return { dot: "#EAB308", label: "Stale",   color: "#A16207", bg: "#FEFCE8" };
+                  if (isRepeat && isNew)     return { dot: "#6366F1", label: "Repeat",  color: "#4338CA", bg: "rgba(99,102,241,0.08)" };
+                  return                            { dot: "#059669", label: null,       color: "#059669", bg: "#ECFDF5" };
+                })();
+
                 return (
-                  <div key={order.id}
-                    className="px-6 py-3.5 flex items-center gap-4 transition-colors cursor-default"
-                    style={{ borderBottom: idx < recentOrders.length - 1 ? "1px solid #F9FAFB" : "none" }}
-                    onMouseEnter={e => { e.currentTarget.style.background = "#FAFBFF"; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}>
-                    <div className="w-9 h-9 rounded-2xl flex items-center justify-center flex-shrink-0"
-                      style={{ background: cfg.bg }}>
-                      <ShoppingCart className="w-4 h-4" style={{ color: cfg.color }} />
-                    </div>
+                  <Link key={order.id} href={`/seller/orders/${order.id}`}
+                    className="px-6 py-3.5 flex items-center gap-3 transition-colors cursor-pointer"
+                    style={{ borderBottom: idx < recentOrders.length - 1 ? "1px solid #F9FAFB" : "none", display: "flex" }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "#FAFBFF"; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}>
+
+                    {/* Order + customer */}
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold truncate" style={{ color: "#1e1b4b" }}>
                         #{order.externalOrderId}
                       </p>
                       <p className="text-xs truncate" style={{ color: "#9CA3AF" }}>{order.customerName}</p>
                     </div>
-                    <span className="text-sm font-bold flex-shrink-0" style={{ color: "#1e1b4b" }}>
+
+                    {/* Amount */}
+                    <span className="text-sm font-bold flex-shrink-0 hidden md:inline" style={{ color: "#1e1b4b" }}>
                       ₹{fmt(order.totalAmount)}
                     </span>
-                    <span className="text-xs font-semibold px-3 py-1 rounded-full flex-shrink-0"
+
+                    {/* Payment mode */}
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 hidden md:inline"
+                      style={isCod
+                        ? { background: "#FFF7ED", color: "#D97706" }
+                        : { background: "#F0FDF4", color: "#059669" }}>
+                      {isCod ? "COD" : "Prepaid"}
+                    </span>
+
+                    {/* Status */}
+                    <span className="text-xs font-semibold px-2.5 py-1 rounded-full flex-shrink-0 hidden md:inline"
                       style={{ background: cfg.bg, color: cfg.color }}>{cfg.label}</span>
-                    <span className="text-xs flex-shrink-0 hidden md:block" style={{ color: "#9CA3AF" }}>
+
+                    {/* AXQEN signal */}
+                    <div className="flex items-center gap-1.5 flex-shrink-0" style={{ minWidth: 72 }}>
+                      <span className="w-2 h-2 rounded-full flex-shrink-0"
+                        style={{ background: signal.dot }} />
+                      {signal.label ? (
+                        <span className="text-xs font-bold px-2 py-0.5 rounded-full"
+                          style={{ background: signal.bg, color: signal.color }}>
+                          {signal.label}
+                        </span>
+                      ) : (
+                        <span className="text-xs font-semibold" style={{ color: "#9CA3AF" }}>On track</span>
+                      )}
+                    </div>
+
+                    {/* Date */}
+                    <span className="text-xs flex-shrink-0 hidden lg:block" style={{ color: "#9CA3AF" }}>
                       {new Date(order.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
                     </span>
-                  </div>
+                  </Link>
                 );
               })}
-            </div>
+            </>
           )}
         </div>
 
 
-        {/* Financials — collapsible */}
+        {/* Financial Health — collapsible */}
         {analytics?.earnings && (
           <div className="rounded-3xl overflow-hidden"
             style={{ border: "1px solid #E5E7EB", boxShadow: "0 1px 12px rgba(0,0,0,0.04)" }}>
             <Accordion
-              label="Financials & P&L"
+              label="Financial Health"
               icon={Wallet}
               open={showFinancials}
               onToggle={() => setShowFinancials(v => !v)}
@@ -742,28 +1172,39 @@ export default function SellerDashboard() {
               const margin = e.totalGMV > 0 ? (net / e.totalGMV) * 100 : 0;
               const profit = net >= 0;
               const rows   = [
-                { label: "Revenue (GMV)",    value: e.totalGMV,         color: "#4361EE", sign: "+" },
-                { label: "Product Cost",     value: e.totalProductCost, color: "#EF4444", sign: "−" },
-                { label: "Shipping",         value: e.totalShipping,    color: "#EF4444", sign: "−" },
-                { label: "Platform Fee",     value: e.totalFees,        color: "#EF4444", sign: "−" },
-                { label: "RTO Losses",       value: e.totalRtoCharge,   color: "#EF4444", sign: "−" },
-                { label: "Ad Spend (30d)",   value: adSpend,            color: "#7C3AED", sign: "−" },
+                { label: "Revenue (GMV)",  value: e.totalGMV,         color: "#4361EE", sign: "+" },
+                { label: "Product Cost",   value: e.totalProductCost, color: "#EF4444", sign: "−" },
+                { label: "Shipping",       value: e.totalShipping,    color: "#EF4444", sign: "−" },
+                { label: "Platform Fee",   value: e.totalFees,        color: "#EF4444", sign: "−" },
+                { label: "RTO Losses",     value: e.totalRtoCharge,   color: "#EF4444", sign: "−" },
+                { label: "Ad Spend (30d)", value: adSpend,            color: "#7C3AED", sign: "−" },
               ];
               return (
                 <div className="bg-white px-6 py-5" style={{ borderTop: "1px solid #F3F4F6" }}>
-                  <div className="flex items-center justify-between mb-5 p-4 rounded-2xl"
+                  {/* Estimated profit hero */}
+                  <div className="flex items-start justify-between mb-5 p-4 rounded-2xl"
                     style={{ background: profit ? "rgba(67,97,238,0.06)" : "#FEF2F2" }}>
                     <div>
-                      <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "#9CA3AF" }}>Net Profit</p>
-                      <p className="text-2xl font-black mt-0.5" style={{ color: profit ? "#4361EE" : "#EF4444" }}>
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: "#9CA3AF" }}>
+                          Estimated Profit
+                        </p>
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wide"
+                          style={{ background: "rgba(245,158,11,0.12)", color: "#D97706" }}>
+                          Estimate
+                        </span>
+                      </div>
+                      <p className="text-2xl font-black" style={{ color: profit ? "#4361EE" : "#EF4444" }}>
                         {profit ? "+" : "−"}₹{fmt(Math.abs(net))}
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="text-xs" style={{ color: "#9CA3AF" }}>Net margin</p>
+                      <p className="text-xs" style={{ color: "#9CA3AF" }}>Est. margin</p>
                       <p className="text-xl font-black" style={{ color: profit ? "#4361EE" : "#EF4444" }}>{margin.toFixed(1)}%</p>
                     </div>
                   </div>
+
+                  {/* Line items */}
                   <div className="space-y-0">
                     {rows.map(r => (
                       <div key={r.label} className="flex items-center justify-between py-2.5"
@@ -773,12 +1214,18 @@ export default function SellerDashboard() {
                       </div>
                     ))}
                     <div className="flex items-center justify-between pt-3">
-                      <p className="text-sm font-black" style={{ color: "#1e1b4b" }}>Net Profit</p>
+                      <div>
+                        <p className="text-sm font-black" style={{ color: "#1e1b4b" }}>Estimated Profit</p>
+                        <p className="text-[10px] mt-0.5" style={{ color: "#9CA3AF" }}>
+                          Refunds &amp; other costs not yet included
+                        </p>
+                      </div>
                       <p className="text-sm font-black" style={{ color: profit ? "#4361EE" : "#EF4444" }}>
                         {profit ? "+" : "−"}₹{fmt(Math.abs(net))} ({margin.toFixed(1)}%)
                       </p>
                     </div>
                   </div>
+
                   {!metaConnected && (
                     <Link href="/seller/profile?tab=integrations"
                       className="flex items-center justify-between mt-4 px-4 py-3 rounded-2xl"
@@ -793,6 +1240,115 @@ export default function SellerDashboard() {
                 </div>
               );
             })()}
+          </div>
+        )}
+
+        {/* ── AXQEN Activity ── */}
+        {!isMarketplace && (
+          <div className="rounded-3xl px-6 py-6 overflow-hidden"
+            style={{
+              background: "linear-gradient(135deg, #0f0c29 0%, #1e1b4b 60%, #24243e 100%)",
+              boxShadow: "0 4px 32px rgba(67,97,238,0.18)",
+            }}>
+
+            {/* Header */}
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-xl flex items-center justify-center"
+                  style={{ background: "rgba(99,102,241,0.3)" }}>
+                  <span className="text-sm">✦</span>
+                </div>
+                <div>
+                  <p className="text-sm font-black tracking-tight" style={{ color: "white" }}>
+                    AXQEN Activity
+                  </p>
+                  <p className="text-[10px] font-medium" style={{ color: "rgba(255,255,255,0.4)" }}>
+                    What AXQEN handled for you today
+                  </p>
+                </div>
+              </div>
+              <span className="text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider"
+                style={{ background: "rgba(99,102,241,0.25)", color: "rgba(165,180,252,0.9)" }}>
+                Today
+              </span>
+            </div>
+
+            {/* Activity list */}
+            {(() => {
+              const a = aiActivity;
+              const items = [
+                { count: a?.autoDispatched ?? 0, label: "orders automatically processed",    icon: "📦" },
+                { count: a?.codOrdersToday ?? 0,  label: "COD confirmations triggered",       icon: "📞" },
+                { count: a?.ndrEscalated   ?? 0,  label: "NDR cases escalated",               icon: "⚠️" },
+                { count: a?.supplierDelays ?? 0,  label: "supplier delays detected",          icon: "🔍" },
+                { count: a?.humanActions   ?? 0,  label: "human actions requested",           icon: "🤝" },
+              ];
+              const loading = !a;
+
+              return (
+                <div className="space-y-2.5 mb-5">
+                  {items.map((item, i) => (
+                    <div key={i} className="flex items-center gap-3">
+                      {loading ? (
+                        <div className="h-5 w-full rounded-lg animate-pulse"
+                          style={{ background: "rgba(255,255,255,0.08)" }} />
+                      ) : item.count === 0 ? (
+                        <div className="flex items-center gap-2 opacity-30">
+                          <span className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>—</span>
+                          <span className="text-xs" style={{ color: "rgba(255,255,255,0.35)" }}>
+                            0 {item.label}
+                          </span>
+                        </div>
+                      ) : (
+                        <>
+                          <span className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 text-[10px]"
+                            style={{ background: "rgba(99,102,241,0.35)" }}>
+                            ✓
+                          </span>
+                          <span className="text-sm" style={{ color: "rgba(255,255,255,0.9)" }}>
+                            <span className="font-black" style={{ color: "white" }}>{item.count}</span>
+                            {" "}{item.label}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+
+            {/* Divider */}
+            <div className="mb-4" style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }} />
+
+            {/* Time saved */}
+            {aiActivity ? (
+              aiActivity.timeSaved > 0 ? (
+                <div className="flex items-center gap-3">
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold" style={{ color: "rgba(255,255,255,0.55)" }}>
+                      Today AXQEN saved you an estimated
+                    </p>
+                    <p className="text-2xl font-black mt-0.5" style={{ color: "white" }}>
+                      {aiActivity.timeSavedLabel}
+                      <span className="text-sm font-medium ml-2" style={{ color: "rgba(165,180,252,0.7)" }}>
+                        of manual work
+                      </span>
+                    </p>
+                  </div>
+                  <div className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0"
+                    style={{ background: "rgba(99,102,241,0.25)" }}>
+                    <span className="text-xl">⏱</span>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs" style={{ color: "rgba(255,255,255,0.35)" }}>
+                  No automated actions yet today — activity updates throughout the day.
+                </p>
+              )
+            ) : (
+              <div className="h-8 w-40 rounded-lg animate-pulse"
+                style={{ background: "rgba(255,255,255,0.08)" }} />
+            )}
           </div>
         )}
 

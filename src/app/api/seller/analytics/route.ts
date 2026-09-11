@@ -40,6 +40,7 @@ export async function GET(req: NextRequest) {
         id: true,
         externalOrderId: true,
         status: true,
+        supplierStatus: true,
         courier: true,
         totalAmount: true,
         packingCharge: true,
@@ -48,6 +49,8 @@ export async function GET(req: NextRequest) {
         rtoCharge: true,
         createdAt: true,
         customerAddress: true,
+        ndrStatus: true,
+        ndrActionTaken: true,
         items: { select: { name: true, sku: true, quantity: true } },
       },
       orderBy: { createdAt: "asc" },
@@ -235,6 +238,22 @@ export async function GET(req: NextRequest) {
     };
   }
 
+  // Fulfillment pipeline counts
+  const pipeline = {
+    new:        orders.filter(o => o.status === "NEW").length,
+    confirmed:  orders.filter(o => o.supplierStatus === "ACCEPTED" || o.supplierStatus === "ASSIGNED").length,
+    processing: orders.filter(o =>
+      o.supplierStatus === "PROCESSING" || o.supplierStatus === "PACKED" || o.supplierStatus === "READY_TO_SHIP" ||
+      (o.status === "PROCESSING" && !["ACCEPTED","ASSIGNED","PROCESSING","PACKED","READY_TO_SHIP","DISPATCHED"].includes(o.supplierStatus ?? ""))
+    ).length,
+    shipped:    orders.filter(o => o.status === "SHIPPED").length,
+    inTransit:  orders.filter(o => o.status === "IN_TRANSIT").length,
+    delivered:  delivered.length,
+    ndr:        orders.filter(o => o.ndrStatus !== null && o.ndrActionTaken === null).length,
+    rtoRisk:    orders.filter(o => o.ndrStatus !== null).length,
+    cancelled:  cancelled.length,
+  };
+
   return NextResponse.json({
     totalOrders: total,
     deliveryRate: pct(delivered.length),
@@ -268,6 +287,7 @@ export async function GET(req: NextRequest) {
       earningsTrend,
     },
     wallet: { balance: walletBalance, upcoming: upcomingAmount },
+    pipeline,
     prevPeriod,
   });
 }

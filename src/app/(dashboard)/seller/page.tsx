@@ -119,6 +119,7 @@ export default function SellerDashboard() {
     id: string; externalOrderId: string; customerName: string;
     totalAmount: number; status: string; createdAt: string;
     paymentMode?: string | null;
+    paymentReference?: string | null;
     ndrStatus?: string | null;
     ndrActionTaken?: string | null;
     supplierStatus?: string | null;
@@ -1078,7 +1079,9 @@ export default function SellerDashboard() {
 
               {recentOrders.map((order, idx) => {
                 const cfg = STATUS_CONFIG[order.status] ?? STATUS_CONFIG.NEW;
-                const isCod     = (order.paymentMode ?? "").toUpperCase().includes("COD");
+                // paymentMode is not a DB field yet — check rawData or reference string
+                const isCod     = (order.paymentMode ?? "").toUpperCase().includes("COD") ||
+                                  String((order as Record<string, unknown>).paymentReference ?? "").toUpperCase().includes("COD");
                 const hasNdr    = !!order.ndrStatus && !order.ndrActionTaken;
                 const isRto     = order.status === "RTO";
                 const isNew     = order.status === "NEW";
@@ -1278,7 +1281,7 @@ export default function SellerDashboard() {
               const a = aiActivity;
               const items = [
                 { count: a?.autoDispatched ?? 0, label: "orders automatically processed",    icon: "📦" },
-                { count: a?.codOrdersToday ?? 0,  label: "COD confirmations triggered",       icon: "📞" },
+                { count: a?.codOrdersToday ?? 0,  label: "new orders ingested today",         icon: "📥" },
                 { count: a?.ndrEscalated   ?? 0,  label: "NDR cases escalated",               icon: "⚠️" },
                 { count: a?.supplierDelays ?? 0,  label: "supplier delays detected",          icon: "🔍" },
                 { count: a?.humanActions   ?? 0,  label: "human actions requested",           icon: "🤝" },

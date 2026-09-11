@@ -30,12 +30,11 @@ export async function GET(req: NextRequest) {
       },
     }),
 
-    // COD orders that came in today (AXQEN will trigger confirmation flow)
+    // New orders ingested today (AXQEN picks these up for confirmation/processing)
     prisma.order.count({
       where: {
         sellerId,
         createdAt: { gte: todayStart },
-        paymentMode: { contains: "COD", mode: "insensitive" },
       },
     }),
 

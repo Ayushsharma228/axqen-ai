@@ -58,12 +58,13 @@ export async function GET(req: NextRequest) {
       },
     }),
 
-    // Human actions requested = NEW orders + open NDRs (the "Needs Attention" queue)
+    // Human actions = only orders that genuinely need seller input:
+    // NEW with no supplier assigned (not auto-handled) + open NDRs
     prisma.order.count({
       where: {
         sellerId,
         OR: [
-          { status: "NEW" },
+          { status: "NEW", supplierId: null },
           { ndrStatus: { not: null }, ndrActionTaken: null },
         ],
       },

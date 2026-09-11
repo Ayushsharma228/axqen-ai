@@ -35,6 +35,11 @@ interface Analytics {
     shipped: number; inTransit: number; delivered: number;
     ndr: number; rtoRisk: number; cancelled: number;
   };
+  // Operational intelligence — from analytics API
+  unassignedCount?: number;  // NEW orders with no supplier (true human action required)
+  autoHandledCount?: number; // NEW orders already auto-assigned by AXQEN
+  supplierDelayCount?: number; // supplier assigned but no progress >24h
+  computedAt?: string;       // ISO timestamp when data was calculated
 }
 
 interface WalletData { balance: number; totalRemittance: number; totalDeductions: number }
@@ -45,7 +50,8 @@ interface NdrOrder {
   ndrCreatedAt: string | null;
 }
 interface AttentionNewOrder {
-  id: string; externalOrderId: string; customerName: string; totalAmount: number; createdAt: string;
+  id: string; externalOrderId: string; customerName: string; totalAmount: number;
+  createdAt: string; supplierId?: string | null;
 }
 
 function getGreeting() {
@@ -118,14 +124,18 @@ export default function SellerDashboard() {
   const [recentOrders, setRecentOrders] = useState<{
     id: string; externalOrderId: string; customerName: string;
     totalAmount: number; status: string; createdAt: string;
+    updatedAt?: string;
+    supplierId?: string | null;
+    supplierStatus?: string | null;
     paymentMode?: string | null;
     paymentReference?: string | null;
     ndrStatus?: string | null;
     ndrActionTaken?: string | null;
-    supplierStatus?: string | null;
     customerOrderCount?: number;
   }[]>([]);
   const [loading, setLoading]           = useState(true);
+  const [lastFetchedAt, setLastFetchedAt] = useState<Date | null>(null);
+  const [refreshKey, setRefreshKey]       = useState(0);
   const [adSpend, setAdSpend]           = useState(0);
   const [adRevenue, setAdRevenue]       = useState(0);
   const [metaConnected, setMetaConnected] = useState(false);
@@ -155,6 +165,7 @@ export default function SellerDashboard() {
   const isMarketplace = plan === "MARKETPLACE";
 
   useEffect(() => {
+    setLoading(true);
     if (isMarketplace) {
       Promise.all([
         fetch("/api/seller/analytics").then(r => r.json()),
@@ -171,7 +182,8 @@ export default function SellerDashboard() {
         setAdRevenue(ads.last30DaysRevenue ?? 0);
         setMetaConnected(ads.metaConnected ?? false);
         setLoading(false);
-      });
+        setLastFetchedAt(new Date());
+      }).catch(() => setLoading(false));
     } else {
       Promise.all([
         fetch("/api/seller/analytics").then(r => r.json()),
@@ -186,16 +198,17 @@ export default function SellerDashboard() {
         setOpenNdrs(ndr.pending?.length ?? 0);
         setNdrOrders(ndr.pending?.slice(0, 5) ?? []);
         setLoading(false);
-      });
+        setLastFetchedAt(new Date());
+      }).catch(() => setLoading(false));
     }
-    fetch("/api/seller/orders?status=NEW&limit=3")
+    fetch("/api/seller/orders?status=NEW&limit=5")
       .then(r => r.json()).then(d => {
         setNewOrdersCount(d.stats?.totalOrders ?? d.total ?? 0);
         setAttentionNewOrders(d.orders ?? []);
       }).catch(() => {});
     fetch("/api/seller/ai-activity")
       .then(r => r.json()).then(d => setAiActivity(d)).catch(() => {});
-  }, [isMarketplace]);
+  }, [isMarketplace, refreshKey]);
 
   useEffect(() => {
     setOrdersLoading(true);
@@ -205,7 +218,7 @@ export default function SellerDashboard() {
       setRecentOrders(o.orders?.slice(0, 10) || []);
       setOrdersLoading(false);
     });
-  }, [orderFilter]);
+  }, [orderFilter, refreshKey]);
 
   const chartData = analytics?.trend
     ?.slice(chartDays > 0 ? -chartDays : undefined)
@@ -236,9 +249,9 @@ export default function SellerDashboard() {
   return (
     <div className="min-h-screen" style={{ background: "#F1F5FF" }}>
 
-      {/* ── Welcome Hero — date + greeting only ────────── */}
+      {/* ── Welcome Hero ────────── */}
       <div className="px-4 md:px-8 pt-8 pb-6" style={{ background: "white" }}>
-        <div className="flex items-center justify-between">
+        <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-xs font-medium mb-1" style={{ color: "#9CA3AF" }}>
               {new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
@@ -250,21 +263,46 @@ export default function SellerDashboard() {
               Here&apos;s what needs your attention today.
             </p>
           </div>
+          {/* Last updated + refresh */}
+          <div className="flex flex-col items-end gap-1.5 flex-shrink-0 pt-1">
+            {lastFetchedAt && (
+              <p className="text-[10px]" style={{ color: "#9CA3AF" }}>
+                Updated {Math.round((Date.now() - lastFetchedAt.getTime()) / 1000) < 60
+                  ? `${Math.round((Date.now() - lastFetchedAt.getTime()) / 1000)}s ago`
+                  : `${Math.round((Date.now() - lastFetchedAt.getTime()) / 60000)}m ago`}
+              </p>
+            )}
+            <button
+              onClick={() => { setLoading(true); setRefreshKey(k => k + 1); }}
+              disabled={loading}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-opacity"
+              style={{ background: "rgba(67,97,238,0.08)", color: "#4361EE", opacity: loading ? 0.5 : 1 }}>
+              <span style={{ display: "inline-block", animation: loading ? "spin 1s linear infinite" : "none" }}>↻</span>
+              {loading ? "Refreshing…" : "Refresh"}
+            </button>
+          </div>
         </div>
 
-        {/* keep vars from being unused — no render */}
-        {!loading && analytics && analytics.totalOrders > 0 && (
-          <div className="hidden">
-            {newOrdersCount > 0 && <Link href="/seller/orders" className="">🛒</Link>}
-            {openNdrs > 0    && <Link href="/seller/ndr"    className="">⚠️</Link>}
-            {Math.abs(weekOverWeek) > 0 && (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold"
-                    style={{ background: weekOverWeek >= 0 ? "rgba(67,97,238,0.08)" : "#FEF2F2", color: weekOverWeek >= 0 ? "#4361EE" : "#EF4444" }}>
-                    {weekOverWeek >= 0 ? "📈" : "📉"} {Math.abs(weekOverWeek)}% vs last week
-                  </span>
-                )}
+        {/* Demo mode banner — no store connected and no orders */}
+        {!loading && !analytics?.store && (analytics?.totalOrders ?? 0) === 0 && (
+          <div className="mt-4 flex items-center justify-between px-4 py-3 rounded-2xl"
+            style={{ background: "rgba(67,97,238,0.06)", border: "1px solid rgba(67,97,238,0.15)" }}>
+            <div className="flex items-center gap-2.5">
+              <Store className="w-4 h-4 flex-shrink-0" style={{ color: "#4361EE" }} />
+              <div>
+                <p className="text-sm font-semibold" style={{ color: "#1e1b4b" }}>No store connected</p>
+                <p className="text-xs" style={{ color: "#6B7280" }}>Connect your Shopify store to see live orders and metrics.</p>
+              </div>
+            </div>
+            <Link href="/seller/shopify"
+              className="px-4 py-2 rounded-xl text-xs font-bold text-white flex-shrink-0"
+              style={{ background: "#4361EE" }}>
+              Connect Store
+            </Link>
           </div>
         )}
+
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
 
       {/* ── Stats Cards ──────────────────────────────── */}
@@ -416,7 +454,10 @@ export default function SellerDashboard() {
 
               {/* 2. Needs Action */}
               {(() => {
-                const needsAction = newOrdersCount + openNdrs;
+                // Only count orders that genuinely need a human decision
+                const unassigned = analytics?.unassignedCount ?? 0;
+                const needsAction = unassigned + openNdrs;
+                const autoHandled = analytics?.autoHandledCount ?? 0;
                 const urgent = openNdrs;
                 const isUrgent = urgent > 0;
                 return (
@@ -439,7 +480,13 @@ export default function SellerDashboard() {
                           {needsAction}
                         </p>
                         <p className="text-xs" style={{ color: isUrgent ? "rgba(255,255,255,0.7)" : "#9CA3AF" }}>
-                          {urgent > 0 ? `${urgent} NDR urgent` : needsAction > 0 ? `${newOrdersCount} new orders` : "All caught up ✓"}
+                          {urgent > 0
+                            ? `${urgent} NDR urgent`
+                            : needsAction > 0
+                              ? `${unassigned} unassigned`
+                              : autoHandled > 0
+                                ? `${autoHandled} auto-handled ✓`
+                                : "All caught up ✓"}
                         </p>
                       </>
                     )}
@@ -450,6 +497,7 @@ export default function SellerDashboard() {
               {/* 3. In Fulfillment */}
               {(() => {
                 const total = analytics?.totalOrders ?? 0;
+                // Active orders = total minus terminal states (delivered, RTO, cancelled)
                 const inFulfillment = Math.max(0, total - (analytics?.deliveredCount ?? 0) - (analytics?.rtoCount ?? 0) - (analytics?.cancelledCount ?? 0));
                 const pct = total > 0 ? Math.round((inFulfillment / total) * 100) : 0;
                 return (
@@ -466,7 +514,7 @@ export default function SellerDashboard() {
                           {fmt(inFulfillment)}
                         </p>
                         <p className="text-xs" style={{ color: "#9CA3AF" }}>
-                          {pct}% of total orders
+                          Active — excl. delivered &amp; cancelled
                         </p>
                       </>
                     )}
@@ -499,14 +547,14 @@ export default function SellerDashboard() {
             {/* ── Row 2: COD / RTO / Revenue ── */}
             <div className="grid grid-cols-3 gap-4">
 
-              {/* COD Revenue */}
+              {/* Gross Revenue */}
               <div className="rounded-2xl px-5 py-4"
                 style={{ background: "white", border: "1px solid #E5E7EB", boxShadow: "0 1px 8px rgba(0,0,0,0.03)" }}>
-                <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "#9CA3AF" }}>COD Revenue</p>
+                <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "#9CA3AF" }}>Gross Revenue</p>
                 {loading ? <div className="h-7 w-24 rounded-lg bg-gray-100 animate-pulse" /> : (
                   <>
                     <p className="text-2xl font-black" style={{ color: "#1e1b4b" }}>₹{fmt(analytics?.totalRevenue ?? 0)}</p>
-                    <p className="text-xs mt-0.5" style={{ color: "#9CA3AF" }}>Gross from all orders</p>
+                    <p className="text-xs mt-0.5" style={{ color: "#9CA3AF" }}>Across all orders</p>
                   </>
                 )}
               </div>
@@ -550,35 +598,78 @@ export default function SellerDashboard() {
 
         {/* ── AXQEN Needs Your Attention ── */}
         {(() => {
-          // Build unified attention items
+          // Build unified attention items — one source of truth, real conditions only
           type Priority = "HIGH" | "ATTENTION" | "MONITOR";
           interface AttentionItem {
             id: string; priority: Priority; type: string;
             externalOrderId: string; badge: string; title: string;
-            recommendation: string; amount?: number; href: string;
+            problem: string; recommendation: string; amount?: number; href: string;
           }
+
+          // NDR reason → human-readable problem
+          const ndrProblemLabel = (reason: string | null, attempts: number): string => {
+            if (!reason) return `Delivery failed — ${attempts} attempt${attempts !== 1 ? "s" : ""}`;
+            const r = reason.toLowerCase();
+            if (r.includes("not home") || r.includes("absent")) return "Customer not available at address";
+            if (r.includes("refused") || r.includes("reject")) return "Customer refused delivery";
+            if (r.includes("wrong address") || r.includes("incorrect")) return "Address issue reported by courier";
+            if (r.includes("pincode") || r.includes("serviceable")) return "Pincode not serviceable by courier";
+            if (r.includes("phone") || r.includes("contact")) return "Customer unreachable by courier";
+            return reason.length > 60 ? `${reason.slice(0, 60)}…` : reason;
+          };
+
+          const ndrRecommendation = (reason: string | null): string => {
+            if (!reason) return "Call customer and reschedule delivery";
+            const r = reason.toLowerCase();
+            if (r.includes("refused")) return "Confirm order intent before re-attempt";
+            if (r.includes("wrong address") || r.includes("incorrect")) return "Get correct address from customer";
+            if (r.includes("pincode") || r.includes("serviceable")) return "Arrange alternate courier for this pincode";
+            if (r.includes("not home") || r.includes("absent")) return "Schedule re-delivery at preferred time";
+            return "Call customer and reschedule delivery";
+          };
+
+          // Only include unassigned new orders (AXQEN hasn't handled them)
+          const unassignedNew = attentionNewOrders.filter(o => !o.supplierId);
+
+          // Supplier delay orders (from analytics, count only — no order details here)
+          const delayCount = analytics?.supplierDelayCount ?? 0;
+
           const items: AttentionItem[] = [
+            // HIGH: NDR orders — each unique (different reason, recommendation)
             ...ndrOrders.map(o => ({
               id: o.id,
               priority: "HIGH" as Priority,
               type: "NDR",
               externalOrderId: o.externalOrderId,
               badge: "NDR",
-              title: o.ndrReason
-                ? `Delivery failed — ${o.ndrReason}`
-                : `Delivery attempt failed (${o.ndrAttempts} attempt${o.ndrAttempts !== 1 ? "s" : ""})`,
-              recommendation: "Contact customer and reschedule delivery",
+              title: ndrProblemLabel(o.ndrReason, o.ndrAttempts),
+              problem: `${o.ndrAttempts} delivery attempt${o.ndrAttempts !== 1 ? "s" : ""} failed`,
+              recommendation: ndrRecommendation(o.ndrReason),
               amount: o.totalAmount,
               href: "/seller/ndr",
             })),
-            ...attentionNewOrders.map(o => ({
+            // ATTENTION: supplier delay notice (single summary card if any)
+            ...(delayCount > 0 ? [{
+              id: "supplier-delay",
+              priority: "ATTENTION" as Priority,
+              type: "SUPPLIER_DELAY",
+              externalOrderId: `${delayCount} order${delayCount !== 1 ? "s" : ""}`,
+              badge: "Delayed",
+              title: `Supplier processing delayed >24h`,
+              problem: `${delayCount} order${delayCount !== 1 ? "s have" : " has"} no progress update from supplier`,
+              recommendation: "Contact supplier to confirm status",
+              href: "/seller/orders?status=PROCESSING",
+            }] : []),
+            // ATTENTION: unassigned new orders
+            ...unassignedNew.slice(0, 3).map(o => ({
               id: o.id,
               priority: "ATTENTION" as Priority,
               type: "NEW_ORDER",
               externalOrderId: o.externalOrderId,
-              badge: "New",
-              title: "Awaiting fulfillment",
-              recommendation: "Forward to supplier for processing",
+              badge: "Unassigned",
+              title: "No supplier assigned yet",
+              problem: "Order is new and awaiting fulfillment start",
+              recommendation: "Assign to supplier or auto-dispatch",
               amount: o.totalAmount,
               href: "/seller/orders?status=NEW",
             })),
@@ -586,7 +677,7 @@ export default function SellerDashboard() {
 
           const highCount      = items.filter(i => i.priority === "HIGH").length;
           const attentionCount = items.filter(i => i.priority === "ATTENTION").length;
-          const monitorCount   = 0; // future: delayed processing orders
+          const monitorCount   = items.filter(i => i.priority === "MONITOR").length;
 
           const priorityStyle: Record<Priority, { dot: string; text: string; bg: string; border: string }> = {
             HIGH:      { dot: "#EF4444", text: "#EF4444", bg: "#FEF2F2",             border: "#FECACA" },
@@ -684,6 +775,11 @@ export default function SellerDashboard() {
                           <p className="text-sm font-medium mb-0.5 leading-snug" style={{ color: "#374151" }}>
                             {item.title}
                           </p>
+                          {"problem" in item && (item as { problem?: string }).problem && (
+                            <p className="text-xs mb-0.5" style={{ color: "#6B7280" }}>
+                              {(item as { problem?: string }).problem}
+                            </p>
+                          )}
                           <p className="text-xs" style={{ color: s.text }}>
                             AXQEN recommends: {item.recommendation}
                           </p>
@@ -1079,25 +1175,27 @@ export default function SellerDashboard() {
 
               {recentOrders.map((order, idx) => {
                 const cfg = STATUS_CONFIG[order.status] ?? STATUS_CONFIG.NEW;
-                // paymentMode is not a DB field yet — check rawData or reference string
-                const isCod     = (order.paymentMode ?? "").toUpperCase().includes("COD") ||
-                                  String((order as Record<string, unknown>).paymentReference ?? "").toUpperCase().includes("COD");
+                // paymentMode is not a DB field yet — check paymentReference string
+                const isCod     = String(order.paymentReference ?? "").toUpperCase().includes("COD");
                 const hasNdr    = !!order.ndrStatus && !order.ndrActionTaken;
                 const isRto     = order.status === "RTO";
                 const isNew     = order.status === "NEW";
                 const ageHours  = (Date.now() - new Date(order.createdAt).getTime()) / 3600000;
-                const isStale   = isNew && ageHours > 24;
+                // Stale = NEW, no supplier assigned, no update in 48h (truly stuck)
+                const isStale   = isNew && !order.supplierId && ageHours > 48;
                 const isRepeat  = (order.customerOrderCount ?? 1) > 1;
 
-                // Derive AXQEN signal — priority order matters
+                // AXQEN signal — priority order matters, all rules are explicit
+                const isAutoHandled = isNew && !!order.supplierId; // AXQEN already assigned
                 type Signal = { dot: string; label: string | null; color: string; bg: string };
                 const signal: Signal = (() => {
-                  if (hasNdr)                return { dot: "#EF4444", label: "NDR",     color: "#EF4444", bg: "#FEF2F2" };
-                  if (isRto)                 return { dot: "#EF4444", label: "RTO",     color: "#EF4444", bg: "#FEF2F2" };
-                  if (isNew && isCod)        return { dot: "#F59E0B", label: "Confirm", color: "#D97706", bg: "#FFFBEB" };
-                  if (isStale)               return { dot: "#EAB308", label: "Stale",   color: "#A16207", bg: "#FEFCE8" };
-                  if (isRepeat && isNew)     return { dot: "#6366F1", label: "Repeat",  color: "#4338CA", bg: "rgba(99,102,241,0.08)" };
-                  return                            { dot: "#059669", label: null,       color: "#059669", bg: "#ECFDF5" };
+                  if (hasNdr)            return { dot: "#EF4444", label: "NDR",          color: "#EF4444", bg: "#FEF2F2" };
+                  if (isRto)             return { dot: "#EF4444", label: "RTO",          color: "#EF4444", bg: "#FEF2F2" };
+                  if (isStale)           return { dot: "#EAB308", label: "Stale 48h+",  color: "#A16207", bg: "#FEFCE8" };
+                  if (isNew && !order.supplierId) return { dot: "#F59E0B", label: "Unassigned", color: "#D97706", bg: "#FFFBEB" };
+                  if (isAutoHandled)     return { dot: "#6366F1", label: "Auto-handled", color: "#4338CA", bg: "rgba(99,102,241,0.08)" };
+                  if (isRepeat && isNew) return { dot: "#6366F1", label: "Repeat",       color: "#4338CA", bg: "rgba(99,102,241,0.08)" };
+                  return                        { dot: "#059669", label: null,            color: "#059669", bg: "#ECFDF5" };
                 })();
 
                 return (
@@ -1279,12 +1377,14 @@ export default function SellerDashboard() {
             {/* Activity list */}
             {(() => {
               const a = aiActivity;
+              // autoHandledCount from analytics = NEW orders with supplier auto-assigned
+              const axqenAutoHandled = analytics?.autoHandledCount ?? 0;
               const items = [
-                { count: a?.autoDispatched ?? 0, label: "orders automatically processed",    icon: "📦" },
-                { count: a?.codOrdersToday ?? 0,  label: "new orders ingested today",         icon: "📥" },
-                { count: a?.ndrEscalated   ?? 0,  label: "NDR cases escalated",               icon: "⚠️" },
-                { count: a?.supplierDelays ?? 0,  label: "supplier delays detected",          icon: "🔍" },
-                { count: a?.humanActions   ?? 0,  label: "human actions requested",           icon: "🤝" },
+                { count: a?.autoDispatched ?? 0,  label: "shipments auto-dispatched",        icon: "📦" },
+                { count: axqenAutoHandled,         label: "new orders auto-assigned by AXQEN",icon: "⚡" },
+                { count: a?.ndrEscalated   ?? 0,  label: "NDR cases escalated",              icon: "⚠️" },
+                { count: a?.supplierDelays ?? 0,  label: "supplier delays detected",         icon: "🔍" },
+                { count: a?.humanActions   ?? 0,  label: "items need your attention",        icon: "🤝" },
               ];
               const loading = !a;
 
@@ -1328,15 +1428,17 @@ export default function SellerDashboard() {
               aiActivity.timeSaved > 0 ? (
                 <div className="flex items-center gap-3">
                   <div className="flex-1">
-                    <p className="text-sm font-semibold" style={{ color: "rgba(255,255,255,0.55)" }}>
-                      Today AXQEN saved you an estimated
-                    </p>
-                    <p className="text-2xl font-black mt-0.5" style={{ color: "white" }}>
-                      {aiActivity.timeSavedLabel}
-                      <span className="text-sm font-medium ml-2" style={{ color: "rgba(165,180,252,0.7)" }}>
-                        of manual work
-                      </span>
-                    </p>
+                    <div>
+                      <p className="text-sm font-semibold" style={{ color: "rgba(255,255,255,0.55)" }}>
+                        Estimated time saved today
+                      </p>
+                      <p className="text-2xl font-black mt-0.5" style={{ color: "white" }}>
+                        {aiActivity.timeSavedLabel}
+                      </p>
+                      <p className="text-[10px] mt-1" style={{ color: "rgba(165,180,252,0.5)" }}>
+                        Based on {(aiActivity.autoDispatched * 8) + (axqenAutoHandled * 5) + (aiActivity.ndrEscalated * 5) + (aiActivity.supplierDelays * 4)} automated task-minutes at configured rates
+                      </p>
+                    </div>
                   </div>
                   <div className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0"
                     style={{ background: "rgba(99,102,241,0.25)" }}>

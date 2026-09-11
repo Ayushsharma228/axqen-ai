@@ -41,6 +41,7 @@ export async function GET(req: NextRequest) {
         externalOrderId: true,
         status: true,
         supplierStatus: true,
+        supplierId: true,
         courier: true,
         totalAmount: true,
         packingCharge: true,
@@ -48,6 +49,7 @@ export async function GET(req: NextRequest) {
         shippingCharge: true,
         rtoCharge: true,
         createdAt: true,
+        updatedAt: true,
         customerAddress: true,
         ndrStatus: true,
         ndrActionTaken: true,
@@ -238,6 +240,21 @@ export async function GET(req: NextRequest) {
     };
   }
 
+  // Orders that truly need human action (NEW with no supplier assigned)
+  const unassignedNewOrders = orders.filter(o => o.status === "NEW" && !o.supplierId);
+  const unassignedCount = unassignedNewOrders.length;
+
+  // Orders AXQEN is already handling (NEW but supplier already assigned via webhook)
+  const autoHandledCount = orders.filter(o => o.status === "NEW" && !!o.supplierId).length;
+
+  // Supplier delays: supplier assigned but no progress update in 24h
+  const delayThreshold = new Date(Date.now() - 24 * 3600000);
+  const supplierDelayCount = orders.filter(o =>
+    o.supplierId !== null &&
+    ["ACCEPTED", "PROCESSING", "PACKED"].includes(o.supplierStatus ?? "") &&
+    o.updatedAt < delayThreshold
+  ).length;
+
   // Fulfillment pipeline counts
   const pipeline = {
     new:        orders.filter(o => o.status === "NEW").length,
@@ -288,6 +305,10 @@ export async function GET(req: NextRequest) {
     },
     wallet: { balance: walletBalance, upcoming: upcomingAmount },
     pipeline,
+    unassignedCount,
+    autoHandledCount,
+    supplierDelayCount,
     prevPeriod,
+    computedAt: new Date().toISOString(),
   });
 }

@@ -265,7 +265,7 @@ export default function SellerDashboard() {
   // ── Skeleton ─────────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="p-6 md:p-8 space-y-6" style={{ background: "#F7F8FC", minHeight: "100vh" }}>
+      <div className="px-3 py-4 md:p-8 space-y-6" style={{ background: "#F7F8FC", minHeight: "100vh" }}>
         <div className="h-10 w-48 bg-white rounded-lg border border-[#E8EDF6] animate-pulse" />
         {[1, 2, 3].map(i => (
           <div key={i} className="bg-white rounded-xl border border-[#E8EDF6] h-48 animate-pulse" />
@@ -275,7 +275,7 @@ export default function SellerDashboard() {
   }
 
   return (
-    <div className="p-6 md:p-8 space-y-6" style={{ background: "#F7F8FC", minHeight: "100vh" }}>
+    <div className="px-3 py-4 md:p-8 space-y-6" style={{ background: "#F7F8FC", minHeight: "100vh" }}>
 
       {/* ── Page header ── */}
       <div className="flex items-center justify-between">

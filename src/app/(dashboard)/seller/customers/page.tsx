@@ -186,7 +186,7 @@ export default function CustomersPage() {
 
   // ── Render ─────────────────────────────────────────────────────────────
   return (
-    <div className="p-6 md:p-8 space-y-5" style={{ background: "#F7F8FC", minHeight: "100vh" }}>
+    <div className="px-3 py-4 md:p-8 space-y-5" style={{ background: "#F7F8FC", minHeight: "100vh" }}>
 
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">

@@ -194,7 +194,7 @@ export default function ManageDeliveryPage() {
 
   // ── Render ─────────────────────────────────────────────────────────────
   return (
-    <div className="p-6 md:p-8 space-y-5" style={{ background: "#F7F8FC", minHeight: "100vh" }}>
+    <div className="px-3 py-4 md:p-8 space-y-5" style={{ background: "#F7F8FC", minHeight: "100vh" }}>
 
       {/* ── Header ── */}
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -245,13 +245,28 @@ export default function ManageDeliveryPage() {
       {/* ── Main card ── */}
       <div className="bg-white rounded-xl border border-[#E8EDF6] overflow-hidden">
 
-        {/* Tabs + search */}
-        <div className="flex items-center border-b border-[#F3F4F6] overflow-x-auto">
+        {/* Mobile search — above tabs, full width */}
+        <div className="flex md:hidden px-3 py-2 border-b border-[#F3F4F6]">
+          <div className="relative flex-1">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#9CA3AF]" />
+            <input
+              type="text"
+              placeholder="Search by order, customer, AWB…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && fetchDeliveries()}
+              className="pl-8 pr-3 py-2 text-[13px] rounded-lg border border-[#E8EDF6] bg-[#FAFBFF] text-[#0C1220] placeholder-[#9CA3AF] outline-none focus:border-[#4361EE] w-full transition-colors"
+            />
+          </div>
+        </div>
+
+        {/* Tabs + desktop search */}
+        <div className="flex items-center border-b border-[#F3F4F6] overflow-x-auto" style={{ scrollbarWidth: "none" }}>
           {TABS.map(t => (
             <button
               key={t.value}
               onClick={() => setTab(t.value)}
-              className="px-4 py-3 text-[13px] font-semibold whitespace-nowrap flex-shrink-0 border-b-2 transition-colors"
+              className="px-2.5 md:px-4 py-2.5 md:py-3 text-[12px] md:text-[13px] font-semibold whitespace-nowrap flex-shrink-0 border-b-2 transition-colors"
               style={{
                 borderColor: tab === t.value ? "#4361EE" : "transparent",
                 color: tab === t.value ? "#4361EE" : "#9CA3AF",
@@ -281,8 +296,8 @@ export default function ManageDeliveryPage() {
               })()}
             </button>
           ))}
-          {/* search */}
-          <div className="ml-auto pr-4 flex-shrink-0">
+          {/* Desktop search */}
+          <div className="hidden md:block ml-auto pr-4 flex-shrink-0">
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#9CA3AF]" />
               <input
@@ -313,9 +328,17 @@ export default function ManageDeliveryPage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-[#F3F4F6]" style={{ background: "#FAFBFF" }}>
-                  {["ORDER #", "CUSTOMER", "STATUS", "EXPECTED BY", "AWB / COURIER", "ISSUES", ""].map(h => (
-                    <th key={h} className="px-5 py-3 text-left text-[11px] font-bold text-[#9CA3AF] uppercase tracking-wide whitespace-nowrap">
-                      {h}
+                  {[
+                    { label: "ORDER #",       cls: "" },
+                    { label: "CUSTOMER",      cls: "" },
+                    { label: "STATUS",        cls: "" },
+                    { label: "EXPECTED BY",   cls: "hidden md:table-cell" },
+                    { label: "AWB / COURIER", cls: "hidden md:table-cell" },
+                    { label: "ISSUES",        cls: "hidden md:table-cell" },
+                    { label: "",              cls: "" },
+                  ].map(h => (
+                    <th key={h.label} className={`px-3 md:px-5 py-3 text-left text-[11px] font-bold text-[#9CA3AF] uppercase tracking-wide whitespace-nowrap ${h.cls}`}>
+                      {h.label}
                     </th>
                   ))}
                 </tr>
@@ -345,7 +368,7 @@ export default function ManageDeliveryPage() {
                         onClick={() => toggleExpand(d.id)}
                       >
                         {/* Order # */}
-                        <td className="px-5 py-3.5">
+                        <td className="px-3 md:px-5 py-3.5">
                           <div className="flex items-center gap-2">
                             <span className="text-[13px] font-bold text-[#4361EE]">#{d.externalOrderId}</span>
                             {issueSuccess === d.id && (
@@ -358,7 +381,7 @@ export default function ManageDeliveryPage() {
                         </td>
 
                         {/* Customer */}
-                        <td className="px-5 py-3.5">
+                        <td className="px-3 md:px-5 py-3.5">
                           <p className="text-[13px] font-semibold text-[#0C1220]">{d.customerName || "—"}</p>
                           <p className="text-[11px] text-[#9CA3AF] mt-0.5">
                             {d.customerAddress?.phone || ""}
@@ -367,7 +390,7 @@ export default function ManageDeliveryPage() {
                         </td>
 
                         {/* Status */}
-                        <td className="px-5 py-3.5">
+                        <td className="px-3 md:px-5 py-3.5">
                           <span className="px-2.5 py-1 rounded-full text-[11px] font-bold"
                             style={{ background: cfg.bg, color: cfg.color }}>
                             {cfg.label}
@@ -383,7 +406,7 @@ export default function ManageDeliveryPage() {
                         </td>
 
                         {/* Expected By */}
-                        <td className="px-5 py-3.5">
+                        <td className="hidden md:table-cell px-5 py-3.5">
                           {d.expectedDeliveryDate ? (
                             <div>
                               <span className="text-[13px] font-medium"
@@ -402,7 +425,7 @@ export default function ManageDeliveryPage() {
                         </td>
 
                         {/* AWB */}
-                        <td className="px-5 py-3.5" onClick={e => e.stopPropagation()}>
+                        <td className="hidden md:table-cell px-5 py-3.5" onClick={e => e.stopPropagation()}>
                           {awb ? (
                             <div className="flex flex-col gap-0.5">
                               <div className="flex items-center gap-1.5">
@@ -430,7 +453,7 @@ export default function ManageDeliveryPage() {
                         </td>
 
                         {/* Issues */}
-                        <td className="px-5 py-3.5">
+                        <td className="hidden md:table-cell px-5 py-3.5">
                           {issues.length > 0 ? (
                             <span className="flex items-center gap-1 text-[12px] font-semibold text-[#DC2626]">
                               <AlertCircle className="w-3.5 h-3.5" />
@@ -442,7 +465,7 @@ export default function ManageDeliveryPage() {
                         </td>
 
                         {/* Expand */}
-                        <td className="px-5 py-3.5">
+                        <td className="px-3 md:px-5 py-3.5">
                           {isExpanded
                             ? <ChevronUp className="w-4 h-4 text-[#9CA3AF]" />
                             : <ChevronDown className="w-4 h-4 text-[#9CA3AF]" />}
@@ -452,7 +475,7 @@ export default function ManageDeliveryPage() {
                       {/* ── Expanded panel ── */}
                       {isExpanded && (
                         <tr key={`${d.id}-exp`} style={{ borderBottom: "1px solid #F3F4F6", background: "rgba(67,97,238,0.02)" }}>
-                          <td colSpan={7} className="px-5 pb-6 pt-2">
+                          <td colSpan={7} className="px-3 md:px-5 pb-6 pt-2">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-[#F3F4F6]">
 
                               {/* LEFT — progress + meta */}

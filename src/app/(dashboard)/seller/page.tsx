@@ -246,8 +246,7 @@ export default function SellerDashboard() {
   // ── Shipping ─────────────────────────────────────────────────────────────
   const stateData = (analytics?.rtoByState ?? []).slice(0, 10).map(r => ({
     state: r.state.length > 10 ? r.state.slice(0, 10) + "…" : r.state,
-    Orders: r.total,
-    Delivered: r.total - r.rto,
+    Delivered: r.delivered,
     RTO: r.rto,
     total: r.total,
   }));
@@ -601,7 +600,7 @@ export default function SellerDashboard() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-[#F3F4F6]">
-                  {["State", "Orders", "Delivered", "RTO", "RTO %"].map(h => (
+                  {["State", "Orders", "Delivered", "RTO", "Delivery %"].map(h => (
                     <th
                       key={h}
                       className="px-2 py-2 text-[11px] font-bold text-[#9CA3AF] uppercase tracking-wide"
@@ -619,11 +618,11 @@ export default function SellerDashboard() {
                     <tr key={i} className="hover:bg-[#FAFBFF]">
                       <td className="px-2 py-2.5 text-[13px] font-medium text-[#0C1220]">{row.state}</td>
                       <td className="px-2 py-2.5 text-[13px] font-semibold text-[#374151] text-right">{row.total}</td>
-                      <td className="px-2 py-2.5 text-[13px] text-[#059669] text-right">{row.total - row.rto}</td>
+                      <td className="px-2 py-2.5 text-[13px] text-[#059669] text-right">{row.delivered}</td>
                       <td className="px-2 py-2.5 text-[13px] text-[#EF4444] text-right">{row.rto}</td>
                       <td className="px-2 py-2.5 text-right">
-                        <span className="text-[12px] font-bold" style={{ color: rtoColor }}>
-                          {row.rtoPct}%
+                        <span className="text-[12px] font-bold" style={{ color: row.deliveryPct >= 70 ? "#059669" : row.deliveryPct >= 40 ? "#D97706" : "#EF4444" }}>
+                          {row.deliveryPct}%
                         </span>
                       </td>
                     </tr>

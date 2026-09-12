@@ -133,16 +133,17 @@ export async function GET(req: NextRequest) {
   }));
 
   type AddrJson = { state?: string; province?: string; city?: string; zip?: string } | null;
-  const stateMap = new Map<string, { total: number; rto: number }>();
+  const stateMap = new Map<string, { total: number; rto: number; delivered: number }>();
   for (const o of orders) {
     if (o.status === "CANCELLED") continue;
     const addr = o.customerAddress as AddrJson;
     const state = addr?.state || addr?.province || null;
     if (!state) continue;
     const key = state.trim();
-    const cur = stateMap.get(key) ?? { total: 0, rto: 0 };
+    const cur = stateMap.get(key) ?? { total: 0, rto: 0, delivered: 0 };
     cur.total++;
     if (o.status === "RTO") cur.rto++;
+    if (o.status === "DELIVERED") cur.delivered++;
     stateMap.set(key, cur);
   }
   const rtoByState = Array.from(stateMap.entries())
@@ -150,8 +151,10 @@ export async function GET(req: NextRequest) {
     .map(([state, v]) => ({
       state,
       total: v.total,
+      delivered: v.delivered,
       rto: v.rto,
       rtoPct: Math.round((v.rto / v.total) * 100),
+      deliveryPct: Math.round((v.delivered / v.total) * 100),
     }))
     .sort((a, b) => b.rto - a.rto)
     .slice(0, 15);

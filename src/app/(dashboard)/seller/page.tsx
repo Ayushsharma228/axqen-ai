@@ -8,10 +8,16 @@ import {
 } from "recharts";
 import { RefreshCw } from "lucide-react";
 
-// ── date helpers (module-level so they don't shift between renders) ────────
+// ── date helpers ──────────────────────────────────────────────────────────
 function toISO(d: Date) { return d.toISOString().split("T")[0]; }
-const D30AGO = toISO(new Date(Date.now() - 29 * 86400000));
-const TODAY  = toISO(new Date());
+function daysAgoISO(n: number) { return toISO(new Date(Date.now() - (n - 1) * 86400000)); }
+
+const DATE_PRESETS = [
+  { label: "7d",  days: 7 },
+  { label: "14d", days: 14 },
+  { label: "30d", days: 30 },
+  { label: "90d", days: 90 },
+];
 
 // ── Types ─────────────────────────────────────────────────────────────────
 interface Trend {
@@ -151,15 +157,18 @@ export default function SellerDashboard() {
   const [adSpend,   setAdSpend]   = useState(0);
   const [newCount,  setNewCount]  = useState(0);
   const [loading,   setLoading]   = useState(true);
-  const [key, setKey] = useState(0);
+  const [days,      setDays]      = useState(30);
+  const [key,       setKey]       = useState(0);
 
   useEffect(() => {
     setLoading(true);
-    const p = `from=${D30AGO}&to=${TODAY}`;
+    const from = daysAgoISO(days);
+    const to   = toISO(new Date());
+    const p    = `from=${from}&to=${to}`;
     Promise.all([
       fetch(`/api/seller/analytics?${p}`).then(r => r.json()),
       fetch("/api/seller/wallet").then(r => r.json()),
-      fetch("/api/seller/ad-spend").then(r => r.json()),
+      fetch(`/api/seller/ad-spend?${p}`).then(r => r.json()),
       fetch("/api/seller/orders?status=NEW&limit=1").then(r => r.json()),
     ]).then(([a, w, ads, ord]) => {
       setAnalytics(a);
@@ -171,7 +180,7 @@ export default function SellerDashboard() {
         ord?.total ?? 0
       );
     }).finally(() => setLoading(false));
-  }, [key]);
+  }, [key, days]);
 
   // ── Weekly slices ────────────────────────────────────────────────────────
   const trend  = analytics?.trend ?? [];
@@ -286,19 +295,36 @@ export default function SellerDashboard() {
             </p>
           )}
         </div>
-        <button
-          onClick={() => { setLoading(true); setKey(k => k + 1); }}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[13px] font-semibold bg-white border border-[#E8EDF6] text-[#6B7280] hover:text-[#0C1220] transition-colors"
-        >
-          <RefreshCw className="w-3.5 h-3.5" />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center bg-white border border-[#E8EDF6] rounded-lg overflow-hidden">
+            {DATE_PRESETS.map(p => (
+              <button
+                key={p.days}
+                onClick={() => setDays(p.days)}
+                className="px-3 py-1.5 text-[12px] font-semibold transition-colors"
+                style={{
+                  background: days === p.days ? "#4361EE" : "white",
+                  color: days === p.days ? "white" : "#6B7280",
+                }}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => { setLoading(true); setKey(k => k + 1); }}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[13px] font-semibold bg-white border border-[#E8EDF6] text-[#6B7280] hover:text-[#0C1220] transition-colors"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            Refresh
+          </button>
+        </div>
       </div>
 
       {/* ─────────────────────────────────────────────────────────────────── */}
       {/* 1. ORDERS                                                           */}
       {/* ─────────────────────────────────────────────────────────────────── */}
-      <SectionCard title="Orders" sub="Last 30 days · from your Shopify store">
+      <SectionCard title="Orders" sub={`Last ${days} days · from your Shopify store`}>
 
         {/* Stat tiles */}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
@@ -369,7 +395,7 @@ export default function SellerDashboard() {
       {/* ─────────────────────────────────────────────────────────────────── */}
       {/* 2. FINANCE                                                          */}
       {/* ─────────────────────────────────────────────────────────────────── */}
-      <SectionCard title="Finance" sub="Revenue, ad spend and wallet — last 30 days">
+      <SectionCard title="Finance" sub={`Revenue, ad spend and wallet — last ${days} days`}>
 
         {/* Stat tiles */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -382,7 +408,7 @@ export default function SellerDashboard() {
           <StatTile
             label="Meta Ads Spent"
             value={inr(adSpend)}
-            sub="Last 30 days"
+            sub={`Last ${days} days`}
             valueColor="#7C3AED"
           />
           <StatTile
@@ -434,7 +460,7 @@ export default function SellerDashboard() {
       {/* 3. PRODUCTS                                                         */}
       {/* ─────────────────────────────────────────────────────────────────── */}
       {products.length > 0 && (
-        <SectionCard title="Products" sub="Performance by product — last 30 days">
+        <SectionCard title="Products" sub={`Performance by product — last ${days} days`}>
 
           {/* Winning product highlight */}
           {winner && (
@@ -528,7 +554,7 @@ export default function SellerDashboard() {
       {/* 4. SHIPPING                                                         */}
       {/* ─────────────────────────────────────────────────────────────────── */}
       {(analytics?.rtoByState?.length ?? 0) > 0 && (
-        <SectionCard title="Shipping" sub="State-wise orders, deliveries and RTO — last 30 days">
+        <SectionCard title="Shipping" sub={`State-wise orders, deliveries and RTO — last ${days} days`}>
 
           {/* Top stat tiles */}
           {(() => {

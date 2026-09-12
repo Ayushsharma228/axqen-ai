@@ -5,8 +5,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell,
 } from "recharts";
 import {
-  RefreshCw, TrendingUp, MousePointer, ShoppingCart,
-  ChevronDown, ChevronUp, Megaphone, AlertCircle, Wallet,
+  RefreshCw, MousePointer, ChevronDown, ChevronUp, Megaphone, AlertCircle, Wallet,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -52,11 +51,12 @@ interface AdEntry {
 interface Recharge { amount: number; date: string; note: string | null; }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
-const inr  = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
-const num  = (n: number) => Math.round(n).toLocaleString("en-IN");
-const pct  = (n: number | null) => n !== null ? `${n}%` : "—";
-const roas = (n: number | null) => n !== null ? `${n}x` : "—";
-const fmt  = (d: string) => new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+const inr = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
+const num = (n: number) => Math.round(n).toLocaleString("en-IN");
+// Show "—" for null OR zero (zero ROAS/ROI means no attribution, not 0x)
+const showRoas = (n: number | null) => (n !== null && n > 0) ? `${n}x` : "—";
+const showPct  = (n: number | null) => (n !== null) ? `${n}%` : "—";
+const fmt = (d: string) => new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 
 const TOOLTIP_STYLE = {
   contentStyle: { fontSize: 12, border: "1px solid #E8EDF6", borderRadius: 8, boxShadow: "none" },
@@ -77,14 +77,15 @@ function daysAgo(n: number) {
 
 // ── Main ───────────────────────────────────────────────────────────────────
 export default function MetaAdsPage() {
-  const [campaigns,  setCampaigns]  = useState<Campaign[]>([]);
-  const [summary,    setSummary]    = useState<Summary | null>(null);
-  const [entries,    setEntries]    = useState<AdEntry[]>([]);
-  const [recharges,  setRecharges]  = useState<Recharge[]>([]);
-  const [connected,  setConnected]  = useState<boolean | null>(null);
-  const [loading,    setLoading]    = useState(true);
-  const [days,       setDays]       = useState(30);
-  const [expanded,   setExpanded]   = useState<string | null>(null);
+  const [campaigns,    setCampaigns]    = useState<Campaign[]>([]);
+  const [summary,      setSummary]      = useState<Summary | null>(null);
+  const [entries,      setEntries]      = useState<AdEntry[]>([]);
+  const [recharges,    setRecharges]    = useState<Recharge[]>([]);
+  const [connected,    setConnected]    = useState<boolean | null>(null);
+  const [storeRevenue, setStoreRevenue] = useState(0);
+  const [loading,      setLoading]      = useState(true);
+  const [days,         setDays]         = useState(30);
+  const [expanded,     setExpanded]     = useState<string | null>(null);
   const [showRecharge, setShowRecharge] = useState(false);
 
   async function load(d = days) {
@@ -97,17 +98,27 @@ export default function MetaAdsPage() {
     ]);
     const attr  = await attrRes.json();
     const spend = await spendRes.json();
-    setCampaigns(attr.campaigns  ?? []);
-    setSummary(attr.summary      ?? null);
-    setRecharges(attr.recharges  ?? []);
-    setEntries(spend.entries     ?? []);
+    setCampaigns(attr.campaigns      ?? []);
+    setSummary(attr.summary          ?? null);
+    setRecharges(attr.recharges      ?? []);
+    setEntries(spend.entries         ?? []);
     setConnected(spend.metaConnected ?? false);
+    setStoreRevenue(spend.last30DaysRevenue ?? 0);
     setLoading(false);
   }
 
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function changeRange(d: number) { setDays(d); load(d); }
+
+  // ── Blended metrics (store revenue vs ad spend) ────────────────────────
+  // last30DaysRevenue = ALL non-cancelled/RTO orders in period (not just attributed)
+  const blendedRoas = summary && summary.totalSpend > 0 && storeRevenue > 0
+    ? Math.round((storeRevenue / summary.totalSpend) * 100) / 100
+    : null;
+  const blendedRoi = summary && summary.totalSpend > 0
+    ? Math.round(((storeRevenue - summary.totalSpend) / summary.totalSpend) * 10000) / 100
+    : null;
 
   // ── Daily spend chart ──────────────────────────────────────────────────
   const spendChart = useMemo(() => {
@@ -123,10 +134,12 @@ export default function MetaAdsPage() {
 
   // ── Campaign spend chart ───────────────────────────────────────────────
   const campaignChart = campaigns.slice(0, 6).map(c => ({
-    name: c.campaignName.length > 14 ? c.campaignName.slice(0, 14) + "…" : c.campaignName,
-    Spend:    Math.round(c.totalSpend),
-    Revenue:  Math.round(c.allRevenue),
+    name:    c.campaignName.length > 14 ? c.campaignName.slice(0, 14) + "…" : c.campaignName,
+    Spend:   Math.round(c.totalSpend),
+    Revenue: Math.round(c.allRevenue),
   }));
+
+  const hasAttribution = (summary?.totalOrders ?? 0) > 0;
 
   // ── Render ─────────────────────────────────────────────────────────────
   return (
@@ -139,7 +152,6 @@ export default function MetaAdsPage() {
           <p className="text-[12px] text-[#9CA3AF] mt-0.5">Ad spend, campaign performance and attribution</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Connection status */}
           {connected !== null && (
             <span
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold border"
@@ -151,7 +163,6 @@ export default function MetaAdsPage() {
               {connected ? "Meta Connected" : "Meta Not Connected"}
             </span>
           )}
-          {/* Date range pills */}
           <div className="flex items-center bg-white border border-[#E8EDF6] rounded-lg overflow-hidden">
             {DATE_PRESETS.map(p => (
               <button
@@ -178,7 +189,6 @@ export default function MetaAdsPage() {
         </div>
       </div>
 
-      {/* Skeleton */}
       {loading ? (
         <div className="space-y-4">
           {[1,2,3].map(i => (
@@ -189,19 +199,48 @@ export default function MetaAdsPage() {
         <div className="bg-white rounded-xl border border-[#E8EDF6] p-12 flex flex-col items-center gap-3">
           <Megaphone className="w-10 h-10 text-[#E8EDF6]" />
           <p className="text-[14px] font-semibold text-[#9CA3AF]">No ad spend data found for this period</p>
-          <p className="text-[12px] text-[#9CA3AF]">Add ad spend records or connect your Meta account to see data here.</p>
         </div>
       ) : (
         <>
           {/* ── Summary stat tiles ── */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
             {[
-              { label: "Total Spend",   value: inr(summary.totalSpend),                              color: "#EF4444",  sub: `${days}-day period` },
-              { label: "Total Revenue", value: inr(summary.totalRevenue),                            color: "#059669",  sub: "Delivered orders" },
-              { label: "ROAS",          value: roas(summary.overallRoas),                            color: summary.overallRoas && summary.overallRoas >= 2 ? "#059669" : "#D97706", sub: "Return on ad spend" },
-              { label: "ROI",           value: pct(summary.overallRoi),                              color: summary.overallRoi && summary.overallRoi >= 0 ? "#059669" : "#EF4444",  sub: "Return on investment" },
-              { label: "Cost/Order",    value: summary.overallCpr !== null ? inr(summary.overallCpr) : "—", color: "#7C3AED", sub: "Cost per order" },
-              { label: "Orders from Ads", value: num(summary.totalOrders),                          color: "#4361EE",  sub: `${summary.totalDelivered} delivered` },
+              {
+                label: "Total Spend",
+                value: inr(summary.totalSpend),
+                color: "#EF4444",
+                sub: `${days}-day period`,
+              },
+              {
+                label: "Store Revenue",
+                value: inr(storeRevenue),
+                color: "#059669",
+                sub: "All non-cancelled orders",
+              },
+              {
+                label: "Blended ROAS",
+                value: blendedRoas !== null ? `${blendedRoas}x` : "—",
+                color: blendedRoas !== null && blendedRoas >= 2 ? "#059669" : "#D97706",
+                sub: "Revenue ÷ ad spend",
+              },
+              {
+                label: "Blended ROI",
+                value: blendedRoi !== null ? showPct(blendedRoi) : "—",
+                color: blendedRoi !== null && blendedRoi >= 0 ? "#059669" : "#EF4444",
+                sub: "(Revenue − Spend) ÷ Spend",
+              },
+              {
+                label: "Attributed Orders",
+                value: num(summary.totalOrders),
+                color: "#4361EE",
+                sub: hasAttribution ? `${summary.totalDelivered} delivered` : "Add UTM tags to track",
+              },
+              {
+                label: "Total Clicks",
+                value: num(summary.totalClicks),
+                color: "#7C3AED",
+                sub: summary.overallCpc !== null ? `${inr(summary.overallCpc)} avg CPC` : "CPC unavailable",
+              },
             ].map(card => (
               <div key={card.label} className="bg-white rounded-xl border border-[#E8EDF6] px-4 py-3.5">
                 <p className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-wide mb-1">{card.label}</p>
@@ -210,6 +249,16 @@ export default function MetaAdsPage() {
               </div>
             ))}
           </div>
+
+          {/* ── UTM attribution notice ── */}
+          {!hasAttribution && summary.totalSpend > 0 && (
+            <div className="flex items-start gap-3 bg-[#FFFBEB] border border-[#FEF3C7] rounded-xl px-4 py-3.5">
+              <AlertCircle className="w-4 h-4 text-[#D97706] flex-shrink-0 mt-0.5" />
+              <p className="text-[12px] text-[#92400E]">
+                <strong>No campaign attribution found.</strong> The Revenue and ROAS shown above are blended (all store orders vs. ad spend). For per-campaign attribution, add UTM parameters to your Meta Ads — AXQEN matches orders by the <code className="bg-[#FEF3C7] px-1 rounded">utm_campaign</code> parameter.
+              </p>
+            </div>
+          )}
 
           {/* ── Wallet row ── */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -267,10 +316,10 @@ export default function MetaAdsPage() {
           )}
 
           {/* ── Campaign spend vs revenue chart ── */}
-          {campaignChart.length > 0 && (
+          {campaignChart.length > 0 && campaignChart.some(c => c.Revenue > 0) && (
             <div className="bg-white rounded-xl border border-[#E8EDF6] overflow-hidden">
               <div className="px-5 py-4 border-b border-[#F3F4F6]">
-                <h2 className="text-[15px] font-bold text-[#0C1220]">Spend vs Revenue by Campaign</h2>
+                <h2 className="text-[15px] font-bold text-[#0C1220]">Spend vs Attributed Revenue by Campaign</h2>
                 <p className="text-[12px] text-[#9CA3AF] mt-0.5">Top {campaignChart.length} campaigns</p>
               </div>
               <div className="p-5">
@@ -301,13 +350,15 @@ export default function MetaAdsPage() {
             <div className="bg-white rounded-xl border border-[#E8EDF6] overflow-hidden">
               <div className="px-5 py-4 border-b border-[#F3F4F6]">
                 <h2 className="text-[15px] font-bold text-[#0C1220]">Campaign Performance</h2>
-                <p className="text-[12px] text-[#9CA3AF] mt-0.5">{campaigns.length} campaign{campaigns.length !== 1 ? "s" : ""} · click to see product breakdown</p>
+                <p className="text-[12px] text-[#9CA3AF] mt-0.5">
+                  {campaigns.length} campaign{campaigns.length !== 1 ? "s" : ""} · {hasAttribution ? "click to see product breakdown" : "attribution via UTM tags"}
+                </p>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-[#F3F4F6]" style={{ background: "#FAFBFF" }}>
-                      {["CAMPAIGN", "SPEND", "ORDERS", "DELIVERED", "REVENUE", "ROAS", "CPR", "ROI", ""].map(h => (
+                      {["CAMPAIGN","SPEND","ORDERS","DELIVERED","REVENUE","ROAS","CPR","ROI",""].map(h => (
                         <th key={h} className="px-4 py-3 text-left text-[11px] font-bold text-[#9CA3AF] uppercase tracking-wide whitespace-nowrap">
                           {h}
                         </th>
@@ -316,9 +367,11 @@ export default function MetaAdsPage() {
                   </thead>
                   <tbody>
                     {campaigns.map((c, i) => {
-                      const isOpen    = expanded === (c.campaignId ?? c.campaignName);
-                      const roasGood  = c.roas !== null && c.roas >= 2;
-                      const roiGood   = c.roi  !== null && c.roi  >= 0;
+                      const isOpen   = expanded === (c.campaignId ?? c.campaignName);
+                      const hasOrds  = c.orderCount > 0;
+                      // treat roas=0 as no attribution
+                      const roasGood = c.roas !== null && c.roas > 0 && c.roas >= 2;
+                      const roiGood  = c.roi !== null && c.roi >= 0 && hasOrds;
                       return (
                         <>
                           <tr
@@ -332,7 +385,6 @@ export default function MetaAdsPage() {
                               prev === (c.campaignId ?? c.campaignName) ? null : (c.campaignId ?? c.campaignName)
                             )}
                           >
-                            {/* Campaign name */}
                             <td className="px-4 py-3.5 max-w-[200px]">
                               <div className="flex items-center gap-2">
                                 <div className="w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-black text-white flex-shrink-0"
@@ -342,42 +394,36 @@ export default function MetaAdsPage() {
                                 <p className="text-[13px] font-semibold text-[#0C1220] truncate">{c.campaignName}</p>
                               </div>
                             </td>
-                            {/* Spend */}
                             <td className="px-4 py-3.5">
                               <p className="text-[13px] font-bold text-[#EF4444]">{inr(c.totalSpend)}</p>
                             </td>
-                            {/* Orders */}
                             <td className="px-4 py-3.5">
-                              <p className="text-[13px] font-semibold text-[#374151]">{c.orderCount}</p>
+                              <p className="text-[13px] font-semibold text-[#374151]">{c.orderCount > 0 ? c.orderCount : "—"}</p>
                             </td>
-                            {/* Delivered */}
                             <td className="px-4 py-3.5">
-                              <p className="text-[13px] font-semibold text-[#059669]">{c.deliveredCount}</p>
+                              <p className="text-[13px] font-semibold text-[#059669]">{c.deliveredCount > 0 ? c.deliveredCount : "—"}</p>
                               {c.rtoCount > 0 && <p className="text-[11px] text-[#EF4444]">{c.rtoCount} RTO</p>}
                             </td>
-                            {/* Revenue */}
                             <td className="px-4 py-3.5">
-                              <p className="text-[13px] font-bold text-[#059669]">{inr(c.revenue)}</p>
-                            </td>
-                            {/* ROAS */}
-                            <td className="px-4 py-3.5">
-                              <span className="text-[13px] font-bold" style={{ color: roasGood ? "#059669" : "#D97706" }}>
-                                {roas(c.roas)}
-                              </span>
-                            </td>
-                            {/* CPR */}
-                            <td className="px-4 py-3.5">
-                              <p className="text-[13px] font-medium text-[#374151]">
-                                {c.cpr !== null ? inr(c.cpr) : "—"}
+                              <p className="text-[13px] font-bold" style={{ color: c.allRevenue > 0 ? "#059669" : "#9CA3AF" }}>
+                                {c.allRevenue > 0 ? inr(c.allRevenue) : "—"}
                               </p>
                             </td>
-                            {/* ROI */}
                             <td className="px-4 py-3.5">
-                              <span className="text-[13px] font-bold" style={{ color: roiGood ? "#059669" : "#EF4444" }}>
-                                {pct(c.roi)}
+                              <span className="text-[13px] font-bold" style={{ color: roasGood ? "#059669" : "#9CA3AF" }}>
+                                {showRoas(hasOrds && c.roas !== null ? c.roas : null)}
                               </span>
                             </td>
-                            {/* Expand */}
+                            <td className="px-4 py-3.5">
+                              <p className="text-[13px] font-medium text-[#374151]">
+                                {c.cpr !== null && c.orderCount > 0 ? inr(c.cpr) : "—"}
+                              </p>
+                            </td>
+                            <td className="px-4 py-3.5">
+                              <span className="text-[13px] font-bold" style={{ color: roiGood ? "#059669" : "#9CA3AF" }}>
+                                {hasOrds && c.roi !== null ? showPct(c.roi) : "—"}
+                              </span>
+                            </td>
                             <td className="px-4 py-3.5">
                               {isOpen
                                 ? <ChevronUp className="w-4 h-4 text-[#9CA3AF]" />
@@ -385,23 +431,20 @@ export default function MetaAdsPage() {
                             </td>
                           </tr>
 
-                          {/* Expanded: product breakdown */}
                           {isOpen && (
                             <tr key={`${c.campaignId}-exp`} style={{ borderBottom: "1px solid #F3F4F6", background: "rgba(67,97,238,0.015)" }}>
                               <td colSpan={9} className="px-5 pb-5 pt-3">
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-
-                                  {/* Left: metrics */}
                                   <div className="space-y-3">
                                     <p className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-wide">Campaign Metrics</p>
                                     <div className="grid grid-cols-2 gap-3">
                                       {[
-                                        { label: "Total Clicks",    value: num(c.totalClicks), color: "#4361EE" },
-                                        { label: "CPC",             value: c.cpc !== null ? inr(c.cpc) : "—", color: "#6B7280" },
-                                        { label: "ROAS",            value: roas(c.roas),  color: roasGood ? "#059669" : "#D97706" },
-                                        { label: "ROI",             value: pct(c.roi),   color: roiGood ? "#059669" : "#EF4444" },
-                                        { label: "Delivered",       value: `${c.deliveredCount} orders`, color: "#059669" },
-                                        { label: "RTO",             value: `${c.rtoCount} orders`,      color: "#EF4444" },
+                                        { label: "Total Clicks",  value: num(c.totalClicks), color: "#4361EE" },
+                                        { label: "CPC",           value: c.cpc !== null && c.totalClicks > 0 ? inr(c.cpc) : "—", color: "#6B7280" },
+                                        { label: "ROAS",          value: showRoas(hasOrds ? c.roas : null), color: roasGood ? "#059669" : "#9CA3AF" },
+                                        { label: "ROI",           value: hasOrds && c.roi !== null ? showPct(c.roi) : "—", color: roiGood ? "#059669" : "#9CA3AF" },
+                                        { label: "Delivered",     value: c.deliveredCount > 0 ? `${c.deliveredCount} orders` : "—", color: "#059669" },
+                                        { label: "RTO",           value: c.rtoCount > 0 ? `${c.rtoCount} orders` : "—", color: "#EF4444" },
                                       ].map(m => (
                                         <div key={m.label} className="bg-[#FAFBFF] rounded-lg border border-[#E8EDF6] px-3 py-2.5">
                                           <p className="text-[10px] font-bold text-[#9CA3AF] uppercase tracking-wide">{m.label}</p>
@@ -410,8 +453,6 @@ export default function MetaAdsPage() {
                                       ))}
                                     </div>
                                   </div>
-
-                                  {/* Right: products */}
                                   {c.products.length > 0 && (
                                     <div className="space-y-3">
                                       <p className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-wide">Products Sold via This Campaign</p>
@@ -451,26 +492,22 @@ export default function MetaAdsPage() {
               <div className="border-t border-[#F3F4F6] bg-[#FAFBFF] px-4 py-3 flex flex-wrap items-center gap-4">
                 <span className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-wide">Totals</span>
                 <span className="text-[13px] font-bold text-[#EF4444]">Spend: {inr(summary.totalSpend)}</span>
-                <span className="text-[13px] font-bold text-[#059669]">Revenue: {inr(summary.totalRevenue)}</span>
-                <span className="text-[13px] font-bold text-[#374151]">Orders: {summary.totalOrders}</span>
-                <span className="text-[13px] font-bold" style={{ color: summary.overallRoas && summary.overallRoas >= 2 ? "#059669" : "#D97706" }}>
-                  ROAS: {roas(summary.overallRoas)}
+                <span className="text-[13px] font-bold text-[#059669]">Store Revenue: {inr(storeRevenue)}</span>
+                {hasAttribution && <span className="text-[13px] font-bold text-[#374151]">Attr. Orders: {summary.totalOrders}</span>}
+                <span className="text-[13px] font-bold" style={{ color: blendedRoas && blendedRoas >= 2 ? "#059669" : "#D97706" }}>
+                  ROAS: {blendedRoas !== null ? `${blendedRoas}x` : "—"}
                 </span>
-                <span className="text-[13px] font-bold" style={{ color: summary.overallRoi && summary.overallRoi >= 0 ? "#059669" : "#EF4444" }}>
-                  ROI: {pct(summary.overallRoi)}
+                <span className="text-[13px] font-bold" style={{ color: blendedRoi && blendedRoi >= 0 ? "#059669" : "#EF4444" }}>
+                  ROI: {blendedRoi !== null ? showPct(blendedRoi) : "—"}
                 </span>
               </div>
             </div>
           )}
 
-          {/* No campaigns */}
           {campaigns.length === 0 && (
             <div className="bg-white rounded-xl border border-[#E8EDF6] p-8 flex flex-col items-center gap-3">
               <AlertCircle className="w-8 h-8 text-[#E8EDF6]" />
               <p className="text-[13px] font-semibold text-[#9CA3AF]">No campaign data for this period</p>
-              <p className="text-[12px] text-[#9CA3AF] text-center max-w-xs">
-                Ad spend is tracked but no campaign attribution found. Orders with UTM campaign tags will appear here.
-              </p>
             </div>
           )}
 

@@ -56,6 +56,6 @@ Rules:
     return NextResponse.json(parsed);
   } catch (err) {
     console.error("Intelligence recommend error:", err);
-    return NextResponse.json({ error: "AI generation failed" }, { status: 500 });
+    return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }

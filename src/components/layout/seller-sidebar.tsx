@@ -51,7 +51,7 @@ export function SellerSidebar({ plan, userName, userEmail }: {
 
   return (
     <aside
-      className="fixed left-0 top-0 bottom-0 w-[232px] bg-white flex flex-col z-50"
+      className="hidden md:flex md:flex-col fixed left-0 top-0 bottom-0 w-[232px] bg-white z-50"
       style={{ borderRight: "1px solid #E8EDF6" }}
     >
       {/* ── Logo ── */}

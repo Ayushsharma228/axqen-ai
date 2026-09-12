@@ -39,7 +39,7 @@ interface AnalyticsData {
   totalRevenue: number;
   trend: Trend[];
   topProducts: { name: string; sku: string; orders: number; units: number; delPct: number; rtoPct: number }[];
-  rtoByState: { state: string; total: number; rto: number; rtoPct: number }[];
+  rtoByState: { state: string; total: number; delivered: number; rto: number; rtoPct: number; deliveryPct: number }[];
   store: { lastSyncAt: string | null; lastSyncError: string | null } | null;
   earnings: {
     totalGMV: number;

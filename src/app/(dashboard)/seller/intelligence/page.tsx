@@ -755,7 +755,6 @@ function AskTab({ messages, input, loading, onInput, onSend, chatEndRef, hasData
         <p className="text-[13px] text-[#6B7280]">
           Ask AXQEN anything about your business data. Answers are grounded in your real metrics — no fabricated numbers.
         </p>
-        <p className="text-[11px] text-[#9CA3AF] mt-1">Uses Claude Haiku · Only triggers AI when you submit a question</p>
       </div>
 
       {/* Chat area */}

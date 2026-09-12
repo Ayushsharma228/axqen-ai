@@ -978,10 +978,10 @@ export default function IntelligencePage() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ context: ctx }),
       });
-      if (!res.ok) throw new Error("failed");
       const data = await res.json();
+      if (!res.ok) { setRecsError(data.error ?? `Error ${res.status}`); return; }
       setRecs(data.recommendations);
-    } catch { setRecsError("Could not generate. Please try again."); }
+    } catch (e) { setRecsError(String(e)); }
     finally { setRecsLoading(false); }
   }
 
@@ -996,9 +996,13 @@ export default function IntelligencePage() {
         body: JSON.stringify({ question: q, context: buildContext() }),
       });
       const data = await res.json();
-      setChatMsgs(m => [...m, { role: "assistant", content: data.answer ?? "Sorry, I couldn't answer that." }]);
-    } catch {
-      setChatMsgs(m => [...m, { role: "assistant", content: "Something went wrong. Please try again." }]);
+      if (!res.ok) {
+        setChatMsgs(m => [...m, { role: "assistant", content: `Error: ${data.error ?? res.status}` }]);
+      } else {
+        setChatMsgs(m => [...m, { role: "assistant", content: data.answer ?? "No answer returned." }]);
+      }
+    } catch (e) {
+      setChatMsgs(m => [...m, { role: "assistant", content: `Error: ${String(e)}` }]);
     }
     finally { setChatLoading(false); }
   }

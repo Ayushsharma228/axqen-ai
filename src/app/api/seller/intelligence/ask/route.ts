@@ -34,8 +34,7 @@ SELLER DATA (last 30 days):
 ${JSON.stringify(context, null, 2)}`;
 
   try {
-    const client_instance = new Anthropic({ apiKey });
-    const response = await client_instance.messages.create({
+    const response = await client.messages.create({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 512,
       system,

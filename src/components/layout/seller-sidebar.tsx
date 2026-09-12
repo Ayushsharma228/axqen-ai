@@ -2,103 +2,304 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { cn } from "@/lib/utils";
-import { Home, ShoppingCart, Truck, Wallet, BarChart2, RefreshCw, Plus, Trash2 } from "lucide-react";
-import { useSession } from "next-auth/react";
 import { useState, useEffect } from "react";
+import { signOut } from "next-auth/react";
+import { cn } from "@/lib/utils";
+import {
+  LayoutDashboard, ShoppingCart, Truck, AlertTriangle,
+  Wallet, Receipt, Store, Activity, HelpCircle, Bell,
+  LogOut, ChevronDown, Package, Layers, BarChart2,
+  User, Box,
+} from "lucide-react";
 
-const navItems = [
-  { label: "Home",            href: "/seller",          icon: Home },
-  { label: "Manage Orders",   href: "/seller/orders",   icon: ShoppingCart },
-  { label: "Manage Delivery", href: "/seller/deliveries", icon: Truck },
-  { label: "Wallet",          href: "/seller/wallet",   icon: Wallet },
-  { label: "Analytics",       href: "/seller/analytics",icon: BarChart2 },
+interface NavItem  { label: string; href: string; icon: React.ElementType }
+interface NavGroup { label: string; href?: string; icon?: React.ElementType; items?: NavItem[] }
+
+const dropshippingNav: NavGroup[] = [
+  { label: "Dashboard",  href: "/seller",            icon: LayoutDashboard },
+  { label: "Analytics",  href: "/seller/analytics",  icon: BarChart2 },
+  {
+    label: "Fulfilment",
+    icon: Truck,
+    items: [
+      { label: "Orders",   href: "/seller/orders",      icon: ShoppingCart },
+      { label: "Delivery", href: "/seller/deliveries",  icon: Truck },
+      { label: "NDR",      href: "/seller/ndr",         icon: AlertTriangle },
+    ],
+  },
+  { label: "Products", href: "/seller/catalog", icon: Package },
+  {
+    label: "Finance",
+    icon: Wallet,
+    items: [
+      { label: "Wallet",       href: "/seller/wallet",       icon: Wallet },
+      { label: "Settlements",  href: "/seller/settlements",   icon: Receipt },
+    ],
+  },
+  {
+    label: "Account",
+    icon: User,
+    items: [
+      { label: "Shopify Store", href: "/seller/shopify",     icon: Store },
+      { label: "Activation",   href: "/seller/activation",   icon: Activity },
+      { label: "Support",      href: "/seller/support",      icon: HelpCircle },
+    ],
+  },
 ];
 
-interface ShopifyStore {
-  id: string;
-  storeName: string;
-  storeUrl: string;
-  createdAt: string;
-}
+const marketplaceNav: NavGroup[] = [
+  { label: "Dashboard",  href: "/seller",            icon: LayoutDashboard },
+  { label: "Analytics",  href: "/seller/analytics",  icon: BarChart2 },
+  {
+    label: "Fulfilment",
+    icon: Truck,
+    items: [
+      { label: "Orders",   href: "/seller/orders",      icon: ShoppingCart },
+      { label: "Delivery", href: "/seller/deliveries",  icon: Truck },
+      { label: "Returns",  href: "/seller/ndr",         icon: AlertTriangle },
+    ],
+  },
+  {
+    label: "Products",
+    icon: Package,
+    items: [
+      { label: "Listings",   href: "/seller/listings",   icon: Layers },
+      { label: "Inventory",  href: "/seller/inventory",  icon: Box },
+    ],
+  },
+  {
+    label: "Finance",
+    icon: Wallet,
+    items: [
+      { label: "Wallet",      href: "/seller/wallet",       icon: Wallet },
+      { label: "Settlements", href: "/seller/settlements",   icon: Receipt },
+    ],
+  },
+  {
+    label: "Account",
+    icon: User,
+    items: [
+      { label: "Amazon",     href: "/seller/amazon",      icon: ShoppingCart },
+      { label: "Activation", href: "/seller/activation",  icon: Activity },
+      { label: "Support",    href: "/seller/support",     icon: HelpCircle },
+    ],
+  },
+];
 
-export function SellerSidebar() {
-  const pathname = usePathname();
-  const { data: session } = useSession();
-  const [store, setStore] = useState<ShopifyStore | null>(null);
+export function SellerSidebar({ plan, userName, userEmail }: {
+  plan?: string;
+  userName?: string;
+  userEmail?: string;
+}) {
+  const pathname   = usePathname();
+  const nav        = plan === "MARKETPLACE" ? marketplaceNav : dropshippingNav;
+  const initial    = userName?.[0]?.toUpperCase() || "U";
+
+  const [openGroups,  setOpenGroups]  = useState<Set<string>>(new Set());
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  // Auto-expand group whose child is active
+  useEffect(() => {
+    const toOpen = new Set<string>();
+    nav.forEach(g => {
+      if (g.items?.some(i => pathname === i.href || pathname.startsWith(i.href + "/"))) {
+        toOpen.add(g.label);
+      }
+    });
+    setOpenGroups(toOpen);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
 
   useEffect(() => {
-    fetch("/api/seller/shopify/store")
-      .then((r) => r.json())
-      .then((d) => setStore(d.store || null))
+    fetch("/api/seller/notifications")
+      .then(r => r.json())
+      .then(d => setUnreadCount(d.unreadCount ?? 0))
       .catch(() => {});
   }, []);
 
+  const isGroupActive = (g: NavGroup) =>
+    g.href
+      ? g.href === "/seller" ? pathname === "/seller" : pathname.startsWith(g.href + "/") || pathname === g.href
+      : (g.items?.some(i => pathname === i.href || pathname.startsWith(i.href + "/")) ?? false);
+
+  const toggleGroup = (label: string) => {
+    setOpenGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label);
+      else next.add(label);
+      return next;
+    });
+  };
+
+  const planLabel = plan
+    ? plan.charAt(0) + plan.slice(1).toLowerCase() + " Plan"
+    : "Growth Plan";
+
   return (
-    <aside className="w-56 bg-white min-h-screen flex flex-col border-r border-gray-100">
-      <div className="px-5 py-5 border-b border-gray-100">
-        <h2 className="text-base font-bold text-gray-800">Seller Dashboard</h2>
+    <aside className="fixed left-0 top-0 bottom-0 w-[232px] bg-white flex flex-col z-50"
+      style={{ borderRight: "1px solid #E8EDF6" }}>
+
+      {/* ── Logo ── */}
+      <div className="px-5 h-[60px] flex items-center flex-shrink-0"
+        style={{ borderBottom: "1px solid #E8EDF6" }}>
+        <Link href="/seller" className="flex items-center gap-2.5">
+          <img src="/axqen-icon.png" alt="AXQEN" className="w-8 h-8 rounded-lg object-cover" />
+          <span className="font-bold text-[15.5px] tracking-tight" style={{ color: "#0C1220" }}>
+            AXQEN
+          </span>
+        </Link>
       </div>
 
-      <nav className="flex-1 p-3 space-y-0.5">
-        {navItems.map((item) => {
-          const isActive = pathname === item.href ||
-            (item.href !== "/seller" && pathname.startsWith(item.href));
+      {/* ── Nav ── */}
+      <nav className="flex-1 overflow-y-auto p-3 space-y-0.5" style={{ scrollbarWidth: "none" }}>
+        {nav.map(group => {
+          const active = isGroupActive(group);
+          const Icon   = group.icon;
+          const isOpen = openGroups.has(group.label);
+
+          /* Simple link */
+          if (!group.items) {
+            return (
+              <Link
+                key={group.label}
+                href={group.href!}
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13.5px] font-medium transition-colors",
+                  active
+                    ? "bg-[#EEF2FF] text-[#4361EE]"
+                    : "text-[#6B7280] hover:bg-[#F5F7FB] hover:text-[#0C1220]"
+                )}
+              >
+                {Icon && (
+                  <Icon
+                    className="w-[17px] h-[17px] flex-shrink-0"
+                    style={{ color: active ? "#4361EE" : "#9CA3AF" }}
+                  />
+                )}
+                {group.label}
+              </Link>
+            );
+          }
+
+          /* Collapsible group */
           return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
-                isActive ? "bg-blue-50 text-blue-600" : "text-gray-600 hover:bg-gray-50 hover:text-gray-800"
+            <div key={group.label}>
+              <button
+                onClick={() => toggleGroup(group.label)}
+                className={cn(
+                  "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13.5px] font-medium transition-colors",
+                  active
+                    ? "bg-[#EEF2FF] text-[#4361EE]"
+                    : "text-[#6B7280] hover:bg-[#F5F7FB] hover:text-[#0C1220]"
+                )}
+              >
+                {Icon && (
+                  <Icon
+                    className="w-[17px] h-[17px] flex-shrink-0"
+                    style={{ color: active ? "#4361EE" : "#9CA3AF" }}
+                  />
+                )}
+                <span className="flex-1 text-left">{group.label}</span>
+                <ChevronDown
+                  className="w-3.5 h-3.5 flex-shrink-0 transition-transform duration-150"
+                  style={{
+                    transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
+                    color: active ? "#4361EE" : "#9CA3AF",
+                  }}
+                />
+              </button>
+
+              {isOpen && (
+                <div className="mt-0.5 space-y-0.5 ml-2">
+                  {group.items.map(item => {
+                    const ItemIcon   = item.icon;
+                    const itemActive = pathname === item.href || pathname.startsWith(item.href + "/");
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        className={cn(
+                          "flex items-center gap-3 pl-8 pr-3 py-2 rounded-lg text-[13px] font-medium transition-colors",
+                          itemActive
+                            ? "bg-[#EEF2FF] text-[#4361EE]"
+                            : "text-[#6B7280] hover:bg-[#F5F7FB] hover:text-[#0C1220]"
+                        )}
+                      >
+                        <ItemIcon
+                          className="w-3.5 h-3.5 flex-shrink-0"
+                          style={{ color: itemActive ? "#4361EE" : "#9CA3AF" }}
+                        />
+                        {item.label}
+                      </Link>
+                    );
+                  })}
+                </div>
               )}
-            >
-              <item.icon className={cn("w-4 h-4", isActive ? "text-blue-600" : "text-gray-400")} />
-              {item.label}
-            </Link>
+            </div>
           );
         })}
       </nav>
 
-      {/* Connected Stores */}
-      <div className="p-4 border-t border-gray-100">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-semibold text-gray-500">Connected Stores</span>
-          <div className="flex items-center gap-1">
-            <button onClick={() => window.location.reload()} className="p-1 text-gray-400 hover:text-gray-600">
-              <RefreshCw className="w-3 h-3" />
-            </button>
-            <Link href="/seller/shopify" className="p-1 text-gray-400 hover:text-gray-600">
-              <Plus className="w-3 h-3" />
-            </Link>
-          </div>
-        </div>
+      {/* ── Bottom ── */}
+      <div className="flex-shrink-0 p-3 space-y-0.5" style={{ borderTop: "1px solid #E8EDF6" }}>
 
-        {store ? (
-          <div className="bg-gray-50 rounded-lg p-2.5 border border-gray-100">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-xs font-medium text-gray-700 truncate max-w-[100px]">
-                {store.storeUrl.replace(".myshopify.com", "")}...
+        {/* Help & Support */}
+        <Link
+          href="/seller/support"
+          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13.5px] font-medium text-[#6B7280] hover:bg-[#F5F7FB] hover:text-[#0C1220] transition-colors"
+        >
+          <HelpCircle className="w-[17px] h-[17px] text-[#9CA3AF] flex-shrink-0" />
+          Help &amp; Support
+        </Link>
+
+        {/* Notifications */}
+        <Link
+          href="/seller/notifications"
+          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13.5px] font-medium text-[#6B7280] hover:bg-[#F5F7FB] hover:text-[#0C1220] transition-colors"
+        >
+          <div className="relative flex-shrink-0">
+            <Bell className="w-[17px] h-[17px] text-[#9CA3AF]" />
+            {unreadCount > 0 && (
+              <span
+                className="absolute -top-1.5 -right-1.5 min-w-[14px] h-3.5 px-0.5 rounded-full bg-red-500 text-white text-[8px] font-bold flex items-center justify-center"
+              >
+                {unreadCount > 9 ? "9+" : unreadCount}
               </span>
-              <div className="flex items-center gap-1">
-                <span className="text-xs bg-green-100 text-green-600 font-semibold px-1.5 py-0.5 rounded">Active</span>
-                <button className="text-red-400 hover:text-red-600">
-                  <Trash2 className="w-3 h-3" />
-                </button>
-              </div>
-            </div>
-            <p className="text-xs text-gray-400">Connected {new Date(store.createdAt).toLocaleDateString("en-IN")}</p>
-            <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
-              <span className="w-1.5 h-1.5 bg-green-500 rounded-full inline-block" />
-              Active: {store.storeUrl} ✓
-            </p>
+            )}
           </div>
-        ) : (
-          <Link href="/seller/shopify"
-            className="block text-center text-xs text-blue-500 hover:text-blue-700 py-2 border border-dashed border-blue-200 rounded-lg hover:bg-blue-50 transition-colors">
-            + Connect Shopify Store
-          </Link>
-        )}
+          <span className="flex-1">Notifications</span>
+          {unreadCount > 0 && (
+            <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-red-100 text-red-600 text-[10px] font-bold flex items-center justify-center">
+              {unreadCount > 9 ? "9+" : unreadCount}
+            </span>
+          )}
+        </Link>
+
+        {/* User profile */}
+        <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-[#F5F7FB] transition-colors cursor-default group">
+          <div
+            className="w-8 h-8 rounded-full flex items-center justify-center text-white text-[12px] font-bold flex-shrink-0"
+            style={{ background: "#4361EE" }}
+          >
+            {initial}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] font-semibold truncate" style={{ color: "#0C1220" }}>
+              {userName || "User"}
+            </p>
+            <p className="text-[11px] truncate" style={{ color: "#9CA3AF" }}>{planLabel}</p>
+          </div>
+          <button
+            onClick={() => signOut({ callbackUrl: "/login" })}
+            title="Sign out"
+            className="p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+            style={{ color: "#9CA3AF" }}
+            onMouseEnter={e => { e.currentTarget.style.color = "#EF4444"; }}
+            onMouseLeave={e => { e.currentTarget.style.color = "#9CA3AF"; }}
+          >
+            <LogOut className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
     </aside>
   );

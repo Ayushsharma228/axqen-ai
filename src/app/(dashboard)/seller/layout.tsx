@@ -1,7 +1,7 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import { SellerHeader } from "@/components/layout/seller-header";
+import { SellerSidebar } from "@/components/layout/seller-sidebar";
 
 export default async function SellerLayout({ children }: { children: React.ReactNode }) {
   const session = await getServerSession(authOptions);
@@ -14,13 +14,13 @@ export default async function SellerLayout({ children }: { children: React.React
   if (!session.user.plan && status === undefined) redirect("/onboarding");
 
   return (
-    <div className="min-h-screen" style={{ background: "var(--bg-page)" }}>
-      <SellerHeader
+    <div className="min-h-screen flex" style={{ background: "var(--bg-page)" }}>
+      <SellerSidebar
         plan={session.user.plan ?? undefined}
         userName={session.user.name ?? ""}
         userEmail={session.user.email ?? ""}
       />
-      <main className="pt-20">{children}</main>
+      <main className="flex-1 min-h-screen" style={{ marginLeft: "232px" }}>{children}</main>
     </div>
   );
 }

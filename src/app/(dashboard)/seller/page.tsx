@@ -271,13 +271,20 @@ export default function SellerDashboard() {
       {/* ── Page header ── */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-[18px] font-bold text-[#0C1220]">Dashboard</h1>
-          <p className="text-[12px] text-[#9CA3AF] mt-0.5">
+          <p className="text-[12px] font-semibold text-[#9CA3AF] mb-0.5">
             {new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}
-            {analytics?.computedAt && (
-              <> · Data as of {new Date(analytics.computedAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}</>
-            )}
           </p>
+          <h1 className="text-[22px] font-black text-[#0C1220]">
+            {(() => {
+              const h = new Date().getHours();
+              return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
+            })()}, {name} 👋
+          </h1>
+          {analytics?.computedAt && (
+            <p className="text-[11px] text-[#9CA3AF] mt-0.5">
+              Data as of {new Date(analytics.computedAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+            </p>
+          )}
         </div>
         <button
           onClick={() => { setLoading(true); setKey(k => k + 1); }}

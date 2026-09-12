@@ -240,7 +240,7 @@ export default function SellerDashboard() {
     { name: "Platform Fee",  v: e.totalPlatformFee,  color: "#F59E0B" },
     { name: "RTO Charges",   v: e.totalRtoCharge,    color: "#EF4444" },
     { name: "Ad Spend",      v: e.totalAdSpend,      color: "#7C3AED" },
-    { name: "Net Profit",    v: Math.abs(netProfit), color: netProfit >= 0 ? "#059669" : "#EF4444" },
+    { name: netProfit >= 0 ? "Net Profit" : "Net Loss", v: Math.abs(netProfit), color: netProfit >= 0 ? "#059669" : "#EF4444" },
   ] : [];
 
   // ── Shipping ─────────────────────────────────────────────────────────────
@@ -662,9 +662,8 @@ export default function SellerDashboard() {
               valueColor="#EF4444"
             />
             <StatTile
-              label="Net Profit"
+              label={netProfit >= 0 ? "Net Profit" : "Net Loss"}
               value={inr(Math.abs(netProfit))}
-              sub={netProfit >= 0 ? "Profit" : "Loss"}
               valueColor={netProfit >= 0 ? "#059669" : "#EF4444"}
             />
             <StatTile
@@ -759,7 +758,7 @@ export default function SellerDashboard() {
 
             {/* Net profit total row */}
             <div className="flex items-center justify-between pt-3">
-              <p className="text-[14px] font-black text-[#0C1220]">= Net Profit</p>
+              <p className="text-[14px] font-black text-[#0C1220]">= {netProfit >= 0 ? "Net Profit" : "Net Loss"}</p>
               <p className="text-[14px] font-black" style={{ color: netProfit >= 0 ? "#059669" : "#EF4444" }}>
                 {netProfit >= 0 ? "+" : "−"}₹{num(Math.abs(netProfit))}
                 <span className="text-[12px] ml-1.5 font-semibold text-[#9CA3AF]">

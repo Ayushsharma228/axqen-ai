@@ -247,6 +247,7 @@ export default function SellerDashboard() {
   const stateData = (analytics?.rtoByState ?? []).slice(0, 10).map(r => ({
     state: r.state.length > 10 ? r.state.slice(0, 10) + "…" : r.state,
     Orders: r.total,
+    Delivered: r.total - r.rto,
     RTO: r.rto,
     total: r.total,
   }));
@@ -575,19 +576,19 @@ export default function SellerDashboard() {
 
           {/* State bar chart — stacked delivered + RTO */}
           <div>
-            <SubLabel>Orders by State — Top 10 (Orders vs RTO)</SubLabel>
+            <SubLabel>Orders by State — Top 10 (Delivered vs RTO)</SubLabel>
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={stateData} barGap={0} barCategoryGap="28%">
                 <CartesianGrid strokeDasharray="2 4" stroke="#F3F4F6" vertical={false} />
                 <XAxis dataKey="state" tick={{ fontSize: 10, fill: "#9CA3AF" }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 11, fill: "#9CA3AF" }} axisLine={false} tickLine={false} allowDecimals={false} />
                 <Tooltip {...TOOLTIP_STYLE} />
-                <Bar dataKey="Orders" stackId="s" fill="#4361EE" maxBarSize={28} />
+                <Bar dataKey="Delivered" stackId="s" fill="#4361EE" maxBarSize={28} />
                 <Bar dataKey="RTO"     stackId="s" fill="#EF4444" radius={[3,3,0,0]} maxBarSize={28} />
               </BarChart>
             </ResponsiveContainer>
             <div className="flex items-center gap-4 mt-2">
-              {[["#4361EE","Orders"],["#EF4444","RTO"]].map(([c, l]) => (
+              {[["#4361EE","Delivered"],["#EF4444","RTO"]].map(([c, l]) => (
                 <span key={l} className="flex items-center gap-1.5 text-[11px] text-[#9CA3AF]">
                   <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: c }} />{l}
                 </span>
@@ -600,7 +601,7 @@ export default function SellerDashboard() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-[#F3F4F6]">
-                  {["State", "Orders", "RTO", "RTO %"].map(h => (
+                  {["State", "Orders", "Delivered", "RTO", "RTO %"].map(h => (
                     <th
                       key={h}
                       className="px-2 py-2 text-[11px] font-bold text-[#9CA3AF] uppercase tracking-wide"
@@ -618,6 +619,7 @@ export default function SellerDashboard() {
                     <tr key={i} className="hover:bg-[#FAFBFF]">
                       <td className="px-2 py-2.5 text-[13px] font-medium text-[#0C1220]">{row.state}</td>
                       <td className="px-2 py-2.5 text-[13px] font-semibold text-[#374151] text-right">{row.total}</td>
+                      <td className="px-2 py-2.5 text-[13px] text-[#059669] text-right">{row.total - row.rto}</td>
                       <td className="px-2 py-2.5 text-[13px] text-[#EF4444] text-right">{row.rto}</td>
                       <td className="px-2 py-2.5 text-right">
                         <span className="text-[12px] font-bold" style={{ color: rtoColor }}>

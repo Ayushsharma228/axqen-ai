@@ -5,25 +5,24 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
   LayoutDashboard, ShoppingCart, Package, Wallet,
-  MoreHorizontal, ClipboardList, Boxes, Receipt,
-  TrendingUp, Bell, User, X, LogOut,
+  MoreHorizontal, Truck, Boxes, HelpCircle, User, X, LogOut,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 
+// 4 primary tabs visible in the bar
 const PRIMARY = [
   { label: "Home",     href: "/supplier",          icon: LayoutDashboard, exact: true },
   { label: "Orders",   href: "/supplier/orders",   icon: ShoppingCart },
   { label: "Products", href: "/supplier/products", icon: Package },
-  { label: "Wallet",   href: "/supplier/wallet",   icon: Wallet },
+  { label: "Finance",  href: "/supplier/wallet",   icon: Wallet },
 ];
 
+// Items shown in the More slide-up sheet
 const MORE = [
-  { label: "Purchase Orders", href: "/supplier/purchase-orders", icon: ClipboardList },
-  { label: "Inventory",       href: "/supplier/inventory",       icon: Boxes },
-  { label: "Settlements",     href: "/supplier/settlements",     icon: Receipt },
-  { label: "Performance",     href: "/supplier/performance",     icon: TrendingUp },
-  { label: "Notifications",   href: "/supplier/notifications",   icon: Bell },
-  { label: "Profile",         href: "/supplier/profile",         icon: User },
+  { label: "Fulfillment", href: "/supplier/shipping",       icon: Truck },
+  { label: "Inventory",   href: "/supplier/inventory",      icon: Boxes },
+  { label: "Support",     href: "/supplier/notifications",  icon: HelpCircle },
+  { label: "Profile",     href: "/supplier/profile",        icon: User },
 ];
 
 export function SupplierMobileBottomNav({ userName }: { userName?: string }) {
@@ -50,27 +49,29 @@ export function SupplierMobileBottomNav({ userName }: { userName?: string }) {
       <div
         className="fixed bottom-0 left-0 right-0 z-50 rounded-t-2xl transition-transform duration-300 md:hidden"
         style={{
-          background: "var(--bg-card)",
+          background: "white",
           transform: sheetOpen ? "translateY(0)" : "translateY(110%)",
           boxShadow: "0 -4px 30px rgba(0,0,0,0.10)",
-          borderTop: "1px solid var(--border)",
+          borderTop: "1px solid #E8EDF6",
         }}
       >
+        {/* Handle */}
         <div className="flex justify-center pt-3 pb-1">
-          <div className="w-10 h-1 rounded-full" style={{ background: "var(--border)" }} />
+          <div className="w-10 h-1 rounded-full bg-[#E8EDF6]" />
         </div>
 
-        <div className="flex items-center justify-between px-5 py-3" style={{ borderBottom: "1px solid var(--border)" }}>
-          <p className="text-[14px] font-bold" style={{ color: "var(--text-primary)" }}>More</p>
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-3 border-b border-[#F3F4F6]">
+          <p className="text-[14px] font-bold text-[#0C1220]">More</p>
           <button
             onClick={() => setSheetOpen(false)}
-            className="w-7 h-7 rounded-full flex items-center justify-center"
-            style={{ background: "var(--bg-muted)" }}
+            className="w-7 h-7 rounded-full flex items-center justify-center bg-[#F3F4F6]"
           >
-            <X className="w-4 h-4" style={{ color: "var(--text-muted)" }} />
+            <X className="w-4 h-4 text-[#6B7280]" />
           </button>
         </div>
 
+        {/* Grid */}
         <div className="grid grid-cols-4 gap-0 px-4 py-4">
           {MORE.map(item => {
             const active = isActive(item.href);
@@ -81,17 +82,17 @@ export function SupplierMobileBottomNav({ userName }: { userName?: string }) {
                 href={item.href}
                 onClick={() => setSheetOpen(false)}
                 className="flex flex-col items-center gap-1.5 px-2 py-3 rounded-xl transition-colors"
-                style={{ background: active ? "rgba(67,97,238,0.08)" : "transparent" }}
+                style={{ background: active ? "#EEF2FF" : "transparent" }}
               >
                 <div
                   className="w-11 h-11 rounded-2xl flex items-center justify-center"
-                  style={{ background: active ? "#4361EE" : "var(--bg-muted)" }}
+                  style={{ background: active ? "#4361EE" : "#F5F7FB" }}
                 >
-                  <Icon className="w-5 h-5" style={{ color: active ? "white" : "var(--text-muted)" }} />
+                  <Icon className="w-5 h-5" style={{ color: active ? "white" : "#6B7280" }} />
                 </div>
                 <span
                   className="text-[11px] font-semibold text-center leading-tight"
-                  style={{ color: active ? "#4361EE" : "var(--text-muted)" }}
+                  style={{ color: active ? "#4361EE" : "#6B7280" }}
                 >
                   {item.label}
                 </span>
@@ -100,7 +101,8 @@ export function SupplierMobileBottomNav({ userName }: { userName?: string }) {
           })}
         </div>
 
-        <div className="mx-4 mb-4 px-4 py-3 rounded-xl flex items-center gap-3" style={{ background: "var(--bg-muted)" }}>
+        {/* Profile + sign out */}
+        <div className="mx-4 mb-4 px-4 py-3 rounded-xl flex items-center gap-3 bg-[#F5F7FB]">
           <div
             className="w-9 h-9 rounded-full flex items-center justify-center text-white text-[13px] font-bold flex-shrink-0"
             style={{ background: "#4361EE" }}
@@ -108,8 +110,8 @@ export function SupplierMobileBottomNav({ userName }: { userName?: string }) {
             {initial}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-[13px] font-semibold truncate" style={{ color: "var(--text-primary)" }}>{userName || "Supplier"}</p>
-            <p className="text-[11px] truncate" style={{ color: "var(--text-muted)" }}>Supplier Account</p>
+            <p className="text-[13px] font-semibold text-[#0C1220] truncate">{userName || "Supplier"}</p>
+            <p className="text-[11px] text-[#9CA3AF] truncate">Supplier Account</p>
           </div>
           <button
             onClick={() => signOut({ callbackUrl: "/login" })}
@@ -157,6 +159,7 @@ export function SupplierMobileBottomNav({ userName }: { userName?: string }) {
             );
           })}
 
+          {/* More */}
           <button
             onClick={() => setSheetOpen(p => !p)}
             className="flex flex-col items-center gap-1 px-3 py-1.5 rounded-xl transition-colors flex-1"

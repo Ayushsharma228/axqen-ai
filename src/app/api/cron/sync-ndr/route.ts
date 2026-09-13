@@ -6,11 +6,27 @@ const NDR_KEYWORDS = [
   "undelivered", "delivery attempt", "ndr", "failed delivery",
   "not available", "refused", "wrong address", "out of delivery area",
   "door locked", "customer not contactable", "rescheduled",
+  "return recommended", "consignee refused", "not delivered",
+  "delivery failed", "unable to deliver",
 ];
 
-function isNDR(status: string): boolean {
-  const s = status.toLowerCase();
-  return NDR_KEYWORDS.some(k => s.includes(k));
+type DelhiveryScan = {
+  ScanType?: string;
+  Instructions?: string;
+  ScanDateTime?: string;
+};
+
+function detectNdr(
+  statusStr: string,
+  statusType: string,
+  scans: DelhiveryScan[],
+): { isNdr: boolean; udScans: DelhiveryScan[] } {
+  const udScans = scans.filter(s => s.ScanType?.toUpperCase() === "UD");
+  if (udScans.length > 0) return { isNdr: true, udScans };
+  if (["UD", "NDR"].includes(statusType.toUpperCase())) return { isNdr: true, udScans };
+  const s = statusStr.toLowerCase();
+  const isNdr = NDR_KEYWORDS.some(k => s.includes(k));
+  return { isNdr, udScans };
 }
 
 export async function GET(req: NextRequest) {
@@ -22,7 +38,6 @@ export async function GET(req: NextRequest) {
   const token = process.env.DELHIVERY_API_TOKEN;
   if (!token) return NextResponse.json({ error: "Delhivery not configured" }, { status: 500 });
 
-  // Get all active orders with AWB that haven't been acted on yet
   const orders = await prisma.order.findMany({
     where: {
       awbNumber: { not: null },
@@ -30,7 +45,8 @@ export async function GET(req: NextRequest) {
       ndrActionTaken: null,
     },
     select: {
-      id: true, awbNumber: true, ndrAttempts: true, externalOrderId: true,
+      id: true, awbNumber: true, ndrAttempts: true, ndrCreatedAt: true,
+      externalOrderId: true,
       seller: { select: { name: true, email: true } },
     },
   });
@@ -55,28 +71,51 @@ export async function GET(req: NextRequest) {
     )?.Shipment;
     if (!shipment) continue;
 
-    const statusObj = shipment.Status as { Status?: string; Instructions?: string } | null;
+    const statusObj = shipment.Status as {
+      Status?: string; StatusType?: string; Instructions?: string;
+    } | null;
     const statusStr = statusObj?.Status ?? "";
-    if (!isNDR(statusStr)) continue;
+    const statusType = statusObj?.StatusType ?? "";
+    const scans = (shipment.Scans as DelhiveryScan[] | null) ?? [];
 
-    const newAttempts = (order.ndrAttempts ?? 0) + 1;
-    const ndrReason = statusObj?.Instructions || "Delivery attempt failed";
+    const { isNdr, udScans } = detectNdr(statusStr, statusType, scans);
+    if (!isNdr) continue;
+
+    // Use UD scan count as authoritative attempt count; never decrement
+    const attemptCount = udScans.length > 0
+      ? Math.max(udScans.length, order.ndrAttempts ?? 0)
+      : (order.ndrAttempts ?? 0) + 1;
+
+    // Skip if no new attempt
+    if (attemptCount === (order.ndrAttempts ?? 0) && order.ndrCreatedAt) continue;
+
+    const ndrReason =
+      udScans[0]?.Instructions ||
+      statusObj?.Instructions ||
+      statusStr ||
+      "Delivery attempt failed";
+
+    const ndrStatus = statusType.toUpperCase() === "UD"
+      ? `UD - ${ndrReason.slice(0, 100)}`
+      : (statusStr || "NDR");
+
     await prisma.order.update({
       where: { id: order.id },
       data: {
-        ndrStatus: statusStr,
+        ndrStatus,
         ndrReason,
-        ndrAttempts: newAttempts,
+        ndrAttempts: attemptCount,
+        ndrCreatedAt: order.ndrCreatedAt ?? new Date(),
       },
     });
-    // Notify seller (fire-and-forget)
-    if (order.seller?.email) {
+
+    if (order.seller?.email && attemptCount > (order.ndrAttempts ?? 0)) {
       emailNdrAlert({
         to:              order.seller.email,
         name:            order.seller.name ?? "Seller",
         externalOrderId: order.externalOrderId,
         ndrReason,
-        ndrAttempts:     newAttempts,
+        ndrAttempts:     attemptCount,
         awbNumber:       order.awbNumber,
       }).catch(() => {});
     }

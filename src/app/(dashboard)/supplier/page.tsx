@@ -1,418 +1,473 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
-import Link from "next/link";
+"use client";
+
+import { useState, useEffect, useMemo } from "react";
+import { useSession } from "next-auth/react";
 import {
-  Package, CheckCircle, Clock, XCircle,
-  Plus, ArrowRight, AlertCircle, ShoppingCart,
-  ClipboardList, Boxes, TrendingUp, Wallet,
-  Truck, Receipt, ChevronRight, Activity,
-} from "lucide-react";
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  CartesianGrid, Cell,
+} from "recharts";
+import { RefreshCw } from "lucide-react";
 
-export default async function SupplierDashboard() {
-  const session = await getServerSession(authOptions);
-  if (!session) return null;
-  const supplierId = session.user.id;
-  const firstName = session.user.name?.split(" ")[0] || "Supplier";
-
-  const [
-    totalProducts, pendingProducts, approvedProducts, rejectedProducts,
-    pendingOrders, activeOrders, dispatchedOrders,
-    pendingPOs, activePOs,
-    totalInventoryItems, lowStockItems,
-  ] = await Promise.all([
-    prisma.product.count({ where: { supplierId } }),
-    prisma.product.count({ where: { supplierId, status: "PENDING" } }),
-    prisma.product.count({ where: { supplierId, status: "APPROVED" } }),
-    prisma.product.count({ where: { supplierId, status: "REJECTED" } }),
-    prisma.order.count({ where: { supplierId, supplierStatus: "ASSIGNED" } }),
-    prisma.order.count({ where: { supplierId, supplierStatus: { in: ["ACCEPTED", "PROCESSING", "PACKED", "READY_TO_SHIP"] } } }),
-    prisma.order.count({ where: { supplierId, supplierStatus: "DISPATCHED" } }),
-    prisma.purchaseOrder.count({ where: { supplierId, status: "SENT" } }),
-    prisma.purchaseOrder.count({ where: { supplierId, status: { in: ["ACCEPTED", "PROCESSING", "PACKED"] } } }),
-    prisma.inventoryItem.count({ where: { supplierId } }),
-    prisma.inventoryItem.count({ where: { supplierId, availableQty: { lte: 5 } } }),
-  ]);
-
-  const recentOrders = await prisma.order.findMany({
-    where: { supplierId },
-    take: 6,
-    orderBy: { createdAt: "desc" },
-    select: {
-      id: true, externalOrderId: true, status: true, supplierStatus: true,
-      totalAmount: true, customerName: true, createdAt: true,
-    },
-  });
-
-  const rejectedWithNotes = await prisma.product.findMany({
-    where: { supplierId, status: "REJECTED", adminNote: { not: null } },
-    take: 3,
-    select: { id: true, name: true, adminNote: true },
-  });
-
-  const SUPPLIER_STATUS_BADGE: Record<string, { bg: string; text: string; label: string; dot: string }> = {
-    ASSIGNED:      { bg: "#FFF7ED", text: "#D97706", label: "Pending Acceptance", dot: "#F59E0B" },
-    ACCEPTED:      { bg: "#EFF6FF", text: "#3B82F6", label: "Accepted",           dot: "#3B82F6" },
-    PROCESSING:    { bg: "#F5F3FF", text: "#7C3AED", label: "Processing",         dot: "#7C3AED" },
-    PACKED:        { bg: "#F0F9FF", text: "#0369A1", label: "Packed",             dot: "#0369A1" },
-    READY_TO_SHIP: { bg: "#FFF7ED", text: "#EA580C", label: "Ready to Ship",      dot: "#EA580C" },
-    DISPATCHED:    { bg: "#F0FDF4", text: "#15803D", label: "Dispatched",         dot: "#16A34A" },
-    REJECTED:      { bg: "#FEF2F2", text: "#DC2626", label: "Rejected",           dot: "#EF4444" },
+// ── Types ─────────────────────────────────────────────────────────────────────
+interface DashboardData {
+  orderCounts: {
+    pending: number;
+    active: number;
+    shipped: number;
+    delivered: number;
+    rto: number;
+    cancelled: number;
+    ndr: number;
+    total: number;
   };
+  productCounts: {
+    total: number;
+    approved: number;
+    pending: number;
+    rejected: number;
+  };
+  earnings: {
+    deliveredRevenue: number;
+    productCosts: number;
+    ourEarnings: number;
+    paid: number;
+    walletBalance: number;
+    upcoming: number;
+  };
+  stateData: Array<{
+    state: string;
+    total: number;
+    delivered: number;
+    rto: number;
+    deliveryPct: number;
+    rtoPct: number;
+  }>;
+}
 
-  const urgentCount = pendingOrders + pendingPOs;
-  const totalOrdersActive = pendingOrders + activeOrders;
+// ── Format helpers ─────────────────────────────────────────────────────────────
+const inr  = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
+const num  = (n: number) => Math.round(n).toLocaleString("en-IN");
+const kInr = (v: number) => `₹${(v / 1000).toFixed(0)}k`;
+
+// ── Shared components ──────────────────────────────────────────────────────────
+function SectionCard({ title, sub, children }: {
+  title: string; sub?: string; children: React.ReactNode;
+}) {
+  return (
+    <section className="bg-white rounded-xl border border-[#E8EDF6] overflow-hidden">
+      <div className="px-5 py-4 border-b border-[#F3F4F6]">
+        <h2 className="text-[15px] font-bold text-[#0C1220]">{title}</h2>
+        {sub && <p className="text-[12px] text-[#9CA3AF] mt-0.5">{sub}</p>}
+      </div>
+      <div className="p-5 space-y-5">{children}</div>
+    </section>
+  );
+}
+
+function StatTile({ label, value, sub, valueColor = "#0C1220" }: {
+  label: string; value: string; sub?: string; valueColor?: string;
+}) {
+  return (
+    <div className="rounded-lg border border-[#E8EDF6] bg-[#FAFBFF] px-4 py-3.5">
+      <p className="text-[11px] font-semibold text-[#9CA3AF] uppercase tracking-wide mb-1">{label}</p>
+      <p className="text-[22px] font-black leading-none" style={{ color: valueColor }}>{value}</p>
+      {sub && <p className="text-[11px] text-[#9CA3AF] mt-0.5">{sub}</p>}
+    </div>
+  );
+}
+
+function SubLabel({ children }: { children: string }) {
+  return (
+    <p className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-wide mb-3">{children}</p>
+  );
+}
+
+const TOOLTIP_STYLE = {
+  contentStyle: { fontSize: 12, border: "1px solid #E8EDF6", borderRadius: 8, boxShadow: "none" },
+  cursor: { fill: "rgba(67,97,238,0.04)" },
+};
+
+// ── Main ───────────────────────────────────────────────────────────────────────
+export default function SupplierDashboard() {
+  const { data: session } = useSession();
+  const name = session?.user?.name?.split(" ")[0] ?? "Supplier";
+
+  const [data,    setData]    = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [key,     setKey]     = useState(0);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch("/api/supplier/dashboard")
+      .then(r => r.json())
+      .then(d => setData(d))
+      .finally(() => setLoading(false));
+  }, [key]);
+
+  const o = data?.orderCounts;
+  const p = data?.productCounts;
+  const e = data?.earnings;
+  const states = data?.stateData ?? [];
+
+  // State chart data — top 10
+  const stateChart = useMemo(() =>
+    states.slice(0, 10).map(s => ({
+      state:     s.state.length > 10 ? s.state.slice(0, 10) + "…" : s.state,
+      Delivered: s.delivered,
+      RTO:       s.rto,
+    })),
+    [states]
+  );
+
+  // P&L breakdown for chart
+  const plData = e ? [
+    { name: "Revenue",       v: e.deliveredRevenue, color: "#4361EE" },
+    { name: "Product Cost",  v: e.productCosts,     color: "#EF4444" },
+    { name: "Our Earnings",  v: Math.max(0, e.ourEarnings), color: "#059669" },
+    { name: "Paid",          v: e.paid,             color: "#7C3AED" },
+    { name: "Upcoming",      v: e.upcoming,         color: "#F59E0B" },
+  ] : [];
+
+  // ── Skeleton ──────────────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <div className="px-3 py-4 md:p-8 space-y-6" style={{ background: "#F7F8FC", minHeight: "100vh" }}>
+        <div className="h-10 w-48 bg-white rounded-lg border border-[#E8EDF6] animate-pulse" />
+        {[1, 2, 3, 4].map(i => (
+          <div key={i} className="bg-white rounded-xl border border-[#E8EDF6] h-48 animate-pulse" />
+        ))}
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen" style={{ background: "var(--bg-page)" }}>
+    <div className="px-3 py-4 md:p-8 space-y-6" style={{ background: "#F7F8FC", minHeight: "100vh" }}>
 
-      {/* ── Hero ── */}
-      <div className="px-4 md:px-8 pt-6 pb-4">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-xl md:text-2xl font-bold" style={{ color: "var(--text-primary)" }}>
-              Good day, {firstName}
-            </h1>
-            <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
-              {urgentCount > 0
-                ? `${urgentCount} item${urgentCount !== 1 ? "s" : ""} need your attention`
-                : "Everything looks good today"}
-            </p>
-          </div>
-          <Link
-            href="/supplier/products/new"
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white flex-shrink-0"
-            style={{ background: "#4361EE" }}
-          >
-            <Plus className="w-4 h-4" />
-            <span className="hidden sm:inline">Add Product</span>
-            <span className="sm:hidden">Add</span>
-          </Link>
+      {/* ── Page header ── */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <p className="text-[12px] font-semibold text-[#9CA3AF] mb-0.5">
+            {new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}
+          </p>
+          <h1 className="text-[22px] font-black text-[#0C1220]">
+            {(() => {
+              const h = new Date().getHours();
+              return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
+            })()}, {name} 👋
+          </h1>
+          <p className="text-[11px] text-[#9CA3AF] mt-0.5">Supplier Dashboard</p>
         </div>
+        <button
+          onClick={() => { setLoading(true); setKey(k => k + 1); }}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[13px] font-semibold bg-white border border-[#E8EDF6] text-[#6B7280] hover:text-[#0C1220] transition-colors"
+        >
+          <RefreshCw className="w-3.5 h-3.5" />
+          Refresh
+        </button>
       </div>
 
-      {/* ── KPI Row ── */}
-      <div className="px-4 md:px-8 mb-5">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      {/* ─────────────────────────────────────────────────────────────────────── */}
+      {/* 1. ORDERS                                                               */}
+      {/* ─────────────────────────────────────────────────────────────────────── */}
+      <SectionCard title="Orders" sub="All-time order status breakdown">
+
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <StatTile
+            label="Pending Acceptance"
+            value={num(o?.pending ?? 0)}
+            sub="Awaiting your action"
+            valueColor={o?.pending ? "#F59E0B" : "#0C1220"}
+          />
+          <StatTile
+            label="Shipped"
+            value={num(o?.shipped ?? 0)}
+            sub="Dispatched to courier"
+            valueColor="#4361EE"
+          />
+          <StatTile
+            label="Delivered"
+            value={num(o?.delivered ?? 0)}
+            sub={o && o.delivered + o.rto > 0
+              ? `${Math.round((o.delivered / (o.delivered + o.rto)) * 100)}% delivery rate`
+              : "—"}
+            valueColor="#059669"
+          />
+          <StatTile
+            label="RTO"
+            value={num(o?.rto ?? 0)}
+            sub={o && o.delivered + o.rto > 0
+              ? `${Math.round((o.rto / (o.delivered + o.rto)) * 100)}% RTO rate`
+              : "—"}
+            valueColor="#EF4444"
+          />
+          <StatTile
+            label="NDR"
+            value={num(o?.ndr ?? 0)}
+            sub="Failed delivery attempts"
+            valueColor={o?.ndr ? "#D97706" : "#0C1220"}
+          />
+        </div>
+
+        {/* Order funnel table */}
+        <div>
+          <SubLabel>Order pipeline</SubLabel>
           {[
-            {
-              label: "Pending Orders",
-              value: pendingOrders,
-              icon: Clock,
-              color: "#F59E0B",
-              bg: "#FFFBEB",
-              href: "/supplier/orders",
-              urgent: pendingOrders > 0,
-            },
-            {
-              label: "Active Orders",
-              value: activeOrders,
-              icon: Activity,
-              color: "#3B82F6",
-              bg: "#EFF6FF",
-              href: "/supplier/orders",
-              urgent: false,
-            },
-            {
-              label: "Approved Products",
-              value: approvedProducts,
-              icon: Package,
-              color: "#16A34A",
-              bg: "#F0FDF4",
-              href: "/supplier/products",
-              urgent: false,
-            },
-            {
-              label: "Pending POs",
-              value: pendingPOs,
-              icon: ClipboardList,
-              color: "#7C3AED",
-              bg: "#F5F3FF",
-              href: "/supplier/purchase-orders",
-              urgent: pendingPOs > 0,
-            },
-          ].map(({ label, value, icon: Icon, color, bg, href, urgent }) => (
-            <Link key={label} href={href}
-              className="rounded-2xl px-4 py-4 flex items-center gap-3 transition-shadow hover:shadow-md"
-              style={{
-                background: "var(--bg-card)",
-                border: urgent ? `1px solid ${color}40` : "1px solid var(--border)",
-                position: "relative",
-              }}>
-              {urgent && value > 0 && (
-                <span className="absolute top-2 right-2 w-2 h-2 rounded-full animate-pulse" style={{ background: color }} />
-              )}
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: bg }}>
-                <Icon className="w-5 h-5" style={{ color }} />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-medium truncate" style={{ color: "var(--text-muted)" }}>{label}</p>
-                <p className="text-2xl font-bold leading-tight" style={{ color: "var(--text-primary)" }}>{value}</p>
-              </div>
-            </Link>
+            { label: "Total Assigned",    value: o?.total ?? 0,     color: "#0C1220" },
+            { label: "Active (In Progress)", value: o?.active ?? 0, color: "#3B82F6" },
+            { label: "Shipped",           value: o?.shipped ?? 0,   color: "#4361EE" },
+            { label: "Delivered",         value: o?.delivered ?? 0, color: "#059669" },
+            { label: "RTO",               value: o?.rto ?? 0,       color: "#EF4444" },
+            { label: "Cancelled",         value: o?.cancelled ?? 0, color: "#9CA3AF" },
+            { label: "NDR",               value: o?.ndr ?? 0,       color: "#D97706" },
+          ].map(row => (
+            <div key={row.label} className="flex items-center justify-between py-2 border-b border-[#F3F4F6] last:border-0">
+              <span className="text-[13px] text-[#6B7280]">{row.label}</span>
+              <span className="text-[13px] font-bold" style={{ color: row.color }}>
+                {num(row.value)}
+              </span>
+            </div>
           ))}
         </div>
-      </div>
+      </SectionCard>
 
-      {/* ── Alert banners ── */}
-      <div className="px-4 md:px-8 space-y-3 mb-5">
-        {rejectedWithNotes.length > 0 && (
-          <div className="flex items-start gap-3 px-4 py-4 rounded-2xl"
-            style={{ background: "#FEF2F2", border: "1px solid #FECACA" }}>
-            <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-red-700">
-                {rejectedWithNotes.length} product{rejectedWithNotes.length > 1 ? "s" : ""} need attention
-              </p>
-              <ul className="mt-1 space-y-0.5">
-                {rejectedWithNotes.map((p) => (
-                  <li key={p.id} className="text-xs text-red-600 truncate">
-                    <span className="font-medium">{p.name}:</span> {p.adminNote}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <Link href="/supplier/products"
-              className="flex-shrink-0 text-xs font-semibold text-red-600 underline">
-              View
-            </Link>
-          </div>
-        )}
+      {/* ─────────────────────────────────────────────────────────────────────── */}
+      {/* 2. PRODUCTS                                                             */}
+      {/* ─────────────────────────────────────────────────────────────────────── */}
+      <SectionCard title="Products" sub="Your catalogue status on AXQEN">
 
-        {pendingOrders > 0 && (
-          <Link href="/supplier/orders"
-            className="flex items-center gap-3 px-4 py-3.5 rounded-2xl w-full text-left"
-            style={{ background: "#FFFBEB", border: "1px solid #FDE68A" }}>
-            <Clock className="w-4 h-4 text-amber-500 flex-shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-amber-700">
-                {pendingOrders} order{pendingOrders !== 1 ? "s" : ""} awaiting acceptance
-              </p>
-              <p className="text-xs text-amber-600">Accept promptly to maintain your rating</p>
-            </div>
-            <ArrowRight className="w-4 h-4 text-amber-500 flex-shrink-0" />
-          </Link>
-        )}
-
-        {lowStockItems > 0 && (
-          <div className="flex items-center gap-3 px-4 py-3.5 rounded-2xl"
-            style={{ background: "#FFF7ED", border: "1px solid #FDBA74" }}>
-            <Boxes className="w-4 h-4 text-orange-500 flex-shrink-0" />
-            <div className="flex-1">
-              <p className="text-sm font-semibold text-orange-700">{lowStockItems} inventory item{lowStockItems !== 1 ? "s" : ""} low on stock</p>
-              <p className="text-xs text-orange-600">Restock soon to avoid order failures</p>
-            </div>
-            <Link href="/supplier/inventory" className="flex-shrink-0 text-xs font-semibold text-orange-600 underline">Manage</Link>
-          </div>
-        )}
-      </div>
-
-      <div className="px-4 md:px-8 space-y-5 pb-8">
-
-        {/* ── Quick nav cards ── */}
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: "var(--text-muted)" }}>Quick Access</p>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            {[
-              {
-                label: "Order Queue",
-                sub: `${pendingOrders} pending · ${activeOrders} active`,
-                href: "/supplier/orders",
-                icon: ShoppingCart,
-                accentBg: "#EFF6FF",
-                accentColor: "#3B82F6",
-                badge: pendingOrders > 0 ? pendingOrders : null,
-                badgeColor: "#F59E0B",
-              },
-              {
-                label: "Purchase Orders",
-                sub: `${pendingPOs} pending · ${activePOs} active`,
-                href: "/supplier/purchase-orders",
-                icon: ClipboardList,
-                accentBg: "#F5F3FF",
-                accentColor: "#7C3AED",
-                badge: pendingPOs > 0 ? pendingPOs : null,
-                badgeColor: "#7C3AED",
-              },
-              {
-                label: "Inventory",
-                sub: `${totalInventoryItems} items tracked`,
-                href: "/supplier/inventory",
-                icon: Boxes,
-                accentBg: "#F0FDF4",
-                accentColor: "#16A34A",
-                badge: lowStockItems > 0 ? lowStockItems : null,
-                badgeColor: "#F97316",
-              },
-              {
-                label: "My Products",
-                sub: `${approvedProducts} approved · ${pendingProducts} pending`,
-                href: "/supplier/products",
-                icon: Package,
-                accentBg: "#EFF6FF",
-                accentColor: "#3B82F6",
-                badge: null,
-                badgeColor: "",
-              },
-              {
-                label: "Wallet",
-                sub: "Orders & remittances",
-                href: "/supplier/wallet",
-                icon: Wallet,
-                accentBg: "rgba(0,198,122,0.1)",
-                accentColor: "#059669",
-                badge: null,
-                badgeColor: "",
-              },
-              {
-                label: "Performance",
-                sub: `${dispatchedOrders} dispatched`,
-                href: "/supplier/performance",
-                icon: TrendingUp,
-                accentBg: "#F5F3FF",
-                accentColor: "#7C3AED",
-                badge: null,
-                badgeColor: "",
-              },
-            ].map(({ label, sub, href, icon: Icon, accentBg, accentColor, badge, badgeColor }) => (
-              <Link key={href} href={href}
-                className="rounded-2xl px-4 py-4 flex items-center gap-3 hover:shadow-md transition-shadow group relative"
-                style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
-                {badge !== null && (
-                  <span className="absolute top-2 right-2 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold text-white flex items-center justify-center"
-                    style={{ background: badgeColor }}>
-                    {badge}
-                  </span>
-                )}
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: accentBg }}>
-                  <Icon className="w-5 h-5" style={{ color: accentColor }} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold truncate" style={{ color: "var(--text-primary)" }}>{label}</p>
-                  <p className="text-xs mt-0.5 truncate" style={{ color: "var(--text-muted)" }}>{sub}</p>
-                </div>
-                <ChevronRight className="w-4 h-4 flex-shrink-0 opacity-0 group-hover:opacity-60 transition-opacity" style={{ color: "var(--text-muted)" }} />
-              </Link>
-            ))}
-          </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <StatTile
+            label="Total Listed"
+            value={num(p?.total ?? 0)}
+            valueColor="#0C1220"
+          />
+          <StatTile
+            label="Approved"
+            value={num(p?.approved ?? 0)}
+            sub="Live on platform"
+            valueColor="#059669"
+          />
+          <StatTile
+            label="Pending"
+            value={num(p?.pending ?? 0)}
+            sub="Under review"
+            valueColor={p?.pending ? "#D97706" : "#9CA3AF"}
+          />
+          <StatTile
+            label="Rejected"
+            value={num(p?.rejected ?? 0)}
+            sub={p?.rejected ? "Action required" : "All clear"}
+            valueColor={p?.rejected ? "#EF4444" : "#9CA3AF"}
+          />
         </div>
 
-        {/* ── Stats summary ── */}
-        <div className="rounded-2xl overflow-hidden" style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
-          <div className="px-5 py-3.5 flex items-center justify-between" style={{ borderBottom: "1px solid var(--border)" }}>
-            <div className="flex items-center gap-2">
-              <Activity className="w-4 h-4" style={{ color: "var(--text-muted)" }} />
-              <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Activity Summary</h2>
-            </div>
+        {/* Products bar chart */}
+        {p && p.total > 0 && (
+          <div>
+            <SubLabel>Product Status Breakdown</SubLabel>
+            <ResponsiveContainer width="100%" height={140}>
+              <BarChart
+                data={[
+                  { name: "Approved", v: p.approved, color: "#059669" },
+                  { name: "Pending",  v: p.pending,  color: "#D97706" },
+                  { name: "Rejected", v: p.rejected, color: "#EF4444" },
+                ]}
+                barCategoryGap="32%"
+              >
+                <CartesianGrid strokeDasharray="2 4" stroke="#F3F4F6" vertical={false} />
+                <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#9CA3AF" }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: "#9CA3AF" }} axisLine={false} tickLine={false} allowDecimals={false} />
+                <Tooltip {...TOOLTIP_STYLE} />
+                <Bar dataKey="v" radius={[3, 3, 0, 0]} maxBarSize={48}>
+                  {[{ color: "#059669" }, { color: "#D97706" }, { color: "#EF4444" }].map((d, i) => (
+                    <Cell key={i} fill={d.color} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-y md:divide-y-0" style={{ borderColor: "var(--border)" }}>
+        )}
+      </SectionCard>
+
+      {/* ─────────────────────────────────────────────────────────────────────── */}
+      {/* 3. EARNINGS                                                             */}
+      {/* ─────────────────────────────────────────────────────────────────────── */}
+      {e && (
+        <SectionCard title="Earnings" sub="Based on delivered orders · product cost deducted">
+
+          {/* Stat tiles */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <StatTile
+              label="Wallet Balance"
+              value={inr(e.walletBalance)}
+              sub="Revenue minus paid out"
+              valueColor="#059669"
+            />
+            <StatTile
+              label="Our Earnings"
+              value={inr(Math.max(0, e.ourEarnings))}
+              sub="Revenue minus product cost"
+              valueColor="#4361EE"
+            />
+            <StatTile
+              label="Upcoming"
+              value={inr(e.upcoming)}
+              sub="Dispatched, not delivered yet"
+              valueColor="#F59E0B"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <StatTile
+              label="Paid Out"
+              value={inr(e.paid)}
+              sub="Total remittances received"
+              valueColor="#7C3AED"
+            />
+            <StatTile
+              label="Product Costs"
+              value={inr(e.productCosts)}
+              sub={e.productCosts === 0 ? "Add cost price to products" : "From delivered orders"}
+              valueColor={e.productCosts === 0 ? "#9CA3AF" : "#EF4444"}
+            />
+          </div>
+
+          {/* Earnings bar chart */}
+          {plData.some(d => d.v > 0) && (
+            <div>
+              <SubLabel>Earnings Breakdown</SubLabel>
+              <ResponsiveContainer width="100%" height={180}>
+                <BarChart data={plData} barCategoryGap="28%">
+                  <CartesianGrid strokeDasharray="2 4" stroke="#F3F4F6" vertical={false} />
+                  <XAxis dataKey="name" tick={{ fontSize: 10, fill: "#9CA3AF" }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 11, fill: "#9CA3AF" }} axisLine={false} tickLine={false} tickFormatter={kInr} />
+                  <Tooltip {...TOOLTIP_STYLE} formatter={(v: unknown) => [inr(Number(v))]} />
+                  <Bar dataKey="v" radius={[3, 3, 0, 0]} maxBarSize={40}>
+                    {plData.map((d, i) => <Cell key={i} fill={d.color} />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* P&L line items */}
+          <div className="border-t border-[#F3F4F6] pt-4 space-y-0">
             {[
-              { label: "Total Products", value: totalProducts, sub: `${pendingProducts} pending review`, icon: Package, color: "#3B82F6" },
-              { label: "Active Orders", value: totalOrdersActive, sub: `${dispatchedOrders} dispatched`, icon: Truck, color: "#059669" },
-              { label: "Products Rejected", value: rejectedProducts, sub: rejectedProducts > 0 ? "Check admin notes" : "All clear", icon: XCircle, color: rejectedProducts > 0 ? "#EF4444" : "#9CA3AF" },
-              { label: "Inventory Items", value: totalInventoryItems, sub: `${lowStockItems} low stock`, icon: Boxes, color: lowStockItems > 0 ? "#F97316" : "#059669" },
-            ].map(({ label, value, sub, icon: Icon, color }) => (
-              <div key={label} className="px-5 py-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <Icon className="w-4 h-4" style={{ color }} />
-                  <p className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>{label}</p>
-                </div>
-                <p className="text-2xl font-bold" style={{ color: "var(--text-primary)" }}>{value}</p>
-                <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>{sub}</p>
+              { label: "Delivered Revenue",         value: e.deliveredRevenue, sign: "+", color: "#4361EE" },
+              { label: "− Product Costs",           value: e.productCosts,     sign: "−", color: "#EF4444", dim: e.productCosts === 0 },
+              { label: "= Our Earnings (gross)",    value: Math.max(0, e.ourEarnings), sign: "=", color: e.ourEarnings >= 0 ? "#059669" : "#EF4444", bold: true },
+              { label: "Paid Out (Remittances)",    value: e.paid,             sign: "−", color: "#7C3AED" },
+              { label: "= Wallet Balance",          value: e.walletBalance,    sign: "=", color: "#059669", bold: true },
+              { label: "Upcoming (Dispatched)",     value: e.upcoming,         sign: "+", color: "#F59E0B" },
+            ].map((row, i) => (
+              <div key={i} className={`flex items-center justify-between py-2.5 border-b border-[#F9FAFB] ${row.bold ? "bg-[#FAFBFF]" : ""}`}>
+                <p className={`text-[13px] ${row.bold ? "font-black text-[#0C1220]" : "text-[#6B7280]"}`}>{row.label}</p>
+                {row.dim ? (
+                  <p className="text-[12px] text-[#D1D5DB]">not tracked</p>
+                ) : (
+                  <p className={`text-[13px] ${row.bold ? "font-black" : "font-bold"}`} style={{ color: row.color }}>
+                    {row.sign}{inr(row.value)}
+                  </p>
+                )}
               </div>
             ))}
           </div>
-        </div>
+        </SectionCard>
+      )}
 
-        {/* ── Recent Orders ── */}
-        <div className="rounded-2xl overflow-hidden" style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
-          <div className="px-5 py-3.5 flex items-center justify-between" style={{ borderBottom: "1px solid var(--border)" }}>
-            <div className="flex items-center gap-2">
-              <ShoppingCart className="w-4 h-4" style={{ color: "var(--text-muted)" }} />
-              <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Recent Orders</h2>
-            </div>
-            <Link href="/supplier/orders"
-              className="flex items-center gap-1 text-xs font-semibold"
-              style={{ color: "#4361EE" }}>
-              View all <ArrowRight className="w-3 h-3" />
-            </Link>
-          </div>
+      {/* ─────────────────────────────────────────────────────────────────────── */}
+      {/* 4. STATE-WISE DATA                                                      */}
+      {/* ─────────────────────────────────────────────────────────────────────── */}
+      {states.length > 0 && (
+        <SectionCard title="State-wise Orders" sub="Delivered vs RTO by state · excludes cancelled">
 
-          {recentOrders.length === 0 ? (
-            <div className="py-12 flex flex-col items-center gap-3">
-              <ShoppingCart className="w-8 h-8" style={{ color: "var(--border)" }} />
-              <p className="text-sm" style={{ color: "var(--text-muted)" }}>No orders assigned yet</p>
-              <p className="text-xs text-center px-8" style={{ color: "var(--text-muted)" }}>
-                Orders from sellers will appear here once the admin assigns them to you.
-              </p>
-            </div>
-          ) : (
-            <div className="divide-y" style={{ borderColor: "var(--border)" }}>
-              {recentOrders.map((order) => {
-                const badge = order.supplierStatus ? SUPPLIER_STATUS_BADGE[order.supplierStatus] : null;
-                return (
-                  <div key={order.id} className="px-5 py-3.5 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      {badge && (
-                        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: badge.dot }} />
-                      )}
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold font-mono" style={{ color: "var(--text-primary)" }}>
-                          #{order.externalOrderId}
-                        </p>
-                        <p className="text-xs mt-0.5 truncate" style={{ color: "var(--text-muted)" }}>
-                          {order.customerName ?? "—"} · ₹{order.totalAmount.toLocaleString("en-IN")}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      {badge && (
-                        <span className="hidden sm:inline-flex px-2.5 py-1 rounded-full text-xs font-semibold"
-                          style={{ background: badge.bg, color: badge.text }}>
-                          {badge.label}
-                        </span>
-                      )}
-                      <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                        {new Date(order.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
+          {/* Summary tiles */}
+          {(() => {
+            const topVol   = states[0];
+            const highRto  = [...states].sort((a, b) => b.rtoPct - a.rtoPct)[0];
+            const bestDel  = [...states].filter(s => s.total >= 3).sort((a, b) => b.deliveryPct - a.deliveryPct)[0];
+            const totalSh  = states.reduce((s, r) => s + r.total, 0);
+            return (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <StatTile label="Total Shipments"    value={num(totalSh)}         sub={`${states.length} states`} />
+                <StatTile label="Top State"          value={topVol?.state ?? "—"} sub={`${num(topVol?.total ?? 0)} orders`}   valueColor="#4361EE" />
+                <StatTile label="Highest RTO State"  value={highRto?.state ?? "—"} sub={`${highRto?.rtoPct ?? 0}% RTO`}      valueColor="#EF4444" />
+                <StatTile label="Best Delivery"      value={bestDel?.state ?? "—"} sub={bestDel ? `${bestDel.deliveryPct}% delivery` : "—"} valueColor="#059669" />
+              </div>
+            );
+          })()}
+
+          {/* State bar chart */}
+          {stateChart.length > 0 && (
+            <div>
+              <SubLabel>Top 10 States — Delivered vs RTO</SubLabel>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={stateChart} barGap={0} barCategoryGap="28%">
+                  <CartesianGrid strokeDasharray="2 4" stroke="#F3F4F6" vertical={false} />
+                  <XAxis dataKey="state" tick={{ fontSize: 10, fill: "#9CA3AF" }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 11, fill: "#9CA3AF" }} axisLine={false} tickLine={false} allowDecimals={false} />
+                  <Tooltip {...TOOLTIP_STYLE} />
+                  <Bar dataKey="Delivered" stackId="s" fill="#4361EE" maxBarSize={28} />
+                  <Bar dataKey="RTO"       stackId="s" fill="#EF4444" radius={[3, 3, 0, 0]} maxBarSize={28} />
+                </BarChart>
+              </ResponsiveContainer>
+              <div className="flex items-center gap-4 mt-2">
+                {[["#4361EE", "Delivered"], ["#EF4444", "RTO"]].map(([c, l]) => (
+                  <span key={l} className="flex items-center gap-1.5 text-[11px] text-[#9CA3AF]">
+                    <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: c }} />{l}
+                  </span>
+                ))}
+              </div>
             </div>
           )}
+
+          {/* State table */}
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-[#F3F4F6]">
+                  {["State", "Orders", "Delivered", "RTO", "Delivery %"].map(h => (
+                    <th
+                      key={h}
+                      className="px-2 py-2 text-[11px] font-bold text-[#9CA3AF] uppercase tracking-wide"
+                      style={{ textAlign: h === "State" ? "left" : "right" }}
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#F9FAFB]">
+                {states.map((row, i) => (
+                  <tr key={i} className="hover:bg-[#FAFBFF]">
+                    <td className="px-2 py-2.5 text-[13px] font-medium text-[#0C1220]">{row.state}</td>
+                    <td className="px-2 py-2.5 text-[13px] font-semibold text-[#374151] text-right">{row.total}</td>
+                    <td className="px-2 py-2.5 text-[13px] text-[#059669] text-right">{row.delivered}</td>
+                    <td className="px-2 py-2.5 text-[13px] text-[#EF4444] text-right">{row.rto}</td>
+                    <td className="px-2 py-2.5 text-right">
+                      <span className="text-[12px] font-bold" style={{
+                        color: row.deliveryPct >= 70 ? "#059669" : row.deliveryPct >= 40 ? "#D97706" : "#EF4444",
+                      }}>
+                        {row.deliveryPct}%
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </SectionCard>
+      )}
+
+      {/* ── Empty state ── */}
+      {!loading && states.length === 0 && o?.total === 0 && (
+        <div className="bg-white rounded-xl border border-[#E8EDF6] p-10 text-center">
+          <p className="text-[14px] font-semibold text-[#9CA3AF]">No orders yet</p>
+          <p className="text-[12px] text-[#C4C9D4] mt-1">State data will appear once orders are assigned to you.</p>
         </div>
+      )}
 
-        {/* ── Secondary links ── */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <Link href="/supplier/settlements"
-            className="flex items-center gap-4 px-5 py-4 rounded-2xl hover:shadow-md transition-shadow group"
-            style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "#F0FDF4" }}>
-              <Receipt className="w-5 h-5 text-green-600" />
-            </div>
-            <div className="flex-1">
-              <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Settlements</p>
-              <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>View payment history from admin</p>
-            </div>
-            <ChevronRight className="w-4 h-4 opacity-0 group-hover:opacity-60 transition-opacity" style={{ color: "var(--text-muted)" }} />
-          </Link>
-
-          <Link href="/supplier/profile"
-            className="flex items-center gap-4 px-5 py-4 rounded-2xl hover:shadow-md transition-shadow group"
-            style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "#EFF6FF" }}>
-              <CheckCircle className="w-5 h-5 text-blue-500" />
-            </div>
-            <div className="flex-1">
-              <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Profile & Shipping</p>
-              <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>Manage your account & shipping partners</p>
-            </div>
-            <ChevronRight className="w-4 h-4 opacity-0 group-hover:opacity-60 transition-opacity" style={{ color: "var(--text-muted)" }} />
-          </Link>
-        </div>
-
-      </div>
+      <div className="h-4" />
     </div>
   );
 }

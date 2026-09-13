@@ -100,17 +100,24 @@ export async function POST(req: NextRequest) {
   const token = process.env.DELHIVERY_API_TOKEN;
   if (!token) return NextResponse.json({ error: "Delhivery not configured" }, { status: 500 });
 
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000);
+
   const orders = await prisma.order.findMany({
     where: {
       sellerId: session.user.id,
       awbNumber: { not: null },
-      status: { notIn: ["DELIVERED", "CANCELLED", "RTO"] },
       ndrActionTaken: null,
+      OR: [
+        { status: { notIn: ["DELIVERED", "CANCELLED", "RTO"] } },
+        { status: "RTO", ndrStatus: null, createdAt: { gte: thirtyDaysAgo } },
+      ],
     },
     select: { id: true, awbNumber: true, ndrAttempts: true, ndrCreatedAt: true },
   });
 
-  if (orders.length === 0) return NextResponse.json({ found: 0, debug: "No active AWB orders" });
+  if (orders.length === 0) {
+    return NextResponse.json({ found: 0, debug: "No orders with AWB found (check if AWBs are set on orders)" });
+  }
 
   const waybills = orders.map(o => o.awbNumber).join(",");
   let found = 0;

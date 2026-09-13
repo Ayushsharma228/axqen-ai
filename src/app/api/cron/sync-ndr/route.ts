@@ -38,11 +38,17 @@ export async function GET(req: NextRequest) {
   const token = process.env.DELHIVERY_API_TOKEN;
   if (!token) return NextResponse.json({ error: "Delhivery not configured" }, { status: 500 });
 
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000);
+
   const orders = await prisma.order.findMany({
     where: {
       awbNumber: { not: null },
-      status: { notIn: ["DELIVERED", "CANCELLED", "RTO"] },
       ndrActionTaken: null,
+      // Include RTO orders from last 30 days that never had NDR captured
+      OR: [
+        { status: { notIn: ["DELIVERED", "CANCELLED", "RTO"] } },
+        { status: "RTO", ndrStatus: null, createdAt: { gte: thirtyDaysAgo } },
+      ],
     },
     select: {
       id: true, awbNumber: true, ndrAttempts: true, ndrCreatedAt: true,

@@ -6,16 +6,30 @@ const STATUS_RANK: Record<string, number> = {
   DELIVERED: 4, RTO: 4, CANCELLED: 4,
 };
 
-const isRTO = (s: string) =>
-  s.includes("rto") || s.includes("reverse") || s.includes("return");
+// "return recommended" is NDR (courier recommending RTO) — not actual RTO yet.
+// Only treat as RTO when the package is physically being returned.
+const RTO_PHRASES = [
+  "rto", "return to origin", "returned to origin",
+  "reverse transit", "reverse pickup", "rt initiated",
+  "rto initiated", "returned",
+];
+const NDR_PHRASES = ["return recommended", "return recommendation", "return recom"];
+
+function isActualRTO(s: string, returnedAt?: string | null): boolean {
+  if (returnedAt) return true;
+  const lower = s.toLowerCase();
+  // Explicitly exclude NDR-phase statuses even if they contain "return"
+  if (NDR_PHRASES.some(p => lower.includes(p))) return false;
+  return RTO_PHRASES.some(p => lower.includes(p));
+}
 
 function mapDelhiveryStatus(status: string, returnedAt?: string | null): string {
   const s = status?.toLowerCase() ?? "";
-  if (isRTO(s) || returnedAt)                                     return "RTO";
-  if (s.includes("delivered"))                                    return "DELIVERED";
-  if (s.includes("transit") || s.includes("out for delivery"))   return "IN_TRANSIT";
-  if (s.includes("dispatch") || s.includes("picked"))            return "SHIPPED";
-  if (s.includes("cancel"))                                       return "CANCELLED";
+  if (isActualRTO(s, returnedAt))                                  return "RTO";
+  if (s.includes("delivered"))                                     return "DELIVERED";
+  if (s.includes("transit") || s.includes("out for delivery"))    return "IN_TRANSIT";
+  if (s.includes("dispatch") || s.includes("picked"))             return "SHIPPED";
+  if (s.includes("cancel"))                                        return "CANCELLED";
   return "";
 }
 

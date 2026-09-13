@@ -89,7 +89,13 @@ export default function NdrPage() {
     setSyncing(true); setSyncMsg("");
     const res = await fetch("/api/seller/ndr/sync", { method: "POST" });
     const data = await res.json();
-    setSyncMsg(`${data.found ?? 0} NDR(s) found`);
+    if (!res.ok) {
+      setSyncMsg(`Error: ${data.error || "Sync failed"}`);
+    } else if ((data.found ?? 0) === 0) {
+      setSyncMsg(data.debug ?? "0 NDRs found — AWBs may not be set on orders");
+    } else {
+      setSyncMsg(`${data.found} NDR(s) synced from Delhivery`);
+    }
     await fetchNdr();
     setSyncing(false);
   }
@@ -194,10 +200,13 @@ export default function NdrPage() {
               <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
             </div>
           ) : pending.length === 0 ? (
-            <div className="card py-16 flex flex-col items-center gap-3 text-center">
+            <div className="card py-12 flex flex-col items-center gap-3 text-center">
               <CheckCircle className="w-10 h-10 text-green-400" />
               <p className="text-sm text-gray-500 font-medium">No pending NDRs</p>
-              <p className="text-xs text-gray-400">Click "Sync NDRs" to check for failed deliveries</p>
+              <p className="text-xs text-gray-400 max-w-xs">
+                Click &ldquo;Sync NDRs&rdquo; to pull failed delivery data from Delhivery.
+                If AWBs are not set on your orders, contact admin to bulk-import them.
+              </p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -208,21 +217,30 @@ export default function NdrPage() {
                 const age = ndrAge(order.ndrCreatedAt);
                 const ageStyle = age ? AGE_STYLE[age.level] : null;
                 const isEscalated = age?.level === "escalated";
+                // Orders that became RTO without NDR action (fell through the gap)
+                const isAlreadyRto = !order.ndrStatus && order.ndrAttempts === 0;
 
                 return (
                   <div key={order.id} className="card overflow-hidden"
-                    style={{ borderColor: isEscalated ? "#FECACA" : undefined }}>
+                    style={{ borderColor: isEscalated ? "#FECACA" : isAlreadyRto ? "#FED7AA" : undefined }}>
                     {/* Header row */}
                     <div className="px-5 py-4 flex items-center gap-4 cursor-pointer"
                       onClick={() => setExpanded(isExpanded ? null : order.id)}>
-                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${isEscalated ? "bg-red-100" : "bg-red-50"}`}>
+                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${isEscalated ? "bg-red-100" : isAlreadyRto ? "bg-orange-100" : "bg-red-50"}`}>
                         {isEscalated
                           ? <Flame className="w-4 h-4 text-red-600" />
-                          : <AlertTriangle className="w-4 h-4 text-red-500" />}
+                          : isAlreadyRto
+                            ? <PackageX className="w-4 h-4 text-orange-600" />
+                            : <AlertTriangle className="w-4 h-4 text-red-500" />}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-semibold text-sm text-gray-900">#{order.externalOrderId}</span>
+                          {isAlreadyRto && (
+                            <span className="px-2 py-0.5 bg-orange-50 text-orange-700 text-xs font-semibold rounded-full border border-orange-200">
+                              Auto-RTO — Sync to get NDR details
+                            </span>
+                          )}
                           <span className="px-2 py-0.5 bg-red-50 text-red-600 text-xs font-semibold rounded-full">
                             {order.ndrAttempts} attempt{order.ndrAttempts !== 1 ? "s" : ""}
                           </span>

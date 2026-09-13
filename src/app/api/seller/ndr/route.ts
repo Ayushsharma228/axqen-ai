@@ -10,12 +10,18 @@ export async function GET(req: NextRequest) {
 
   const escalationThreshold = new Date(Date.now() - 2 * 86400000); // 2 days ago
 
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000);
+
   const [orders, actioned, escalatedCount] = await Promise.all([
     prisma.order.findMany({
       where: {
         sellerId: session.user.id,
-        ndrStatus: { not: null },
         ndrActionTaken: null,
+        // Show: orders with NDR data, OR orders that became RTO without NDR captured
+        OR: [
+          { ndrStatus: { not: null } },
+          { status: "RTO", ndrStatus: null, awbNumber: { not: null }, createdAt: { gte: thirtyDaysAgo } },
+        ],
       },
       select: {
         id: true, externalOrderId: true, customerName: true,

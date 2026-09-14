@@ -20,7 +20,7 @@ const NAV: NavItem[] = [
   { label: "Fulfilment",          href: "/seller/deliveries",           icon: Truck },
   { label: "Products",            href: "/seller/catalog",              icon: Package },
   { label: "Customers",           href: "/seller/customers",            icon: Users },
-  { label: "Meta Ads",            href: "/seller/meta-ads",             icon: Megaphone },
+  { label: "Meta Spends",          href: "/seller/meta-ads",             icon: Megaphone },
   { label: "Finance",             href: "/seller/wallet",               icon: Wallet },
   { label: "Intelligence",        href: "/seller/intelligence",         icon: Brain, isNew: true },
 ];

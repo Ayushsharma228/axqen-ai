@@ -4,22 +4,24 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
-  LayoutDashboard, ShoppingCart, Truck, Wallet, MoreHorizontal,
+  LayoutDashboard, ShoppingCart, Wallet, MoreHorizontal,
   Package, Users, Megaphone, Brain, HelpCircle, X, LogOut,
+  ClipboardCheck, Truck,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 
 const PRIMARY = [
-  { label: "Home",     href: "/seller",            icon: LayoutDashboard, exact: true },
-  { label: "Orders",   href: "/seller/orders",     icon: ShoppingCart },
-  { label: "Deliver",  href: "/seller/deliveries", icon: Truck },
-  { label: "Finance",  href: "/seller/wallet",     icon: Wallet },
+  { label: "Home",    href: "/seller",                    icon: LayoutDashboard, exact: true },
+  { label: "Confirm", href: "/seller/order-confirmation", icon: ClipboardCheck,  isNew: true },
+  { label: "Orders",  href: "/seller/orders",             icon: ShoppingCart },
+  { label: "Finance", href: "/seller/wallet",             icon: Wallet },
 ];
 
 const MORE = [
+  { label: "Fulfilment",   href: "/seller/deliveries",   icon: Truck },
   { label: "Products",     href: "/seller/catalog",      icon: Package },
   { label: "Customers",    href: "/seller/customers",    icon: Users },
-  { label: "Meta Ads",     href: "/seller/meta-ads",     icon: Megaphone },
+  { label: "Meta Spends",  href: "/seller/meta-ads",     icon: Megaphone },
   { label: "Intelligence", href: "/seller/intelligence", icon: Brain },
   { label: "Support",      href: "/seller/support",      icon: HelpCircle },
 ];
@@ -145,7 +147,7 @@ export function MobileBottomNav({ userName, plan }: { userName?: string; plan?: 
               <Link
                 key={item.href}
                 href={item.href}
-                className="flex flex-col items-center gap-1 px-3 py-1.5 rounded-xl transition-colors flex-1"
+                className="flex flex-col items-center gap-1 px-3 py-1.5 rounded-xl transition-colors flex-1 relative"
               >
                 <div
                   className="w-7 h-7 rounded-lg flex items-center justify-center"
@@ -155,6 +157,12 @@ export function MobileBottomNav({ userName, plan }: { userName?: string; plan?: 
                     className="w-[18px] h-[18px]"
                     style={{ color: active ? "#4361EE" : "#9CA3AF" }}
                   />
+                  {item.isNew && !active && (
+                    <span
+                      className="absolute top-1 right-2.5 w-1.5 h-1.5 rounded-full"
+                      style={{ background: "#059669" }}
+                    />
+                  )}
                 </div>
                 <span
                   className="text-[10px] font-semibold"

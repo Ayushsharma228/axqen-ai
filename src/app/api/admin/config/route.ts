@@ -11,6 +11,11 @@ const DEFAULTS: Record<string, { value: string; label: string; description: stri
   ARYA_OUTREACH_TEMPLATE:   { value: "hello_world",   label: "Arya Outreach Template",     description: "Meta-approved WhatsApp template name for first outbound message", unit: "", type: "string" },
   ARYA_FOLLOWUP_TEMPLATE:   { value: "hello_world",   label: "Arya Follow-up Template",    description: "Meta-approved WhatsApp template name for automated follow-ups", unit: "", type: "string" },
   ARYA_TEMPLATE_LANG:       { value: "en_US",         label: "Template Language Code",     description: "Language code for WhatsApp templates (e.g. en_US, hi, en_IN)", unit: "", type: "string" },
+  // HillTeck integration
+  HILLTECK_API_KEY:         { value: "",              label: "HillTeck API Key",            description: "API key from HillTeck partner dashboard", unit: "", type: "string" },
+  HILLTECK_BASE_URL:        { value: "https://api.hillteck.com", label: "HillTeck Base URL", description: "API base URL provided by HillTeck team", unit: "", type: "string" },
+  HILLTECK_ENABLED:         { value: "false",         label: "HillTeck Auto-Verify",        description: "Automatically send all new COD orders to HillTeck for verification", unit: "", type: "string" },
+  HILLTECK_WEBHOOK_SECRET:  { value: "",              label: "HillTeck Webhook Secret",     description: "Webhook signing secret from HillTeck (for signature verification)", unit: "", type: "string" },
 };
 
 export async function GET(req: NextRequest) {

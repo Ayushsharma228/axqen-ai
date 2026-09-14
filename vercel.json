@@ -19,6 +19,10 @@
     {
       "path": "/api/cron/sync-meta-ads",
       "schedule": "0 */8 * * *"
+    },
+    {
+      "path": "/api/cron/verify-cod-orders",
+      "schedule": "0 * * * *"
     }
   ]
 }

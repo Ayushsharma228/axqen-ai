@@ -75,7 +75,7 @@ const STREET_RE =
 const LANDMARK_RE =
   /(near|opp(osite)?|behind|above|below|next\s*to|beside|in\s*front\s*of|adjacent|landmark)/i;
 
-function scoreAddress(addr: AddressData): { score: number; signals: string[] } {
+function scoreAddress(addr: AddressData): { score: number; signals: string[]; missingHouseNo: boolean } {
   let score = 0;
   const signals: string[] = [];
   const fullText = addr.address?.trim() ?? "";
@@ -100,13 +100,13 @@ function scoreAddress(addr: AddressData): { score: number; signals: string[] } {
     signals.push("Missing state");
   }
 
-  // ── House number ───────────────────────────────────────────────────────────
+  // ── House number (hard signal — missing alone forces MEDIUM floor) ─────────
   const hasHouseNo = addr.houseNo?.trim()
     ? addr.houseNo.trim().length > 0
     : HOUSE_NO_RE.test(fullText);
   if (!hasHouseNo) {
     score += 10;
-    signals.push("Missing house / flat number");
+    signals.push("Incomplete address — house / flat number missing");
   }
 
   // ── Street address ─────────────────────────────────────────────────────────
@@ -129,7 +129,7 @@ function scoreAddress(addr: AddressData): { score: number; signals: string[] } {
     signals.push("No landmark or nearby reference");
   }
 
-  return { score: Math.min(35, score), signals };
+  return { score: Math.min(35, score), signals, missingHouseNo: !hasHouseNo };
 }
 
 // ── 3. Pin code RTO rate (0–20) ─────────────────────────────────────────────
@@ -308,9 +308,13 @@ export async function batchPredictRtoRisk(
     const rawTotal  = phoneR.score + addrR.score + histR.score + pinR.score + velR.score + payScore;
     const total     = Math.min(100, rawTotal);
 
+    // Hard rule: no house number → floor at MEDIUM (incomplete address)
+    const baseLevel = scoreLevel(total);
+    const level: RtoRiskLevel = addrR.missingHouseNo && baseLevel === "LOW" ? "MEDIUM" : baseLevel;
+
     result[order.id] = {
       score: total,
-      level: scoreLevel(total),
+      level,
       breakdown: {
         phone:    phoneR.score,
         address:  addrR.score,

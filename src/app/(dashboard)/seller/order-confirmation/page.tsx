@@ -391,9 +391,11 @@ export default function OrderConfirmationPage() {
                     )}
                   </div>
 
-                  {/* Address */}
-                  {addrLine && !isEditing && (
-                    <p className="text-[11px] break-words mb-0.5" style={{ color: "#9CA3AF" }}>{addrLine}</p>
+                  {/* Address — shown whenever any address data exists */}
+                  {!isEditing && (
+                    <p className="text-[12px] break-words mb-0.5" style={{ color: addrLine ? "#374151" : "#9CA3AF" }}>
+                      {addrLine || "No address on file"}
+                    </p>
                   )}
 
                   {/* Items + conf status */}

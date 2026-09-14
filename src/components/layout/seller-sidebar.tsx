@@ -8,19 +8,21 @@ import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, ShoppingCart, Truck, Package,
   Users, Megaphone, Wallet, Brain, HelpCircle, LogOut,
+  ClipboardCheck,
 } from "lucide-react";
 
-interface NavItem { label: string; href: string; icon: React.ElementType; exact?: boolean }
+interface NavItem { label: string; href: string; icon: React.ElementType; exact?: boolean; isNew?: boolean }
 
 const NAV: NavItem[] = [
-  { label: "Dashboard",    href: "/seller",              icon: LayoutDashboard, exact: true },
-  { label: "Orders",       href: "/seller/orders",       icon: ShoppingCart },
-  { label: "Fulfilment",   href: "/seller/deliveries",   icon: Truck },
-  { label: "Products",     href: "/seller/catalog",      icon: Package },
-  { label: "Customers",    href: "/seller/customers",    icon: Users },
-  { label: "Meta Ads",     href: "/seller/meta-ads",     icon: Megaphone },
-  { label: "Finance",      href: "/seller/wallet",       icon: Wallet },
-  { label: "Intelligence", href: "/seller/intelligence", icon: Brain },
+  { label: "Dashboard",           href: "/seller",                      icon: LayoutDashboard, exact: true },
+  { label: "Orders",              href: "/seller/orders",               icon: ShoppingCart },
+  { label: "Order Confirmation",  href: "/seller/order-confirmation",   icon: ClipboardCheck, isNew: true },
+  { label: "Fulfilment",          href: "/seller/deliveries",           icon: Truck },
+  { label: "Products",            href: "/seller/catalog",              icon: Package },
+  { label: "Customers",           href: "/seller/customers",            icon: Users },
+  { label: "Meta Ads",            href: "/seller/meta-ads",             icon: Megaphone },
+  { label: "Finance",             href: "/seller/wallet",               icon: Wallet },
+  { label: "Intelligence",        href: "/seller/intelligence",         icon: Brain, isNew: true },
 ];
 
 export function SellerSidebar({ plan, userName, userEmail }: {
@@ -87,7 +89,15 @@ export function SellerSidebar({ plan, userName, userEmail }: {
                 className="w-[17px] h-[17px] flex-shrink-0"
                 style={{ color: active ? "#4361EE" : "#9CA3AF" }}
               />
-              {item.label}
+              <span className="flex-1">{item.label}</span>
+              {item.isNew && (
+                <span
+                  className="text-[9px] font-bold px-1.5 py-0.5 rounded-full leading-none"
+                  style={{ background: active ? "#4361EE" : "#ECFDF5", color: active ? "white" : "#059669" }}
+                >
+                  NEW
+                </span>
+              )}
             </Link>
           );
         })}

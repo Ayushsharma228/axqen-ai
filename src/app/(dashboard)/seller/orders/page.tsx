@@ -66,7 +66,11 @@ export default function SellerOrdersPage() {
   const [orders,       setOrders]       = useState<Order[]>([]);
   const [stats,        setStats]        = useState<Stats>({ totalOrders: 0, totalRevenue: 0, totalItems: 0, topProduct: null });
   const [ndrCount,     setNdrCount]     = useState(0);
-  const [rtoScores,    setRtoScores]    = useState<Record<string, { score: number; level: string; signals: string[] }>>({});
+  const [rtoScores,    setRtoScores]    = useState<Record<string, {
+    score: number; level: string; signals: string[];
+    breakdown?: { phone: number; address: number; pincode: number; history: number; velocity: number; payment: number };
+    pincodeStats?: { rtoRate: number; sampleSize: number } | null;
+  }>>({});
   const [loading,      setLoading]      = useState(true);
   const [refreshing,   setRefreshing]   = useState(false);
   const [search,       setSearch]       = useState("");
@@ -507,11 +511,18 @@ export default function SellerOrdersPage() {
                             VERY_HIGH: { bg: "#FEF2F2", color: "#DC2626", label: "Very High" },
                           };
                           const cfg = RISK[r.level] ?? RISK.LOW;
+                          const bd  = r.breakdown;
+                          const breakdown = bd
+                            ? `\nBreakdown:\n  Phone:    ${bd.phone}/30\n  Address:  ${bd.address}/35\n  Pin code: ${bd.pincode}/20\n  History:  ${bd.history}/35\n  Velocity: ${bd.velocity}/10\n  Payment:  ${bd.payment}/20`
+                            : "";
+                          const signals = r.signals.length
+                            ? `\n\nSignals:\n${r.signals.map(s => "  • " + s).join("\n")}`
+                            : "";
                           return (
                             <span
                               className="px-2 py-0.5 rounded-full text-[10px] font-bold cursor-help whitespace-nowrap"
                               style={{ background: cfg.bg, color: cfg.color }}
-                              title={`RTO Score: ${r.score}/100\n${r.signals.join("\n") || "No risk signals"}`}
+                              title={`RTO Risk — ${r.score}/100 (${r.level.replace("_", " ")})${breakdown}${signals}`}
                             >
                               {cfg.label}
                             </span>

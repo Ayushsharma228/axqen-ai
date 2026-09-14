@@ -7,7 +7,7 @@ export interface RtoScore {
   level: RtoRiskLevel;
   breakdown: {
     phone:    number;      // 0–30
-    address:  number;      // 0–35
+    address:  number;      // 0–40
     pincode:  number;      // 0–20
     history:  number;      // 0–35
     velocity: number;      // 0–10
@@ -63,9 +63,10 @@ function scorePhone(phone: string | undefined): { score: number; signals: string
 // Checks 5 explicit components — uses structured fields first, falls back to
 // parsing the raw `address` text for backward compatibility with old orders.
 
-// House / flat / plot number patterns
+// House / flat / plot number — requires an explicit keyword or unambiguous format.
+// Intentionally strict: bare numbers like "5" in "Sector 5" or "Phase 3" must NOT match.
 const HOUSE_NO_RE =
-  /\b(h\.?no\.?|house\s*no|flat\s*no?|f\.?no\.?|plot\s*no?|door\s*no?|d\.?no\.?|s\.?no\.?|room\s*no?|\d{1,4}[\/\-]\d{1,4}|\b[A-Z]?\d{1,4}[A-Z]?\b)/i;
+  /\b(h\.?\s*no\.?|house\s*no\.?|flat\s*no?\.?|f\.?\s*no\.?|plot\s*no?\.?|door\s*no?\.?|d\.?\s*no\.?|apt\.?\s*no?\.?|apartment\s*no?\.?|room\s*no?\.?|villa\s*no?\.?|bungalow\s*no?\.?|\d{1,4}\s*[\/\-]\s*\d{1,4}|\d{1,4}[A-Za-z](?=[\s,]|$)|#\s*\d{1,4}|\bflat\b|\bapartment\b|\bbungalow\b)/i;
 
 // Street / locality identifiers
 const STREET_RE =
@@ -80,17 +81,26 @@ function scoreAddress(addr: AddressData): { score: number; signals: string[]; mi
   const signals: string[] = [];
   const fullText = addr.address?.trim() ?? "";
 
+  // ── Very short / blank address — catch-all before individual checks ─────────
+  if (fullText.length < 8 && !addr.houseNo && !addr.street) {
+    return {
+      score: 35,
+      signals: ["Incomplete address — very short or blank"],
+      missingHouseNo: true,
+    };
+  }
+
   // ── Pincode ────────────────────────────────────────────────────────────────
   const pincode = addr.pincode?.trim() ?? "";
   if (!pincode || !/^\d{6}$/.test(pincode)) {
-    score += 15;
+    score += 12;
     signals.push("Missing or invalid pincode");
   }
 
   // ── City ───────────────────────────────────────────────────────────────────
   const city = addr.city?.trim() ?? "";
   if (!city || city.length < 2) {
-    score += 6;
+    score += 5;
     signals.push("Missing city");
   }
 
@@ -101,11 +111,12 @@ function scoreAddress(addr: AddressData): { score: number; signals: string[]; mi
   }
 
   // ── House number (hard signal — missing alone forces MEDIUM floor) ─────────
+  // Weight raised: no house no + no street = 18+12 = 30 → MEDIUM on its own
   const hasHouseNo = addr.houseNo?.trim()
     ? addr.houseNo.trim().length > 0
     : HOUSE_NO_RE.test(fullText);
   if (!hasHouseNo) {
-    score += 10;
+    score += 18;
     signals.push("Incomplete address — house / flat number missing");
   }
 
@@ -113,9 +124,9 @@ function scoreAddress(addr: AddressData): { score: number; signals: string[]; mi
   const streetValue = addr.street?.trim() ?? "";
   const hasStreet = streetValue.length > 0
     ? true
-    : fullText.length >= 15 && STREET_RE.test(fullText);
+    : fullText.length >= 10 && STREET_RE.test(fullText);
   if (!hasStreet) {
-    score += 7;
+    score += 12;
     signals.push("Missing street / locality name");
   }
 
@@ -125,11 +136,11 @@ function scoreAddress(addr: AddressData): { score: number; signals: string[]; mi
     ? true
     : LANDMARK_RE.test(fullText);
   if (!hasLandmark) {
-    score += 3;
+    score += 5;
     signals.push("No landmark or nearby reference");
   }
 
-  return { score: Math.min(35, score), signals, missingHouseNo: !hasHouseNo };
+  return { score: Math.min(40, score), signals, missingHouseNo: !hasHouseNo };
 }
 
 // ── 3. Pin code RTO rate (0–20) ─────────────────────────────────────────────

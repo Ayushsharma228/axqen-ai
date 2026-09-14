@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   RefreshCw, Download, ShoppingCart, CheckCircle, XCircle,
-  Loader2, ExternalLink, Copy, CopyCheck, Search, X,
+  Loader2, ExternalLink, Copy, CopyCheck, Search, X, AlertTriangle,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -74,6 +74,7 @@ export default function SellerOrdersPage() {
   const [cancelling,   setCancelling]   = useState<string | null>(null);
   const [copiedId,     setCopiedId]     = useState<string | null>(null);
   const [syncError,    setSyncError]    = useState("");
+  const [syncStale,    setSyncStale]    = useState<{ lastSyncAt: string | null; lastSyncError: string | null } | null>(null);
   const [selected,     setSelected]     = useState<Set<string>>(new Set());
   const [showImport,   setShowImport]   = useState(false);
   const [importFile,   setImportFile]   = useState<File | null>(null);
@@ -91,12 +92,26 @@ export default function SellerOrdersPage() {
   const fetchOrders = useCallback(async () => {
     const params = new URLSearchParams({ from, to });
     if (search) params.set("search", search);
-    const res  = await fetch(`/api/seller/orders?${params}`);
+    const [res, storeRes] = await Promise.all([
+      fetch(`/api/seller/orders?${params}`),
+      fetch("/api/seller/shopify/store"),
+    ]);
     const data = await res.json();
     const fetchedOrders: Order[] = data.orders || [];
     setOrders(fetchedOrders);
     setStats(data.stats || { totalOrders: 0, totalRevenue: 0, totalItems: 0, topProduct: null });
     setLoading(false);
+
+    // Check Shopify sync freshness
+    if (storeRes.ok) {
+      const sd = await storeRes.json();
+      if (sd.store) {
+        const lastSync = sd.store.lastSyncAt ? new Date(sd.store.lastSyncAt) : null;
+        const staleHours = lastSync ? (Date.now() - lastSync.getTime()) / 3_600_000 : null;
+        const isStale = sd.store.lastSyncError || (staleHours !== null && staleHours > 2);
+        setSyncStale(isStale ? { lastSyncAt: sd.store.lastSyncAt, lastSyncError: sd.store.lastSyncError } : null);
+      }
+    }
 
     // Fetch RTO risk scores for actionable (non-terminal) orders
     const toScore = fetchedOrders
@@ -294,7 +309,26 @@ export default function SellerOrdersPage() {
         ))}
       </div>
 
-      {/* ── Error banner ── */}
+      {/* ── Shopify sync stale warning ── */}
+      {syncStale && (
+        <div className="flex items-start gap-3 px-4 py-3 rounded-xl text-[13px]"
+          style={{ background: "#FFFBEB", border: "1px solid #FDE68A", color: "#92400E" }}>
+          <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: "#D97706" }} />
+          <div className="flex-1">
+            <span className="font-semibold">Shopify sync issue</span>
+            {syncStale.lastSyncError
+              ? ` — ${syncStale.lastSyncError}`
+              : syncStale.lastSyncAt
+                ? ` — last synced ${Math.round((Date.now() - new Date(syncStale.lastSyncAt).getTime()) / 3_600_000)}h ago. Orders may be missing.`
+                : " — never synced. Check your Shopify connection."
+            }
+            <Link href="/seller/shopify" className="ml-2 underline font-semibold">Check connection →</Link>
+          </div>
+          <button onClick={() => setSyncStale(null)}><X className="w-3.5 h-3.5" /></button>
+        </div>
+      )}
+
+      {/* ── Sync error banner (manual refresh failure) ── */}
       {syncError && (
         <div className="flex items-center gap-3 bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm">
           <XCircle className="w-4 h-4 flex-shrink-0" />

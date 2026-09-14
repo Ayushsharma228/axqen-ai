@@ -66,6 +66,26 @@ export async function GET(req: NextRequest) {
   // TODO: for each payout, initiate bank transfer via payment gateway
   // await Promise.all(payouts.map(p => transferToBank(p.user!, p.balance)));
 
+  // Notify all admins with payout summary
+  const admins = await prisma.user.findMany({
+    where:  { role: "ADMIN" },
+    select: { id: true },
+  });
+
+  if (admins.length > 0) {
+    const inr = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
+    await prisma.notification.createMany({
+      data: admins.map(a => ({
+        userId:  a.id,
+        type:    "GENERAL" as const,
+        title:   `Monday Payout — ${payouts.length} seller${payouts.length !== 1 ? "s" : ""}`,
+        message: `Auto-payout computed: ${inr(totalAmount)} across ${payouts.length} seller${payouts.length !== 1 ? "s" : ""}. Bank transfer pending — initiate manually until payment gateway is wired.`,
+        data:    { payoutCount: payouts.length, totalAmount, runAt: new Date().toISOString() },
+      })),
+    });
+    console.log(`[cron] auto-payout: notified ${admins.length} admin(s)`);
+  }
+
   return NextResponse.json({
     paid: payouts.length,
     totalAmount,

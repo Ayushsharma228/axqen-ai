@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
 
     const store = await prisma.shopifyStore.findUnique({
       where: { sellerId: session.user.id },
-      select: { id: true, storeName: true, storeUrl: true, createdAt: true },
+      select: { id: true, storeName: true, storeUrl: true, createdAt: true, lastSyncAt: true, lastSyncError: true },
     });
 
     return NextResponse.json({ store });

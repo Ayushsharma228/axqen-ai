@@ -278,17 +278,14 @@ export default function OrderConfirmationPage() {
         <section className="bg-white rounded-xl overflow-hidden" style={{ border: "1px solid #E8EDF6" }}>
 
           {/* Card header */}
-          <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: "1px solid #F3F4F6" }}>
-            <div className="flex items-center gap-2">
-              <h2 className="text-[14px] font-bold" style={{ color: "#0C1220" }}>Pending Orders</h2>
-              <span
-                className="text-[11px] font-bold px-2 py-0.5 rounded-full"
-                style={{ background: "#EEF2FF", color: "#4361EE" }}
-              >
-                {orders.length}
-              </span>
-            </div>
-            <SubLabel>Review each before dispatch</SubLabel>
+          <div className="px-5 py-4 flex items-center gap-2" style={{ borderBottom: "1px solid #F3F4F6" }}>
+            <h2 className="text-[14px] font-bold" style={{ color: "#0C1220" }}>Pending Orders</h2>
+            <span
+              className="text-[11px] font-bold px-2 py-0.5 rounded-full"
+              style={{ background: "#EEF2FF", color: "#4361EE" }}
+            >
+              {orders.length}
+            </span>
           </div>
 
           {/* Order rows */}
@@ -312,106 +309,101 @@ export default function OrderConfirmationPage() {
               >
                 <div className="px-5 py-4">
 
-                  {/* Top row: order meta + amount */}
-                  <div className="flex items-start justify-between gap-4 flex-wrap">
-
-                    {/* Left — identity */}
-                    <div className="space-y-1 min-w-0 flex-1">
-
-                      {/* Order ID + payment + date */}
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <Link
-                          href={`/seller/orders/${order.id}`}
-                          className="text-[13px] font-bold hover:underline"
-                          style={{ color: "#4361EE" }}
-                        >
-                          #{order.externalOrderId}
-                        </Link>
-                        <span
-                          className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-                          style={{
-                            background: order.paymentMode === "COD" ? "#FFF7ED" : "#EEF2FF",
-                            color: order.paymentMode === "COD" ? "#C2410C" : "#4361EE",
-                          }}
-                        >
-                          {order.paymentMode}
-                        </span>
-                        <span className="text-[11px]" style={{ color: "#9CA3AF" }}>
-                          {new Date(order.createdAt).toLocaleDateString("en-IN", {
-                            day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
-                          })}
-                        </span>
-                      </div>
-
-                      {/* Customer name */}
-                      <p className="text-[13px] font-semibold" style={{ color: "#0C1220" }}>
-                        {order.customerName || "Unknown customer"}
-                      </p>
-
-                      {/* Phone + edit toggle */}
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {addr?.phone && (
-                          <span className="text-[12px]" style={{ color: "#6B7280" }}>{addr.phone}</span>
-                        )}
-                        <button
-                          onClick={() => isEditing ? setEditOrderId(null) : openEdit(order)}
-                          className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold transition-colors"
-                          style={{
-                            background: isEditing ? "#EEF2FF" : "#F9FAFB",
-                            color: isEditing ? "#4361EE" : "#9CA3AF",
-                            border: "1px solid",
-                            borderColor: isEditing ? "#C7D2FE" : "#E5E7EB",
-                          }}
-                        >
-                          {isEditing ? <X className="w-2.5 h-2.5" /> : <Pencil className="w-2.5 h-2.5" />}
-                          {isEditing ? "Cancel edit" : "Edit address"}
-                        </button>
-                      </div>
-
-                      {/* Address */}
-                      {addrLine && !isEditing && (
-                        <p className="text-[11px] max-w-sm" style={{ color: "#9CA3AF" }}>{addrLine}</p>
-                      )}
-
-                      {/* Items */}
-                      <p className="text-[11px]" style={{ color: "#6B7280" }}>
-                        {order.items.map(i => `${i.name} ×${i.quantity}`).join(" · ")}
-                      </p>
-                    </div>
-
-                    {/* Right — amount + badges */}
-                    <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
-                      <p className="text-[17px] font-black" style={{ color: "#0C1220" }}>
-                        {inr(order.totalAmount)}
-                      </p>
-
-                      {/* RTO badge — small inline pill, no colored card border */}
-                      {rCfg && rto ? (
-                        <span
-                          className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded"
-                          style={{ background: "#F9FAFB", color: rCfg.color, border: "1px solid #E5E7EB" }}
-                          title={rto.signals.join(" · ")}
-                        >
-                          <span
-                            className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                            style={{ background: rCfg.dot }}
-                          />
-                          {rCfg.label} · {rto.score}/100
-                        </span>
-                      ) : (
-                        <span
-                          className="text-[11px] px-2 py-0.5 rounded"
-                          style={{ background: "#F9FAFB", color: "#9CA3AF", border: "1px solid #E5E7EB" }}
-                        >
-                          Scoring…
-                        </span>
-                      )}
-
-                      {/* Confirmation status */}
-                      <span className="text-[11px]" style={{ color: "#9CA3AF" }}>
-                        {CONF_LABEL[order.confirmationStatus] ?? "Not sent"}
+                  {/* Line 1: order ID + payment badge + date — amount floats right */}
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <div className="flex items-center gap-2 flex-wrap min-w-0">
+                      <Link
+                        href={`/seller/orders/${order.id}`}
+                        className="text-[13px] font-bold hover:underline"
+                        style={{ color: "#4361EE" }}
+                      >
+                        #{order.externalOrderId}
+                      </Link>
+                      <span
+                        className="text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0"
+                        style={{
+                          background: order.paymentMode === "COD" ? "#FFF7ED" : "#EEF2FF",
+                          color: order.paymentMode === "COD" ? "#C2410C" : "#4361EE",
+                        }}
+                      >
+                        {order.paymentMode}
+                      </span>
+                      <span className="text-[11px] hidden sm:inline" style={{ color: "#9CA3AF" }}>
+                        {new Date(order.createdAt).toLocaleDateString("en-IN", {
+                          day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
+                        })}
                       </span>
                     </div>
+                    <p className="text-[16px] font-black flex-shrink-0" style={{ color: "#0C1220" }}>
+                      {inr(order.totalAmount)}
+                    </p>
+                  </div>
+
+                  {/* Date on mobile (second line) */}
+                  <p className="text-[11px] mb-1 sm:hidden" style={{ color: "#9CA3AF" }}>
+                    {new Date(order.createdAt).toLocaleDateString("en-IN", {
+                      day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
+                    })}
+                  </p>
+
+                  {/* Line 2: customer name */}
+                  <p className="text-[13px] font-semibold mb-1" style={{ color: "#0C1220" }}>
+                    {order.customerName || "Unknown customer"}
+                  </p>
+
+                  {/* Line 3: phone + edit toggle — RTO badge floats right */}
+                  <div className="flex items-center justify-between gap-2 flex-wrap mb-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {addr?.phone && (
+                        <span className="text-[12px]" style={{ color: "#6B7280" }}>{addr.phone}</span>
+                      )}
+                      <button
+                        onClick={() => isEditing ? setEditOrderId(null) : openEdit(order)}
+                        className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold transition-colors"
+                        style={{
+                          background: isEditing ? "#EEF2FF" : "#F9FAFB",
+                          color: isEditing ? "#4361EE" : "#9CA3AF",
+                          border: "1px solid",
+                          borderColor: isEditing ? "#C7D2FE" : "#E5E7EB",
+                        }}
+                      >
+                        {isEditing ? <X className="w-2.5 h-2.5" /> : <Pencil className="w-2.5 h-2.5" />}
+                        {isEditing ? "Cancel edit" : "Edit address"}
+                      </button>
+                    </div>
+                    {/* RTO badge inline — works on both mobile and desktop */}
+                    {rCfg && rto ? (
+                      <span
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded flex-shrink-0"
+                        style={{ background: "#F9FAFB", color: rCfg.color, border: "1px solid #E5E7EB" }}
+                        title={rto.signals.join(" · ")}
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: rCfg.dot }} />
+                        {rCfg.label} · {rto.score}/100
+                      </span>
+                    ) : (
+                      <span
+                        className="text-[11px] px-2 py-0.5 rounded flex-shrink-0"
+                        style={{ background: "#F9FAFB", color: "#9CA3AF", border: "1px solid #E5E7EB" }}
+                      >
+                        Scoring…
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Address */}
+                  {addrLine && !isEditing && (
+                    <p className="text-[11px] break-words mb-0.5" style={{ color: "#9CA3AF" }}>{addrLine}</p>
+                  )}
+
+                  {/* Items + conf status */}
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <p className="text-[11px]" style={{ color: "#6B7280" }}>
+                      {order.items.map(i => `${i.name} ×${i.quantity}`).join(" · ")}
+                    </p>
+                    <span className="text-[11px] flex-shrink-0" style={{ color: "#9CA3AF" }}>
+                      {CONF_LABEL[order.confirmationStatus] ?? "Not sent"}
+                    </span>
                   </div>
 
                   {/* ── Edit address form ── */}
@@ -494,7 +486,7 @@ export default function OrderConfirmationPage() {
                   )}
 
                   {/* ── Actions ── */}
-                  <div className="mt-3 flex flex-wrap gap-2">
+                  <div className="mt-3 grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
                     <button
                       onClick={() => hillteckOk && handleHillteck(order.id, "IVR")}
                       disabled={!hillteckOk || calling === order.id || order.confirmationStatus === "CONFIRMED"}

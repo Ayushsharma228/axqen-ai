@@ -66,6 +66,7 @@ export default function SellerOrdersPage() {
   const [orders,       setOrders]       = useState<Order[]>([]);
   const [stats,        setStats]        = useState<Stats>({ totalOrders: 0, totalRevenue: 0, totalItems: 0, topProduct: null });
   const [ndrCount,     setNdrCount]     = useState(0);
+  const [rtoScores,    setRtoScores]    = useState<Record<string, { score: number; level: string; signals: string[] }>>({});
   const [loading,      setLoading]      = useState(true);
   const [refreshing,   setRefreshing]   = useState(false);
   const [search,       setSearch]       = useState("");
@@ -97,10 +98,25 @@ export default function SellerOrdersPage() {
     ]);
     const data    = await res.json();
     const ndrData = await ndrRes.json();
-    setOrders(data.orders || []);
+    const fetchedOrders: Order[] = data.orders || [];
+    setOrders(fetchedOrders);
     setStats(data.stats  || { totalOrders: 0, totalRevenue: 0, totalItems: 0, topProduct: null });
     setNdrCount(ndrData?.total ?? ndrData?.length ?? 0);
     setLoading(false);
+
+    // Fetch RTO risk scores for actionable (non-terminal) orders
+    const toScore = fetchedOrders
+      .filter(o => !["DELIVERED", "CANCELLED"].includes(o.status))
+      .map(o => o.id);
+    if (toScore.length > 0) {
+      fetch("/api/seller/orders/rto-score", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderIds: toScore }),
+      }).then(r => r.ok ? r.json() : null).then(d => {
+        if (d?.scores) setRtoScores(d.scores);
+      }).catch(() => {});
+    }
   }, [from, to, search]);
 
   useEffect(() => { fetchOrders(); }, [fetchOrders]);
@@ -394,6 +410,7 @@ export default function SellerOrdersPage() {
                     { label: "QTY",       cls: "hidden md:table-cell" },
                     { label: "AMOUNT",    cls: "" },
                     { label: "STATUS",    cls: "" },
+                    { label: "RTO RISK",  cls: "hidden md:table-cell" },
                     { label: "DATE",      cls: "hidden md:table-cell" },
                     { label: "ACTIONS",   cls: "" },
                   ].map(h => (
@@ -477,6 +494,29 @@ export default function SellerOrdersPage() {
                             NDR
                           </span>
                         )}
+                      </td>
+                      {/* RTO Risk */}
+                      <td className="hidden md:table-cell px-3 py-3">
+                        {(() => {
+                          const r = rtoScores[order.id];
+                          if (!r) return null;
+                          const RISK: Record<string, { bg: string; color: string; label: string }> = {
+                            LOW:       { bg: "#F0FDF4", color: "#15803D", label: "Low" },
+                            MEDIUM:    { bg: "#FFFBEB", color: "#B45309", label: "Medium" },
+                            HIGH:      { bg: "#FFF7ED", color: "#C2410C", label: "High" },
+                            VERY_HIGH: { bg: "#FEF2F2", color: "#DC2626", label: "Very High" },
+                          };
+                          const cfg = RISK[r.level] ?? RISK.LOW;
+                          return (
+                            <span
+                              className="px-2 py-0.5 rounded-full text-[10px] font-bold cursor-help whitespace-nowrap"
+                              style={{ background: cfg.bg, color: cfg.color }}
+                              title={`RTO Score: ${r.score}/100\n${r.signals.join("\n") || "No risk signals"}`}
+                            >
+                              {cfg.label}
+                            </span>
+                          );
+                        })()}
                       </td>
                       {/* Date */}
                       <td className="hidden md:table-cell px-3 py-3 text-[12px] text-[#9CA3AF] whitespace-nowrap">

@@ -19,11 +19,14 @@ export interface RtoScore {
 }
 
 type AddressData = {
-  address?: string;
-  city?: string;
-  state?: string;
-  pincode?: string;
-  phone?: string;
+  address?:  string;   // full address line (legacy + fallback)
+  houseNo?:  string;   // house / flat / plot number
+  street?:   string;   // road / lane / colony / sector
+  landmark?: string;   // near / opp / behind reference
+  city?:     string;
+  state?:    string;
+  pincode?:  string;
+  phone?:    string;
 };
 
 // Score thresholds  (LOW < 30 ≤ MEDIUM < 70 ≤ HIGH < 85 ≤ VERY_HIGH)
@@ -57,49 +60,73 @@ function scorePhone(phone: string | undefined): { score: number; signals: string
 }
 
 // ── 2. Address quality (0–35) ───────────────────────────────────────────────
-
-// Common Indian locality structural keywords
-const LOCALITY_RE =
-  /(gali|gully|lane|nagar|colony|society|sector|block|ward|mohalla|basti|phase|extension|enclave|layout|township|marg|road|street|near|opp(osite)?|behind|above|below|next to|beside|infront)/i;
+// Checks 5 explicit components — uses structured fields first, falls back to
+// parsing the raw `address` text for backward compatibility with old orders.
 
 // House / flat / plot number patterns
 const HOUSE_NO_RE =
   /\b(h\.?no\.?|house\s*no|flat\s*no?|f\.?no\.?|plot\s*no?|door\s*no?|d\.?no\.?|s\.?no\.?|room\s*no?|\d{1,4}[\/\-]\d{1,4}|\b[A-Z]?\d{1,4}[A-Z]?\b)/i;
 
+// Street / locality identifiers
+const STREET_RE =
+  /(gali|gully|lane|nagar|colony|society|sector|block|ward|mohalla|basti|phase|extension|enclave|layout|township|marg|road|street|chowk|bazaar|market)/i;
+
+// Landmark / proximity identifiers
+const LANDMARK_RE =
+  /(near|opp(osite)?|behind|above|below|next\s*to|beside|in\s*front\s*of|adjacent|landmark)/i;
+
 function scoreAddress(addr: AddressData): { score: number; signals: string[] } {
   let score = 0;
   const signals: string[] = [];
+  const fullText = addr.address?.trim() ?? "";
 
+  // ── Pincode ────────────────────────────────────────────────────────────────
   const pincode = addr.pincode?.trim() ?? "";
   if (!pincode || !/^\d{6}$/.test(pincode)) {
-    score += 20;
-    signals.push("Missing or invalid 6-digit pincode");
+    score += 15;
+    signals.push("Missing or invalid pincode");
   }
 
+  // ── City ───────────────────────────────────────────────────────────────────
   const city = addr.city?.trim() ?? "";
   if (!city || city.length < 2) {
-    score += 8;
+    score += 6;
     signals.push("Missing city");
   }
 
+  // ── State ──────────────────────────────────────────────────────────────────
   if (!addr.state?.trim()) {
-    score += 4;
+    score += 2;
     signals.push("Missing state");
   }
 
-  const text = addr.address?.trim() ?? "";
-  if (text.length < 15) {
-    score += 15;
-    signals.push("Address too short / incomplete");
-  } else {
-    if (!HOUSE_NO_RE.test(text)) {
-      score += 8;
-      signals.push("No house / flat number in address");
-    }
-    if (!LOCALITY_RE.test(text)) {
-      score += 5;
-      signals.push("Address lacks locality detail (road, colony, sector …)");
-    }
+  // ── House number ───────────────────────────────────────────────────────────
+  const hasHouseNo = addr.houseNo?.trim()
+    ? addr.houseNo.trim().length > 0
+    : HOUSE_NO_RE.test(fullText);
+  if (!hasHouseNo) {
+    score += 10;
+    signals.push("Missing house / flat number");
+  }
+
+  // ── Street address ─────────────────────────────────────────────────────────
+  const streetValue = addr.street?.trim() ?? "";
+  const hasStreet = streetValue.length > 0
+    ? true
+    : fullText.length >= 15 && STREET_RE.test(fullText);
+  if (!hasStreet) {
+    score += 7;
+    signals.push("Missing street / locality name");
+  }
+
+  // ── Landmark ───────────────────────────────────────────────────────────────
+  const landmarkValue = addr.landmark?.trim() ?? "";
+  const hasLandmark = landmarkValue.length > 0
+    ? true
+    : LANDMARK_RE.test(fullText);
+  if (!hasLandmark) {
+    score += 3;
+    signals.push("No landmark or nearby reference");
   }
 
   return { score: Math.min(35, score), signals };

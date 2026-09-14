@@ -78,3 +78,53 @@ export async function GET(
 
   return NextResponse.json({ order, settlement, customerHistory, customerOrderCount });
 }
+
+// PATCH — update customer address fields only (no status / business logic changes)
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await getRouteSession(req);
+  if (!session || session.user.role !== "SELLER")
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { id } = await params;
+  const sellerId = session.user.id;
+
+  const existing = await prisma.order.findFirst({
+    where:  { id, sellerId },
+    select: { id: true, customerAddress: true },
+  });
+  if (!existing) return NextResponse.json({ error: "Order not found" }, { status: 404 });
+
+  const body = await req.json() as {
+    houseNo?: string; street?: string; landmark?: string;
+    city?: string; state?: string; pincode?: string; phone?: string;
+  };
+
+  // Merge new fields into existing address JSON, reconstruct full address line
+  const prev = (existing.customerAddress ?? {}) as Record<string, string>;
+  const houseNo  = body.houseNo  ?? prev.houseNo  ?? "";
+  const street   = body.street   ?? prev.street   ?? "";
+  const landmark = body.landmark ?? prev.landmark ?? "";
+  const fullLine = [houseNo, street, landmark].filter(Boolean).join(", ");
+
+  const updated = {
+    ...prev,
+    ...(body.houseNo  !== undefined && { houseNo:  body.houseNo.trim()  }),
+    ...(body.street   !== undefined && { street:   body.street.trim()   }),
+    ...(body.landmark !== undefined && { landmark: body.landmark.trim() }),
+    ...(body.city     !== undefined && { city:     body.city.trim()     }),
+    ...(body.state    !== undefined && { state:    body.state.trim()    }),
+    ...(body.pincode  !== undefined && { pincode:  body.pincode.trim()  }),
+    ...(body.phone    !== undefined && { phone:    body.phone.trim()    }),
+    address: fullLine || prev.address || "",
+  };
+
+  await prisma.order.update({
+    where: { id },
+    data:  { customerAddress: updated },
+  });
+
+  return NextResponse.json({ ok: true, customerAddress: updated });
+}

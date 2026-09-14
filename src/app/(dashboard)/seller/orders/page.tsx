@@ -42,16 +42,12 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }
   CANCELLED:  { label: "Cancelled",  color: "#6B7280", bg: "#F3F4F6" },
 };
 
-// Tab definitions: value = status filter key (or special)
+// Tab definitions — pre-delivery orders only (NEW goes to Order Confirmation, post-ship goes to Fulfilment)
 const TABS = [
-  { label: "All Orders",  value: "ALL" },
-  { label: "New",         value: "NEW" },
-  { label: "Pending",     value: "PENDING" },   // PROCESSING + SHIPPED
-  { label: "In Transit",  value: "IN_TRANSIT" },
-  { label: "Delivered",   value: "DELIVERED" },
-  { label: "RTO",         value: "RTO" },
-  { label: "Cancelled",   value: "CANCELLED" },
-  { label: "NDR",         value: "NDR" },
+  { label: "All",       value: "ALL" },
+  { label: "Confirmed", value: "PROCESSING" },
+  { label: "Shipped",   value: "SHIPPED" },
+  { label: "Cancelled", value: "CANCELLED" },
 ];
 
 function formatDate(d: Date) { return d.toISOString().split("T")[0]; }
@@ -65,7 +61,6 @@ export default function SellerOrdersPage() {
 
   const [orders,       setOrders]       = useState<Order[]>([]);
   const [stats,        setStats]        = useState<Stats>({ totalOrders: 0, totalRevenue: 0, totalItems: 0, topProduct: null });
-  const [ndrCount,     setNdrCount]     = useState(0);
   const [rtoScores,    setRtoScores]    = useState<Record<string, {
     score: number; level: string; signals: string[];
     breakdown?: { phone: number; address: number; pincode: number; history: number; velocity: number; payment: number };
@@ -96,16 +91,11 @@ export default function SellerOrdersPage() {
   const fetchOrders = useCallback(async () => {
     const params = new URLSearchParams({ from, to });
     if (search) params.set("search", search);
-    const [res, ndrRes] = await Promise.all([
-      fetch(`/api/seller/orders?${params}`),
-      fetch("/api/seller/ndr"),
-    ]);
-    const data    = await res.json();
-    const ndrData = await ndrRes.json();
+    const res  = await fetch(`/api/seller/orders?${params}`);
+    const data = await res.json();
     const fetchedOrders: Order[] = data.orders || [];
     setOrders(fetchedOrders);
-    setStats(data.stats  || { totalOrders: 0, totalRevenue: 0, totalItems: 0, topProduct: null });
-    setNdrCount(ndrData?.total ?? ndrData?.length ?? 0);
+    setStats(data.stats || { totalOrders: 0, totalRevenue: 0, totalItems: 0, topProduct: null });
     setLoading(false);
 
     // Fetch RTO risk scores for actionable (non-terminal) orders
@@ -210,10 +200,11 @@ export default function SellerOrdersPage() {
   }
 
   // ── Filtering ──────────────────────────────────────────────────────────
+  // Orders page scope: confirmed + shipped + cancelled only
+  // NEW → Order Confirmation  |  IN_TRANSIT/DELIVERED/RTO/NDR → Fulfilment
   const filterOrders = (o: Order) => {
-    if (tab === "ALL")       return true;
-    if (tab === "PENDING")   return o.status === "PROCESSING" || o.status === "SHIPPED";
-    if (tab === "NDR")       return !!o.ndrStatus;
+    if (!["PROCESSING", "SHIPPED", "CANCELLED"].includes(o.status)) return false;
+    if (tab === "ALL") return true;
     return o.status === tab;
   };
   const displayed   = orders.filter(filterOrders);
@@ -227,20 +218,15 @@ export default function SellerOrdersPage() {
     setSelected(allSelected ? new Set() : new Set(displayed.map(o => o.id)));
   }
 
-  // ── Stat card counts (from local orders array) ─────────────────────────
-  const newCount       = orders.filter(o => o.status === "NEW").length;
-  const pendingCount   = orders.filter(o => o.status === "PROCESSING" || o.status === "SHIPPED").length;
-  const deliveredCount = orders.filter(o => o.status === "DELIVERED").length;
+  // ── Stat card counts ──────────────────────────────────────────────────
+  const confirmedCount = orders.filter(o => o.status === "PROCESSING").length;
+  const shippedCount   = orders.filter(o => o.status === "SHIPPED").length;
   const cancelledCount = orders.filter(o => o.status === "CANCELLED").length;
-  const rtoCount       = orders.filter(o => o.status === "RTO").length;
 
   const STAT_CARDS = [
-    { label: "New Orders",        value: num(newCount),       color: "#4361EE", sub: "Awaiting fulfillment",  tab: "NEW" },
-    { label: "Pending Shipment",  value: num(pendingCount),   color: "#D97706", sub: "Processing + Shipped",  tab: "PENDING" },
-    { label: "Delivered",         value: num(deliveredCount), color: "#059669", sub: "Successfully delivered", tab: "DELIVERED" },
-    { label: "Cancelled",         value: num(cancelledCount), color: "#6B7280", sub: "Cancelled orders",       tab: "CANCELLED" },
-    { label: "RTO",               value: num(rtoCount),       color: "#EF4444", sub: "Return to origin",       tab: "RTO" },
-    { label: "NDR",               value: num(ndrCount),       color: "#7C3AED", sub: "Non-delivery report",    tab: "NDR" },
+    { label: "Confirmed",  value: num(confirmedCount), color: "#D97706", sub: "Awaiting dispatch",      tab: "PROCESSING" },
+    { label: "Shipped",    value: num(shippedCount),   color: "#7C3AED", sub: "Dispatched by supplier",  tab: "SHIPPED" },
+    { label: "Cancelled",  value: num(cancelledCount), color: "#6B7280", sub: "Cancelled orders",        tab: "CANCELLED" },
   ];
 
   // ── Render ─────────────────────────────────────────────────────────────
@@ -281,7 +267,7 @@ export default function SellerOrdersPage() {
       </div>
 
       {/* ── Stat cards ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {STAT_CARDS.map(card => (
           <button
             key={card.tab}
@@ -351,12 +337,9 @@ export default function SellerOrdersPage() {
               {t.label}
               {t.value !== "ALL" && (() => {
                 const c =
-                  t.value === "PENDING" ? pendingCount :
-                  t.value === "NEW"     ? newCount :
-                  t.value === "DELIVERED" ? deliveredCount :
-                  t.value === "CANCELLED" ? cancelledCount :
-                  t.value === "RTO"     ? rtoCount :
-                  t.value === "NDR"     ? ndrCount :
+                  t.value === "PROCESSING" ? confirmedCount :
+                  t.value === "SHIPPED"    ? shippedCount :
+                  t.value === "CANCELLED"  ? cancelledCount :
                   orders.filter(o => o.status === t.value).length;
                 return c > 0 ? (
                   <span

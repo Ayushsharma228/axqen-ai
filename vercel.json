@@ -23,6 +23,10 @@
     {
       "path": "/api/cron/verify-cod-orders",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/auto-payout",
+      "schedule": "0 4 * * 1"
     }
   ]
 }

@@ -35,13 +35,9 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }
 
 const TABS = [
   { label: "All",         value: "ALL" },
-  { label: "Pending",     value: "NEW" },
-  { label: "Processing",  value: "PROCESSING" },
-  { label: "Shipped",     value: "SHIPPED" },
   { label: "In Transit",  value: "IN_TRANSIT" },
   { label: "Delivered",   value: "DELIVERED" },
   { label: "RTO",         value: "RTO" },
-  { label: "Cancelled",   value: "CANCELLED" },
   { label: "NDR",         value: "NDR" },
 ];
 
@@ -178,18 +174,19 @@ export default function ManageDeliveryPage() {
     setIssueOrderId(null); setIssueType(""); setIssueNote("");
   }
 
-  // NDR client-side filter
+  // Fulfilment scope: shipped/in-transit/delivered/rto + NDR
+  const FULFILLMENT_STATUSES = ["SHIPPED", "IN_TRANSIT", "DELIVERED", "RTO"];
   const displayed = tab === "NDR"
     ? deliveries.filter(d => !!d.ndrStatus)
-    : deliveries;
+    : tab === "ALL"
+      ? deliveries.filter(d => FULFILLMENT_STATUSES.includes(d.status) || !!d.ndrStatus)
+      : deliveries;
 
   const STAT_CARDS = [
-    { label: "Pending",     value: num(stats.pending),   color: "#4361EE", sub: "Awaiting shipment", tab: "NEW" },
-    { label: "In Transit",  value: num(stats.inTransit), color: "#0369A1", sub: "On the way",         tab: "IN_TRANSIT" },
-    { label: "Delivered",   value: num(stats.delivered), color: "#059669", sub: "Successfully done",  tab: "DELIVERED" },
-    { label: "RTO",         value: num(stats.rto),       color: "#EF4444", sub: "Return to origin",   tab: "RTO" },
-    { label: "Cancelled",   value: num(stats.cancelled), color: "#6B7280", sub: "Cancelled orders",   tab: "CANCELLED" },
-    { label: "NDR",         value: num(ndrCount),        color: "#7C3AED", sub: "Non-delivery report",tab: "NDR" },
+    { label: "In Transit",  value: num(stats.inTransit), color: "#0369A1", sub: "On the way",          tab: "IN_TRANSIT" },
+    { label: "Delivered",   value: num(stats.delivered), color: "#059669", sub: "Successfully done",   tab: "DELIVERED" },
+    { label: "RTO",         value: num(stats.rto),       color: "#EF4444", sub: "Return to origin",    tab: "RTO" },
+    { label: "NDR",         value: num(ndrCount),        color: "#7C3AED", sub: "Non-delivery report", tab: "NDR" },
   ];
 
   // ── Render ─────────────────────────────────────────────────────────────
@@ -215,7 +212,7 @@ export default function ManageDeliveryPage() {
       </div>
 
       {/* ── Stat cards ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {STAT_CARDS.map(card => (
           <button
             key={card.tab}
@@ -276,12 +273,10 @@ export default function ManageDeliveryPage() {
               {t.label}
               {(() => {
                 const c =
-                  t.value === "ALL"        ? deliveries.length :
-                  t.value === "NEW"        ? stats.pending :
+                  t.value === "ALL"        ? displayed.length :
                   t.value === "IN_TRANSIT" ? stats.inTransit :
                   t.value === "DELIVERED"  ? stats.delivered :
                   t.value === "RTO"        ? stats.rto :
-                  t.value === "CANCELLED"  ? stats.cancelled :
                   t.value === "NDR"        ? ndrCount :
                   deliveries.filter(d => d.status === t.value).length;
                 return c > 0 ? (

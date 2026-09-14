@@ -3,8 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Wallet, TrendingUp, TrendingDown, Clock, CheckCircle2,
-  ArrowUpRight, ArrowDownRight, BanknoteIcon, XCircle,
-  Copy, CopyCheck, Download, AlertCircle,
+  ArrowUpRight, ArrowDownRight, CalendarCheck,
+  Copy, CopyCheck, Download,
 } from "lucide-react";
 import { PageHero } from "@/components/layout/page-hero";
 
@@ -19,16 +19,6 @@ interface WalletData {
   transactions: Transaction[];
   bankDetails: BankDetails;
 }
-interface WithdrawalRequest {
-  id: string; amount: number; status: string; adminNote: string | null;
-  bankAccount: string; createdAt: string; processedAt: string | null;
-}
-
-const WD_BADGE: Record<string, { color: string; bg: string }> = {
-  PENDING:  { color: "#D97706", bg: "#FFF7ED" },
-  APPROVED: { color: "#16A34A", bg: "#F0FDF4" },
-  REJECTED: { color: "#DC2626", bg: "#FEF2F2" },
-};
 
 function fmt(n: number) {
   return new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(Math.abs(n));
@@ -44,36 +34,23 @@ function maskAccount(acc: string | null) {
 const TABS = ["All", "Upcoming", "Paid", "Deductions"];
 
 export default function SellerWalletPage() {
-  const [data,        setData]        = useState<WalletData | null>(null);
-  const [loading,     setLoading]     = useState(true);
-  const [tab,         setTab]         = useState("All");
-  const [withdrawals, setWithdrawals] = useState<WithdrawalRequest[]>([]);
-  const [wdAmount,    setWdAmount]    = useState("");
-  const [wdLoading,   setWdLoading]   = useState(false);
-  const [wdError,     setWdError]     = useState("");
-  const [wdSuccess,   setWdSuccess]   = useState(false);
-  const [copiedId,    setCopiedId]    = useState<string | null>(null);
+  const [data,     setData]     = useState<WalletData | null>(null);
+  const [loading,  setLoading]  = useState(true);
+  const [tab,      setTab]      = useState("All");
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const load = useCallback(() => {
     fetch("/api/seller/wallet").then(r => r.json()).then(d => { setData(d); setLoading(false); });
-    fetch("/api/seller/wallet/withdraw").then(r => r.json()).then(d => setWithdrawals(d.requests ?? []));
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  async function submitWithdrawal(e: React.FormEvent) {
-    e.preventDefault();
-    const amt = parseFloat(wdAmount);
-    if (!amt || amt <= 0) { setWdError("Enter a valid amount"); return; }
-    setWdLoading(true); setWdError(""); setWdSuccess(false);
-    const res = await fetch("/api/seller/wallet/withdraw", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ amount: amt }),
-    });
-    const json = await res.json();
-    if (!res.ok) setWdError(json.error ?? "Failed");
-    else { setWdSuccess(true); setWdAmount(""); setWithdrawals(prev => [json.request, ...prev]); load(); }
-    setWdLoading(false);
+  function getNextMonday() {
+    const d = new Date();
+    const day = d.getDay(); // 0=Sun,1=Mon,...,6=Sat
+    const daysUntilMonday = day === 0 ? 1 : 8 - day;
+    d.setDate(d.getDate() + daysUntilMonday);
+    return d.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   }
 
   function copyRef(text: string, id: string) {
@@ -107,7 +84,6 @@ export default function SellerWalletPage() {
 
   const available = data?.balance ?? 0;
   const bank      = data?.bankDetails;
-  const hasPending = withdrawals.some(w => w.status === "PENDING");
 
   return (
     <div className="min-h-screen" style={{ background: "var(--bg-page)" }}>
@@ -159,47 +135,6 @@ export default function SellerWalletPage() {
 
           {/* LEFT — transaction log */}
           <div className="lg:col-span-2 space-y-5">
-
-            {/* Withdrawal history */}
-            {withdrawals.length > 0 && (
-              <div className="card overflow-hidden">
-                <div className="px-5 py-3 flex items-center justify-between"
-                  style={{ borderBottom: "1px solid var(--border)" }}>
-                  <h2 className="text-sm font-bold" style={{ color: "var(--text-900)" }}>Payout Request History</h2>
-                </div>
-                <div className="divide-y" style={{ borderColor: "var(--border)" }}>
-                  {withdrawals.map(wd => {
-                    const badge = WD_BADGE[wd.status] ?? WD_BADGE.PENDING;
-                    return (
-                      <div key={wd.id} className="px-5 py-3.5 flex items-center gap-4">
-                        <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                          style={{ background: badge.bg }}>
-                          {wd.status === "APPROVED"
-                            ? <CheckCircle2 className="w-4 h-4" style={{ color: "#16A34A" }} />
-                            : wd.status === "REJECTED"
-                            ? <XCircle className="w-4 h-4" style={{ color: "#DC2626" }} />
-                            : <Clock className="w-4 h-4" style={{ color: "#D97706" }} />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium" style={{ color: "var(--text-900)" }}>
-                            ₹{fmt(wd.amount)}
-                          </p>
-                          <p className="text-xs mt-0.5" style={{ color: "var(--text-400)" }}>
-                            {fmtD(wd.createdAt)}
-                            {wd.bankAccount && ` · To: ••••${wd.bankAccount.slice(-4)}`}
-                            {wd.adminNote && ` · ${wd.adminNote}`}
-                          </p>
-                        </div>
-                        <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold"
-                          style={{ background: badge.bg, color: badge.color }}>
-                          {wd.status}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
 
             {/* Transaction log */}
             <div className="card overflow-hidden">
@@ -315,19 +250,33 @@ export default function SellerWalletPage() {
             </div>
           </div>
 
-          {/* RIGHT — withdraw + tax */}
+          {/* RIGHT — auto-payout info */}
           <div className="space-y-5">
 
-            {/* Withdrawal form */}
+            {/* Auto-payout card */}
             <div className="card p-5 space-y-4">
               <div className="flex items-center gap-2">
-                <BanknoteIcon className="w-5 h-5" style={{ color: "#16A34A" }} />
-                <h2 className="text-sm font-bold" style={{ color: "var(--text-900)" }}>Request Payout</h2>
+                <CalendarCheck className="w-5 h-5" style={{ color: "#4361EE" }} />
+                <h2 className="text-sm font-bold" style={{ color: "var(--text-900)" }}>Auto Payout</h2>
               </div>
 
-              {/* Available balance */}
-              <div className="rounded-xl px-4 py-3" style={{ background: "rgba(0,198,122,0.08)", border: "1px solid rgba(0,198,122,0.2)" }}>
-                <p className="text-xs" style={{ color: "var(--text-400)" }}>Available to withdraw</p>
+              <div className="rounded-xl px-4 py-3 space-y-1"
+                style={{ background: "rgba(67,97,238,0.06)", border: "1px solid rgba(67,97,238,0.2)" }}>
+                <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: "#4361EE" }}>
+                  Next payout
+                </p>
+                <p className="text-sm font-bold" style={{ color: "var(--text-900)" }}>
+                  {getNextMonday()}
+                </p>
+                <p className="text-xs" style={{ color: "var(--text-400)" }}>
+                  Every Monday · Full wallet balance
+                </p>
+              </div>
+
+              {/* Current balance */}
+              <div className="rounded-xl px-4 py-3"
+                style={{ background: "rgba(0,198,122,0.08)", border: "1px solid rgba(0,198,122,0.2)" }}>
+                <p className="text-xs" style={{ color: "var(--text-400)" }}>Balance to be paid out</p>
                 <p className="text-2xl font-bold mt-0.5" style={{ color: "#00C67A" }}>
                   {loading ? "—" : `₹${fmt(available)}`}
                 </p>
@@ -350,55 +299,16 @@ export default function SellerWalletPage() {
               ) : (
                 <div className="rounded-xl px-4 py-3 flex items-start gap-2"
                   style={{ background: "#FFFBEB", border: "1px solid #FDE68A" }}>
-                  <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: "#D97706" }} />
-                  <p className="text-xs" style={{ color: "#92400E" }}>
-                    No bank account set. Go to Profile → Bank Details to add your account before requesting a payout.
-                  </p>
-                </div>
-              )}
-
-              {/* Pending blocker */}
-              {hasPending && (
-                <div className="rounded-xl px-4 py-3 flex items-start gap-2"
-                  style={{ background: "#FFFBEB", border: "1px solid #FDE68A" }}>
                   <Clock className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: "#D97706" }} />
                   <p className="text-xs" style={{ color: "#92400E" }}>
-                    A withdrawal request is already pending. Amount will be transferred within 24–48 hours.
+                    No bank account set. Go to Profile → Bank Details to add your account so we can send your weekly payout.
                   </p>
                 </div>
               )}
 
-              <form onSubmit={submitWithdrawal} className="space-y-2">
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold"
-                    style={{ color: "var(--text-400)" }}>₹</span>
-                  <input
-                    type="number" min="1" step="1" value={wdAmount}
-                    onChange={e => { setWdAmount(e.target.value); setWdError(""); setWdSuccess(false); }}
-                    placeholder="Enter amount"
-                    disabled={hasPending || !bank?.bankAccount}
-                    className="w-full pl-7 pr-24 py-2.5 rounded-xl text-sm border outline-none disabled:opacity-50"
-                    style={{ background: "var(--bg-muted)", color: "var(--text-900)", borderColor: "var(--border)" }}
-                  />
-                  <button type="button"
-                    onClick={() => setWdAmount(String(Math.floor(available)))}
-                    disabled={available <= 0 || hasPending || !bank?.bankAccount}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 px-2.5 py-1 rounded-lg text-xs font-semibold disabled:opacity-40"
-                    style={{ background: "rgba(0,198,122,0.12)", color: "#00C67A" }}>
-                    Max
-                  </button>
-                </div>
-                <button type="submit"
-                  disabled={wdLoading || hasPending || !bank?.bankAccount || available <= 0}
-                  className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50">
-                  <span style={{ background: "#16A34A" }}
-                    className="flex items-center justify-center gap-2 w-full h-full rounded-xl px-4 py-2.5">
-                    {wdLoading ? "Submitting…" : "Request Payout"}
-                  </span>
-                </button>
-              </form>
-              {wdError   && <p className="text-xs" style={{ color: "#EF4444" }}>{wdError}</p>}
-              {wdSuccess && <p className="text-xs" style={{ color: "#16A34A" }}>Request submitted! Amount will be transferred within 24–48 hours.</p>}
+              <p className="text-xs leading-relaxed" style={{ color: "var(--text-400)" }}>
+                Your entire wallet balance is automatically transferred to your bank account every Monday at 9:30 AM IST. No action required.
+              </p>
             </div>
 
           </div>

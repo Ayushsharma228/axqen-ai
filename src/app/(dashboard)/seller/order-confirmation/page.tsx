@@ -177,19 +177,6 @@ export default function OrderConfirmationPage() {
         </button>
       </div>
 
-      {/* ── HillTeck status banner ── */}
-      {!hillteckOk && (
-        <div className="flex items-start gap-3 px-4 py-3 rounded-xl text-[12px]"
-          style={{ background: "#FFFBEB", border: "1px solid #FDE68A", color: "#B45309" }}>
-          <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-          <div>
-            <span className="font-semibold">IVR & WhatsApp buttons are disabled</span> — HillTeck is not configured yet.
-            Once you enter the API key, both verification channels will go live automatically.{" "}
-            <Link href="/seller/intelligence" className="underline font-semibold">Configure HillTeck →</Link>
-          </div>
-        </div>
-      )}
-
       {/* ── Quick stats ── */}
       {!loading && orders.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

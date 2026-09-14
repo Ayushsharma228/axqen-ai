@@ -1,6 +1,6 @@
 /**
  * Cron: auto-payout
- * Schedule: 0 4 * * 1  (Monday 4:00 AM UTC = 9:30 AM IST)
+ * Schedule: 30 13 * * 1  (Monday 13:30 UTC = 7:00 PM IST / end of day)
  *
  * Automatically transfers each seller's full wallet balance to their bank
  * account. Financial transfer logic (bank API integration) is a TODO —

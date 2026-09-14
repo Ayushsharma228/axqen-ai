@@ -15,8 +15,8 @@ interface NavItem { label: string; href: string; icon: React.ElementType; exact?
 
 const NAV: NavItem[] = [
   { label: "Dashboard",           href: "/seller",                      icon: LayoutDashboard, exact: true },
-  { label: "Orders",              href: "/seller/orders",               icon: ShoppingCart },
   { label: "Order Confirmation",  href: "/seller/order-confirmation",   icon: ClipboardCheck, isNew: true },
+  { label: "Orders",              href: "/seller/orders",               icon: ShoppingCart },
   { label: "Fulfilment",          href: "/seller/deliveries",           icon: Truck },
   { label: "Products",            href: "/seller/catalog",              icon: Package },
   { label: "Customers",           href: "/seller/customers",            icon: Users },

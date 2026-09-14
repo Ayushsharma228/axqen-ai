@@ -307,7 +307,7 @@ export default function SellerWalletPage() {
               )}
 
               <p className="text-xs leading-relaxed" style={{ color: "var(--text-400)" }}>
-                Your entire wallet balance is automatically transferred to your bank account every Monday at 9:30 AM IST. No action required.
+                Your entire wallet balance is automatically transferred to your bank account every Monday by end of day. No action required.
               </p>
             </div>
 

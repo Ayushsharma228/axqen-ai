@@ -4,7 +4,7 @@
  *
  * RTO-risk-aware intervention:
  *   LOW         → skip — seller manually confirms through normal flow
- *   MEDIUM      → send to HillTeck for humanized IVR / WhatsApp verification
+ *   MEDIUM      → send to HillTeck for humanized AI call / WhatsApp verification
  *   HIGH / VERY_HIGH → auto-cancel immediately (too risky to ship)
  */
 

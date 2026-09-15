@@ -114,7 +114,7 @@ export default function HillteckPage() {
     <div className="min-h-screen" style={{ background: "#F7F8FC" }}>
       <PageHero
         title="HillTeck — COD Verification"
-        subtitle="Auto-verify COD orders via IVR call and WhatsApp before processing"
+        subtitle="Auto-verify COD orders via AI call and WhatsApp before processing"
         actions={
           <button onClick={load} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium"
             style={{ background: "white", border: "1px solid #E8EDF6", color: "#0C1220" }}>

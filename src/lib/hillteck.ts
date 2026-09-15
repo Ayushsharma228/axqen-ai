@@ -1,7 +1,7 @@
 /**
  * HillTeck Integration Client
  *
- * HillTeck handles COD order verification (IVR call + WhatsApp) and
+ * HillTeck handles COD order verification (AI call + WhatsApp) and
  * WhatsApp order notifications for AXQEN sellers.
  *
  * TODO when API docs arrive:
@@ -52,7 +52,7 @@ type OrderForVerification = {
 };
 
 /**
- * Push a COD order to HillTeck for verification (IVR call + WhatsApp).
+ * Push a COD order to HillTeck for verification (AI call + WhatsApp).
  * Returns true if the request was accepted, false otherwise.
  *
  * TODO: Update endpoint and payload once HillTeck shares API docs.

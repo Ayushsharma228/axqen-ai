@@ -158,7 +158,7 @@ export default function OrderConfirmationPage() {
     });
     const d = await res.json();
     if (res.ok) {
-      flash(orderId, channel === "IVR" ? "IVR call initiated" : "WhatsApp message sent", true);
+      flash(orderId, channel === "IVR" ? "AI call initiated" : "WhatsApp message sent", true);
       setOrders(prev => prev.map(o => o.id === orderId
         ? { ...o, confirmationStatus: "PENDING", confirmationChannel: channel }
         : o
@@ -497,14 +497,14 @@ export default function OrderConfirmationPage() {
                     <button
                       onClick={() => hillteckOk && handleHillteck(order.id, "IVR")}
                       disabled={!hillteckOk || calling === order.id || order.confirmationStatus === "CONFIRMED"}
-                      title={!hillteckOk ? "HillTeck not configured yet" : "Initiate IVR call"}
+                      title={!hillteckOk ? "HillTeck not configured yet" : "Initiate AI call"}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
                       style={{ background: "#EEF2FF", color: "#4361EE", border: "1px solid #C7D2FE" }}
                     >
                       {calling === order.id
                         ? <Loader2 className="w-3 h-3 animate-spin" />
                         : <Phone className="w-3 h-3" />}
-                      {hillteckOk ? "Call to Confirm" : "IVR (soon)"}
+                      {hillteckOk ? "Call to Confirm" : "AI Call (soon)"}
                     </button>
 
                     <button

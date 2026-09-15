@@ -167,6 +167,71 @@ export async function notifyFulfillment(
   }
 }
 
+/**
+ * Trigger a PrimeAssist Voice AI call for COD verification.
+ *
+ * Used as a follow-up when the customer hasn't responded to the WhatsApp message.
+ * Uses trigger_type=rto_initiated with event_id=`${order.id}-call` so it doesn't
+ * conflict with the WhatsApp order_created event for the same order.
+ *
+ * Seller should configure an "rto_initiated" Voice AI workflow in PrimeAssist that:
+ *   1. Calls the customer and asks them to confirm or cancel the order
+ *   2. Webhooks result back to /api/webhooks/primeassist
+ */
+export async function requestAICall(
+  order:   OrderForVerification,
+  config:  HillteckConfig,
+  seller?: { name?: string | null; brandName?: string | null },
+): Promise<boolean> {
+  const addr     = order.customerAddress;
+  const phone    = toE164((addr?.phone as string) ?? "");
+  if (!phone) {
+    console.warn(`[primeassist] no valid phone for AI call order ${order.externalOrderId}`);
+    return false;
+  }
+
+  const addrStr    = [addr?.houseNo, addr?.street, addr?.address, addr?.city, addr?.state, addr?.pincode]
+    .filter(Boolean).join(", ");
+  const itemsStr   = order.items.map(i => i.name).join(", ");
+  const sellerName = seller?.brandName || seller?.name || "";
+
+  try {
+    const res = await fetch(`${config.baseUrl}/api/v1/merchants/trigger_event`, {
+      method:  "POST",
+      headers: { "X-Api-Key": config.apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        trigger_type: "rto_initiated",          // Voice AI workflow trigger
+        event_id:     `${order.id}-call`,       // suffix avoids 409 conflict with WhatsApp event
+        phone,
+        data: {
+          "{{order.number}}":        order.externalOrderId,
+          "{{order.amount}}":        order.totalAmount.toFixed(2),
+          "{{order.products.name}}": itemsStr,
+          "{{customer.name}}":       order.customerName ?? "",
+          "{{customer.phone}}":      phone,
+          ...(sellerName ? { "{{seller.name}}":   sellerName } : {}),
+          ...(addrStr    ? { "{{order.address}}": addrStr    } : {}),
+        },
+      }),
+    });
+
+    if (res.status === 409) return true; // Already called — idempotent
+    if (!res.ok) {
+      const text = await res.text();
+      console.error(`[primeassist] AI call trigger ${res.status} order=${order.externalOrderId}: ${text}`);
+      return false;
+    }
+    const ack = await res.json() as { matched_workflows?: number };
+    if ((ack.matched_workflows ?? 0) === 0) {
+      console.warn(`[primeassist] 0 workflows matched for rto_initiated — configure a Voice AI workflow in PrimeAssist`);
+    }
+    return true;
+  } catch (err) {
+    console.error("[primeassist] AI call trigger failed:", err);
+    return false;
+  }
+}
+
 // Legacy alias — kept for any older callers
 export const sendWhatsAppNotification = notifyFulfillment;
 

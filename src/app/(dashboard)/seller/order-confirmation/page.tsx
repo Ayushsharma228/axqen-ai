@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
-  MessageSquare, CheckCircle, XCircle, Loader2,
+  Phone, MessageSquare, CheckCircle, XCircle, Loader2,
   RefreshCw, ShoppingCart, AlertTriangle, Clock, Info, Pencil, X,
 } from "lucide-react";
 
@@ -73,6 +73,7 @@ export default function OrderConfirmationPage() {
   const [confirming,  setConfirming]  = useState<string | null>(null);
   const [cancelling,  setCancelling]  = useState<string | null>(null);
   const [whatsapping, setWhatsapping] = useState<string | null>(null);
+  const [calling,     setCalling]     = useState<string | null>(null);
   const [actionMsg,   setActionMsg]   = useState<{ id: string; msg: string; ok: boolean } | null>(null);
   const [hillteckOk,  setHillteckOk]  = useState(false);
   const [editOrderId, setEditOrderId] = useState<string | null>(null);
@@ -147,24 +148,25 @@ export default function OrderConfirmationPage() {
     setCancelling(null);
   }
 
-  async function handleHillteck(orderId: string) {
-    setWhatsapping(orderId);
+  async function handleHillteck(orderId: string, mode: "whatsapp" | "call" = "whatsapp") {
+    const setSpinner = mode === "call" ? setCalling : setWhatsapping;
+    setSpinner(orderId);
     const res = await fetch("/api/seller/orders/hillteck-verify", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderId }),
+      body: JSON.stringify({ orderId, mode }),
     });
     const d = await res.json();
     if (res.ok) {
-      flash(orderId, "WhatsApp message sent", true);
+      flash(orderId, mode === "call" ? "AI call initiated" : "WhatsApp message sent", true);
       setOrders(prev => prev.map(o => o.id === orderId
-        ? { ...o, confirmationStatus: "PENDING", confirmationChannel: "WHATSAPP" }
+        ? { ...o, confirmationStatus: "PENDING", confirmationChannel: mode === "call" ? "IVR" : "WHATSAPP" }
         : o
       ));
     } else {
       flash(orderId, d.error || "Request failed", false);
     }
-    setWhatsapping(null);
+    setSpinner(null);
   }
 
   function openEdit(order: Order) {
@@ -492,8 +494,9 @@ export default function OrderConfirmationPage() {
 
                   {/* ── Actions ── */}
                   <div className="mt-3 grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
+                    {/* WhatsApp */}
                     <button
-                      onClick={() => hillteckOk && handleHillteck(order.id)}
+                      onClick={() => hillteckOk && handleHillteck(order.id, "whatsapp")}
                       disabled={!hillteckOk || whatsapping === order.id || order.confirmationStatus === "CONFIRMED"}
                       title={!hillteckOk ? "PrimeAssist not configured yet" : "Resend WhatsApp confirmation message"}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
@@ -502,7 +505,20 @@ export default function OrderConfirmationPage() {
                       {whatsapping === order.id
                         ? <Loader2 className="w-3 h-3 animate-spin" />
                         : <MessageSquare className="w-3 h-3" />}
-                      {hillteckOk ? "Resend WhatsApp" : "WhatsApp (soon)"}
+                      {hillteckOk ? "WhatsApp" : "WhatsApp (soon)"}
+                    </button>
+                    {/* AI Call */}
+                    <button
+                      onClick={() => hillteckOk && handleHillteck(order.id, "call")}
+                      disabled={!hillteckOk || calling === order.id || order.confirmationStatus === "CONFIRMED"}
+                      title={!hillteckOk ? "PrimeAssist not configured yet" : "Initiate AI call to customer"}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+                      style={{ background: "#EEF2FF", color: "#4361EE", border: "1px solid #C7D2FE" }}
+                    >
+                      {calling === order.id
+                        ? <Loader2 className="w-3 h-3 animate-spin" />
+                        : <Phone className="w-3 h-3" />}
+                      {hillteckOk ? "AI Call" : "AI Call (soon)"}
                     </button>
 
                     <button

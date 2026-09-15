@@ -156,7 +156,7 @@ export async function POST(req: NextRequest) {
   const customerEmail = (shopifyOrder.email as string) || (customer?.email as string) || null;
   const customerAddress = shippingAddress
     ? {
-        address: shippingAddress.address1 ?? "",
+        address: [shippingAddress.address1 ?? "", shippingAddress.address2 ?? ""].filter(Boolean).join(", "),
         city: shippingAddress.city ?? "",
         state: shippingAddress.province ?? "",
         pincode: shippingAddress.zip ?? "",
@@ -316,7 +316,7 @@ async function handleExistingOrder(
   const shippingAddress = shopifyOrder.shipping_address as Record<string, unknown> | null;
   const customerAddress = shippingAddress
     ? {
-        address: shippingAddress.address1 ?? "",
+        address: [shippingAddress.address1 ?? "", shippingAddress.address2 ?? ""].filter(Boolean).join(", "),
         city: shippingAddress.city ?? "",
         state: shippingAddress.province ?? "",
         pincode: shippingAddress.zip ?? "",

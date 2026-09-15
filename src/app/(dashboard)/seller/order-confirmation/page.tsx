@@ -296,11 +296,16 @@ export default function OrderConfirmationPage() {
             const msg   = actionMsg?.id === order.id ? actionMsg : null;
             const isEditing = editOrderId === order.id;
 
-            const addrLine = addr
-              ? [addr.houseNo, addr.street, addr.landmark, addr.city, addr.state, addr.pincode]
-                  .filter(Boolean).join(", ") ||
-                [addr.address, addr.city, addr.state, addr.pincode].filter(Boolean).join(", ")
-              : "";
+            // Build address line: prefer structured fields, fall back to raw address1+address2
+            const addrLine = (() => {
+              if (!addr) return "";
+              const structured = [addr.houseNo, addr.street, addr.landmark].filter(Boolean);
+              const location   = [addr.city, addr.state, addr.pincode].filter(Boolean);
+              // If seller has filled in structured fields, use those + location
+              if (structured.length > 0) return [...structured, ...location].join(", ");
+              // Otherwise use raw address from Shopify (address1 + address2) + location
+              return [addr.address, ...location].filter(Boolean).join(", ");
+            })();
 
             return (
               <div

@@ -115,13 +115,15 @@ export async function syncShopifyOrders(sellerId: string): Promise<{ created: nu
     const status = mapShopifyStatus(financialStatus, fulfillmentStatus);
     const paymentMode = inferPaymentMode(so);
 
-    const customerAddress: Prisma.InputJsonValue | undefined = so.shipping_address
+    const sa = so.shipping_address as Record<string, unknown> | null;
+    const customerAddress: Prisma.InputJsonValue | undefined = sa
       ? {
-          address: (so.shipping_address as Record<string, unknown>).address1 ?? "",
-          city:    (so.shipping_address as Record<string, unknown>).city ?? "",
-          state:   (so.shipping_address as Record<string, unknown>).province ?? "",
-          pincode: (so.shipping_address as Record<string, unknown>).zip ?? "",
-          phone:   (so.shipping_address as Record<string, unknown>).phone || (so.customer as Record<string, unknown> | null)?.phone || "",
+          // Combine address1 + address2 (Shopify splits flat/house into address2)
+          address: [sa.address1 ?? "", sa.address2 ?? ""].filter(Boolean).join(", "),
+          city:    (sa.city     as string) ?? "",
+          state:   (sa.province as string) ?? "",
+          pincode: (sa.zip      as string) ?? "",
+          phone:   (sa.phone    as string) || (so.customer as Record<string, unknown> | null)?.phone as string || "",
         }
       : undefined;
     const customerName = so.customer

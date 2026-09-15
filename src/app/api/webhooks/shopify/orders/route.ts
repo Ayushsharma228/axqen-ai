@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { rankSuppliers } from "@/lib/automation/supplier-assignment";
+import { getConfig, requestCODVerification } from "@/lib/hillteck";
 import crypto from "crypto";
 import { PaymentMode } from "@prisma/client";
 
@@ -124,7 +125,7 @@ export async function POST(req: NextRequest) {
   // Find the store and seller
   const store = await prisma.shopifyStore.findFirst({
     where: { storeUrl: shopDomain },
-    include: { seller: { select: { id: true, name: true } } },
+    include: { seller: { select: { id: true, name: true, brandName: true } } },
   });
 
   if (!store) {
@@ -285,6 +286,44 @@ export async function POST(req: NextRequest) {
       })
     )
   );
+
+  // Auto-trigger WhatsApp COD verification for new COD orders
+  if (paymentMode === "COD" && customerAddress) {
+    try {
+      const paConfig = await getConfig();
+      if (paConfig?.enabled) {
+        const ok = await requestCODVerification(
+          {
+            id:              order.id,
+            externalOrderId,
+            customerName,
+            customerAddress: customerAddress as Record<string, unknown>,
+            totalAmount,
+            items:           lineItems.map(i => ({
+              name:     (i.title as string) ?? "Unknown",
+              quantity: (i.quantity as number) ?? 1,
+              price:    parseFloat((i.price as string) ?? "0"),
+            })),
+          },
+          paConfig,
+          { name: store.seller.name, brandName: store.seller.brandName },
+        );
+        if (ok) {
+          await prisma.order.update({
+            where: { id: order.id },
+            data: {
+              confirmationStatus:      "PENDING" as never,
+              confirmationRequestedAt: new Date(),
+              confirmationChannel:     "WHATSAPP",
+            },
+          });
+        }
+      }
+    } catch (err) {
+      // Non-fatal — order is already saved; WhatsApp trigger failure should not block the webhook response
+      console.error("[Shopify Webhook] PrimeAssist trigger failed:", err);
+    }
+  }
 
   return NextResponse.json({ ok: true, orderId: order.id });
 }

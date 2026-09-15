@@ -1,25 +1,22 @@
 /**
- * HillTeck Integration Client
+ * PrimeAssist Integration
  *
- * HillTeck handles COD order verification (AI call + WhatsApp) and
- * WhatsApp order notifications for AXQEN sellers.
+ * Handles COD order verification and order notifications via WhatsApp AI workflows.
+ * API base: https://api.primeassist.ai
+ * Auth:     X-Api-Key header (store-scoped, generated in PrimeAssist → Integration → API Key)
+ * Docs:     https://primeassist1.gitlab.io/docs/
  *
- * TODO when API docs arrive:
- *  1. Replace BASE_URL with the real HillTeck API base
- *  2. Replace ENDPOINT_* paths with real paths
- *  3. Confirm auth header format (Bearer token vs X-Api-Key vs query param)
- *  4. Confirm request body field names
- *  5. Set HILLTECK_WEBHOOK_SECRET to verify incoming webhooks
+ * Config stored in platformConfig table under keys:
+ *   HILLTECK_API_KEY, HILLTECK_BASE_URL, HILLTECK_ENABLED, HILLTECK_WEBHOOK_SECRET
  */
 
 import { prisma } from "@/lib/prisma";
-
-// ── Config ────────────────────────────────────────────────────────────────────
+import { createHmac } from "crypto";
 
 export type HillteckConfig = {
-  apiKey:    string;
-  baseUrl:   string;
-  enabled:   boolean;
+  apiKey:        string;
+  baseUrl:       string;
+  enabled:       boolean;
   webhookSecret: string;
 };
 
@@ -28,150 +25,155 @@ export async function getConfig(): Promise<HillteckConfig | null> {
     where: { key: { in: ["HILLTECK_API_KEY", "HILLTECK_BASE_URL", "HILLTECK_ENABLED", "HILLTECK_WEBHOOK_SECRET"] } },
   });
   const map: Record<string, string> = Object.fromEntries(rows.map(r => [r.key, r.value]));
-
   const apiKey = map["HILLTECK_API_KEY"] ?? "";
   if (!apiKey) return null;
-
   return {
     apiKey,
-    baseUrl:       map["HILLTECK_BASE_URL"] ?? "https://api.hillteck.com",  // TODO: confirm with HillTeck
+    baseUrl:       map["HILLTECK_BASE_URL"] ?? "https://api.primeassist.ai",
     enabled:       (map["HILLTECK_ENABLED"] ?? "false") === "true",
     webhookSecret: map["HILLTECK_WEBHOOK_SECRET"] ?? "",
   };
 }
 
-// ── COD Verification ─────────────────────────────────────────────────────────
+// Normalize to E.164. Handles bare 10-digit Indian numbers and 91-prefixed numbers.
+function toE164(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 10) return `+91${digits}`;
+  if (digits.length === 12 && digits.startsWith("91")) return `+${digits}`;
+  if (raw.startsWith("+") && digits.length >= 10) return `+${digits}`;
+  return "";
+}
 
 type OrderForVerification = {
   id:              string;
   externalOrderId: string;
   customerName:    string | null;
-  customerAddress: { phone?: string; city?: string; state?: string } | null;
+  customerAddress: Record<string, unknown> | null;
   totalAmount:     number;
   items:           { name: string; quantity: number; price: number }[];
 };
 
 /**
- * Push a COD order to HillTeck for verification (AI call + WhatsApp).
- * Returns true if the request was accepted, false otherwise.
+ * Trigger a PrimeAssist WhatsApp COD verification workflow.
  *
- * TODO: Update endpoint and payload once HillTeck shares API docs.
+ * Uses trigger_type=order_created with event_id=order.id (AXQEN UUID).
+ * The (event_id, trigger_type) pair is unique per PrimeAssist store, so
+ * calling this twice for the same order returns 409 — handled as success.
+ *
+ * Seller should configure an "order_created" workflow in PrimeAssist that:
+ *   1. Sends WhatsApp: "Your order {{order.number}} from {{seller.name}} — Confirm or Cancel?"
+ *   2. If confirmed + address missing → asks customer for full address
+ *   3. Webhooks result back to /api/webhooks/primeassist
  */
 export async function requestCODVerification(
-  order: OrderForVerification,
-  config: HillteckConfig,
+  order:   OrderForVerification,
+  config:  HillteckConfig,
+  seller?: { name?: string | null; brandName?: string | null },
 ): Promise<boolean> {
-  const phone = (order.customerAddress as { phone?: string } | null)?.phone ?? "";
-  if (!phone) return false;
-
-  try {
-    const res = await fetch(`${config.baseUrl}/orders/verify`, { // TODO: confirm endpoint
-      method:  "POST",
-      headers: {
-        "Authorization": `Bearer ${config.apiKey}`, // TODO: confirm auth header
-        "Content-Type":  "application/json",
-      },
-      body: JSON.stringify({
-        // TODO: map to HillTeck's actual field names
-        reference_id:   order.externalOrderId,
-        customer_name:  order.customerName ?? "",
-        customer_phone: phone,
-        amount:         order.totalAmount,
-        items: order.items.map(i => ({
-          name: i.name, quantity: i.quantity, price: i.price,
-        })),
-      }),
-    });
-
-    if (!res.ok) {
-      const text = await res.text();
-      console.error(`[hillteck] verify error ${res.status}: ${text}`);
-      return false;
-    }
-    return true;
-  } catch (err) {
-    console.error("[hillteck] verify fetch failed:", err);
+  const addr     = order.customerAddress;
+  const phone    = toE164((addr?.phone as string) ?? "");
+  if (!phone) {
+    console.warn(`[primeassist] no valid phone for order ${order.externalOrderId}`);
     return false;
   }
-}
 
-// ── WhatsApp Notifications ────────────────────────────────────────────────────
-
-export type NotificationEvent =
-  | "ORDER_CONFIRMED"
-  | "ORDER_SHIPPED"
-  | "ORDER_DELIVERED"
-  | "ORDER_CANCELLED"
-  | "COD_TO_PREPAID"; // sends a payment link
-
-type OrderForNotification = {
-  externalOrderId: string;
-  customerName:    string | null;
-  customerAddress: { phone?: string } | null;
-  awbNumber:       string | null;
-  totalAmount:     number;
-};
-
-/**
- * Send a WhatsApp notification via HillTeck for an order event.
- *
- * TODO: Update endpoint and payload once HillTeck shares API docs.
- */
-export async function sendWhatsAppNotification(
-  event:  NotificationEvent,
-  order:  OrderForNotification,
-  config: HillteckConfig,
-): Promise<boolean> {
-  const phone = (order.customerAddress as { phone?: string } | null)?.phone ?? "";
-  if (!phone) return false;
+  const addrStr    = [addr?.houseNo, addr?.street, addr?.address, addr?.city, addr?.state, addr?.pincode]
+    .filter(Boolean).join(", ");
+  const itemsStr   = order.items.map(i => i.name).join(", ");
+  const sellerName = seller?.brandName || seller?.name || "";
 
   try {
-    const res = await fetch(`${config.baseUrl}/whatsapp/send`, { // TODO: confirm endpoint
+    const res = await fetch(`${config.baseUrl}/api/v1/merchants/trigger_event`, {
       method:  "POST",
-      headers: {
-        "Authorization": `Bearer ${config.apiKey}`,
-        "Content-Type":  "application/json",
-      },
+      headers: { "X-Api-Key": config.apiKey, "Content-Type": "application/json" },
       body: JSON.stringify({
-        // TODO: map to HillTeck's actual field names + template names
-        event,
+        trigger_type: "order_created",
+        event_id:     order.id,
         phone,
-        customer_name: order.customerName ?? "",
-        order_id:      order.externalOrderId,
-        awb:           order.awbNumber ?? "",
-        amount:        order.totalAmount,
+        data: {
+          "{{order.number}}":        order.externalOrderId,
+          "{{order.amount}}":        order.totalAmount.toFixed(2),
+          "{{order.products.name}}": itemsStr,
+          "{{customer.name}}":       order.customerName ?? "",
+          "{{customer.phone}}":      phone,
+          ...(sellerName ? { "{{seller.name}}":   sellerName } : {}),
+          ...(addrStr    ? { "{{order.address}}": addrStr    } : {}),
+        },
       }),
     });
 
+    if (res.status === 409) {
+      // Already queued — idempotent
+      return true;
+    }
     if (!res.ok) {
       const text = await res.text();
-      console.error(`[hillteck] wa-notify error ${res.status}: ${text}`);
+      console.error(`[primeassist] trigger_event ${res.status} order=${order.externalOrderId}: ${text}`);
       return false;
+    }
+    const ack = await res.json() as { matched_workflows?: number };
+    if ((ack.matched_workflows ?? 0) === 0) {
+      console.warn(`[primeassist] 0 workflows matched for order_created — configure a workflow in PrimeAssist dashboard`);
     }
     return true;
   } catch (err) {
-    console.error("[hillteck] wa-notify fetch failed:", err);
+    console.error("[primeassist] trigger_event failed:", err);
     return false;
   }
 }
 
-// ── Webhook Signature Verification ───────────────────────────────────────────
-
-import { createHmac } from "crypto";
-
 /**
- * Verify that an incoming webhook request is genuinely from HillTeck.
- * TODO: Confirm signature algorithm and header name once HillTeck shares docs.
+ * Trigger a WhatsApp shipping notification when an order is fulfilled.
+ * Uses trigger_type=fulfillment_created; event_id=`${order.id}-fulfilled`.
  */
-export function verifyWebhookSignature(
-  payload:   string,
-  signature: string,
-  secret:    string,
-): boolean {
-  if (!secret) return true; // Skip verification if no secret configured
+export async function notifyFulfillment(
+  order: {
+    id:              string;
+    externalOrderId: string;
+    customerName:    string | null;
+    customerAddress: Record<string, unknown> | null;
+    awbNumber:       string | null;
+    courier:         string | null;
+    trackingUrl:     string | null;
+  },
+  config: HillteckConfig,
+): Promise<boolean> {
+  const phone = toE164((order.customerAddress?.phone as string) ?? "");
+  if (!phone) return false;
+
+  try {
+    const res = await fetch(`${config.baseUrl}/api/v1/merchants/trigger_event`, {
+      method:  "POST",
+      headers: { "X-Api-Key": config.apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        trigger_type: "fulfillment_created",
+        event_id:     `${order.id}-fulfilled`,
+        phone,
+        data: {
+          "{{order.number}}":                       order.externalOrderId,
+          "{{customer.name}}":                      order.customerName ?? "",
+          "{{order.fulfillment.tracking.company}}": order.courier ?? "",
+          "{{order.fulfillment.tracking.number}}":  order.awbNumber ?? "",
+          "{{order.fulfillment.tracking.url}}":     order.trackingUrl ?? "",
+        },
+      }),
+    });
+    if (res.status === 409) return true;
+    if (!res.ok) { console.error(`[primeassist] fulfillment notify ${res.status}`); return false; }
+    return true;
+  } catch (err) {
+    console.error("[primeassist] fulfillment notify failed:", err);
+    return false;
+  }
+}
+
+// Legacy alias — kept for any older callers
+export const sendWhatsAppNotification = notifyFulfillment;
+
+export function verifyWebhookSignature(payload: string, signature: string, secret: string): boolean {
+  if (!secret) return true;
   try {
     const expected = createHmac("sha256", secret).update(payload).digest("hex");
-    // TODO: confirm HillTeck sends "sha256=<hex>" or just "<hex>"
     const received = signature.startsWith("sha256=") ? signature.slice(7) : signature;
     return expected === received;
   } catch {

@@ -2,9 +2,11 @@
  * Cron: verify-cod-orders
  * Schedule: every hour (set in vercel.json)
  *
- * RTO-risk-aware intervention:
- *   LOW         → skip — seller manually confirms through normal flow
- *   MEDIUM      → send to HillTeck for humanized AI call / WhatsApp verification
+ * RTO-risk-aware COD order processing:
+ *   LOW         → skip
+ *   MEDIUM      → WhatsApp trigger already fired at order creation;
+ *                 this cron only retriggers NOT_REQUIRED orders that slipped
+ *                 through (e.g. created via sync, not live webhook)
  *   HIGH / VERY_HIGH → auto-cancel immediately (too risky to ship)
  */
 
@@ -12,6 +14,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getConfig, requestCODVerification } from "@/lib/hillteck";
 import { batchPredictRtoRisk } from "@/lib/rto-predictor";
+import { decrypt } from "@/lib/encrypt";
 
 async function cancelOnShopify(
   shopifyOrderId: string | number,
@@ -39,23 +42,22 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const config = await getConfig();
-  if (!config || !config.enabled) {
-    return NextResponse.json({ skipped: true, reason: "HillTeck not configured or disabled" });
-  }
+  const paConfig = await getConfig();
 
   // All eligible COD orders from the last 3 days
   const orders = await prisma.order.findMany({
     where: {
-      paymentMode:        "COD",
-      confirmationStatus: "NOT_REQUIRED",
-      status:             { notIn: ["DELIVERED", "CANCELLED", "RTO"] },
-      createdAt:          { gte: new Date(Date.now() - 3 * 86400000) },
+      paymentMode: "COD",
+      // NOT_REQUIRED = never triggered | PENDING = awaiting customer response
+      confirmationStatus: { in: ["NOT_REQUIRED", "PENDING"] },
+      status:    { notIn: ["DELIVERED", "CANCELLED", "RTO"] },
+      createdAt: { gte: new Date(Date.now() - 3 * 86400000) },
     },
     select: {
       id: true, sellerId: true, source: true,
       externalOrderId: true, customerName: true,
       customerAddress: true, totalAmount: true,
+      confirmationStatus: true,
       rawData: true,
       items: { select: { name: true, quantity: true, price: true } },
     },
@@ -66,7 +68,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ sent: 0, autoCancel: 0, skippedLow: 0, total: 0 });
   }
 
-  // Score all orders grouped by seller (history is seller-scoped)
+  // Score all orders by RTO risk, grouped by seller
   const bySeller = new Map<string, typeof orders>();
   for (const o of orders) {
     const list = bySeller.get(o.sellerId) ?? [];
@@ -82,7 +84,7 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Pre-fetch Shopify stores for sellers who have HIGH-risk orders
+  // Fetch Shopify stores for sellers with HIGH-risk orders (needed for Shopify cancellation)
   const sellerIdsWithHighRisk = new Set<string>();
   for (const o of orders) {
     const level = scoreMap[o.id] ?? "MEDIUM";
@@ -90,7 +92,6 @@ export async function GET(req: NextRequest) {
       sellerIdsWithHighRisk.add(o.sellerId);
     }
   }
-
   const shopifyStores = sellerIdsWithHighRisk.size > 0
     ? await prisma.shopifyStore.findMany({
         where:  { sellerId: { in: [...sellerIdsWithHighRisk] } },
@@ -99,7 +100,14 @@ export async function GET(req: NextRequest) {
     : [];
   const storeMap = new Map(shopifyStores.map(s => [s.sellerId, s]));
 
-  // Process each order
+  // Fetch seller brand names for WhatsApp trigger payload
+  const sellerIds = [...new Set(orders.map(o => o.sellerId))];
+  const sellers   = await prisma.user.findMany({
+    where:  { id: { in: sellerIds } },
+    select: { id: true, name: true, brandName: true },
+  });
+  const sellerMap = new Map(sellers.map(s => [s.id, s]));
+
   let sent = 0;
   let autoCancel = 0;
   let skippedLow = 0;
@@ -108,44 +116,47 @@ export async function GET(req: NextRequest) {
   for (const order of orders) {
     const level = scoreMap[order.id] ?? "MEDIUM";
 
-    // ── LOW → seller confirms manually, nothing to do here ───────────────
+    // LOW → skip
     if (level === "LOW") {
       skippedLow++;
       continue;
     }
 
-    // ── HIGH / VERY_HIGH → auto-cancel ───────────────────────────────────
+    // HIGH / VERY_HIGH → auto-cancel immediately
     if (level === "HIGH" || level === "VERY_HIGH") {
-      // Cancel on Shopify first if applicable
       if (order.source === "SHOPIFY") {
-        const store = storeMap.get(order.sellerId);
-        const rawData = order.rawData as { id?: number | string } | null;
+        const store        = storeMap.get(order.sellerId);
+        const rawData      = order.rawData as { id?: number | string } | null;
         const shopifyOrderId = rawData?.id;
         if (store && shopifyOrderId) {
-          await cancelOnShopify(shopifyOrderId, store.storeUrl, store.accessToken);
+          await cancelOnShopify(shopifyOrderId, store.storeUrl, decrypt(store.accessToken));
         }
       }
-
       await prisma.order.update({
         where: { id: order.id },
-        data:  { status: "CANCELLED" as never },
+        data:  { status: "CANCELLED" as never, confirmationStatus: "FAILED" as never, confirmationFailedAt: new Date() },
       });
       autoCancel++;
       console.log(`[rto-auto-cancel] order=${order.externalOrderId} level=${level}`);
       continue;
     }
 
-    // ── MEDIUM → HillTeck humanized verification ──────────────────────────
+    // MEDIUM — only trigger WhatsApp for NOT_REQUIRED orders (PENDING = already triggered)
+    if (order.confirmationStatus !== "NOT_REQUIRED") continue;
+    if (!paConfig?.enabled) { failed++; continue; }
+
+    const seller = sellerMap.get(order.sellerId);
     const ok = await requestCODVerification(
       {
         id:              order.id,
         externalOrderId: order.externalOrderId,
         customerName:    order.customerName,
-        customerAddress: order.customerAddress as { phone?: string; city?: string; state?: string } | null,
+        customerAddress: order.customerAddress as Record<string, unknown> | null,
         totalAmount:     order.totalAmount,
         items:           order.items,
       },
-      config,
+      paConfig,
+      seller ?? undefined,
     );
 
     if (ok) {
@@ -154,7 +165,7 @@ export async function GET(req: NextRequest) {
         data:  {
           confirmationStatus:      "PENDING" as never,
           confirmationRequestedAt: new Date(),
-          confirmationChannel:     "HILLTECK",
+          confirmationChannel:     "WHATSAPP",
         },
       });
       sent++;
@@ -164,7 +175,7 @@ export async function GET(req: NextRequest) {
   }
 
   console.log(
-    `[cron] verify-cod-orders: autoCancel=${autoCancel} hillteckSent=${sent} skippedLow=${skippedLow} failed=${failed} total=${orders.length}`,
+    `[cron] verify-cod-orders: autoCancel=${autoCancel} whatsappSent=${sent} skippedLow=${skippedLow} failed=${failed} total=${orders.length}`,
   );
   return NextResponse.json({ sent, autoCancel, skippedLow, failed, total: orders.length });
 }

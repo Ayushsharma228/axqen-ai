@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   UserCheck, Plus, Trash2, Loader2, Target,
-  TrendingUp, Users, Phone, MapPin, ChevronDown, UserPlus,
+  TrendingUp, Users, Phone, MapPin, ChevronDown, UserPlus, ShoppingCart,
   Upload, Download, RefreshCw, XCircle, Sparkles, DollarSign, AlertCircle, MessageCircle, FileDown, BarChart2,
 } from "lucide-react";
 import Link from "next/link";
@@ -546,7 +546,7 @@ export default function AdminCRMPage() {
             </button>
           </div>
         }
-        filters={
+        filters={tab !== "customers" ? (
           <div className="flex items-center gap-2">
             <select value={repFilter} onChange={e => { setRepFilter(e.target.value); setPage(1); }}
               className="px-3 py-2 text-sm rounded-xl outline-none" style={{ color: "var(--text-primary)", background: "var(--bg-muted)", border: "1px solid var(--border)" }}>
@@ -566,8 +566,8 @@ export default function AdminCRMPage() {
               <option value="MANUAL" className="text-gray-900 bg-white">Manual</option>
             </select>
           </div>
-        }
-        cards={
+        ) : undefined}
+        cards={tab !== "customers" ? (
           <div className="grid grid-cols-4 md:grid-cols-8 gap-3">
             {[
               { label: "Total",        value: totalLeads,         color: "#3B82F6",  bg: "rgba(59,130,246,0.15)",  icon: Users },
@@ -591,7 +591,27 @@ export default function AdminCRMPage() {
               </div>
             ))}
           </div>
-        }
+        ) : (
+          <div className="grid grid-cols-4 gap-3">
+            {[
+              { label: "Total Customers",   value: custSummary.totalCustomers,  color: "#4361EE", bg: "rgba(67,97,238,0.15)",  icon: Users },
+              { label: "Repeat Customers",  value: custSummary.repeatCustomers, color: "#8B5CF6", bg: "rgba(139,92,246,0.15)", icon: UserCheck },
+              { label: "Total Orders",      value: custSummary.totalOrders,     color: "#D97706", bg: "rgba(217,119,6,0.15)",  icon: ShoppingCart },
+              { label: "Packets Delivered", value: custSummary.totalDelivered,  color: "#16A34A", bg: "rgba(22,163,74,0.15)",  icon: TrendingUp },
+            ].map(({ label, value, color, bg, icon: Icon }) => (
+              <div key={label} className="rounded-2xl px-3 py-3 flex flex-col gap-1"
+                style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: bg }}>
+                    <Icon className="w-3.5 h-3.5" style={{ color }} />
+                  </div>
+                  <p className="text-xs font-medium truncate" style={{ color: "var(--text-secondary)" }}>{label}</p>
+                </div>
+                <p className="text-2xl font-bold leading-none" style={{ color: "var(--text-primary)" }}>{value}</p>
+              </div>
+            ))}
+          </div>
+        )}
       />
 
       <div className="px-8 pt-6 space-y-6 pb-8">

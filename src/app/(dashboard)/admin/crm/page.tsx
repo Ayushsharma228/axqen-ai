@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   UserCheck, Plus, Trash2, Loader2, Target,
   TrendingUp, Users, Phone, MapPin, ChevronDown, UserPlus,
@@ -54,7 +55,9 @@ const SERVICE_STYLE: Record<string, { bg: string; color: string; emoji: string }
 };
 
 export default function AdminCRMPage() {
-  const [tab, setTab] = useState<"leads" | "team" | "customers">("leads");
+  const searchParams = useSearchParams();
+  const initialTab = (searchParams.get("tab") as "leads" | "team" | "customers") ?? "leads";
+  const [tab, setTab] = useState<"leads" | "team" | "customers">(initialTab);
 
   // Customers tab
   const [customers, setCustomers]         = useState<CustomerRow[]>([]);

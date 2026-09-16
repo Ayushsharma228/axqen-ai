@@ -33,7 +33,7 @@ const adminNav: NavItem[] = [
   { label: "Fulfillment",        href: "/admin/delivery",          icon: Truck },
   { label: "Products",           href: "/admin/products",          icon: Package },
   { label: "Inventory",          href: "/admin/inventory",         icon: Boxes },
-  { label: "Customers",          href: "/admin/crm",               icon: Users },
+  { label: "Customers",          href: "/admin/crm?tab=customers", icon: Users },
 
   // ── NETWORK ─────────────────────────────────────────────────────────────
   { label: "Sellers",            href: "/admin/sellers",           icon: Store,           section: "NETWORK" },
@@ -216,7 +216,8 @@ export function SidebarV2({ role, plan, userName, userEmail }: SidebarV2Props) {
         {nav.map((item) => {
           const Icon = item.icon;
           const roots = ["/admin", "/seller", "/supplier", "/sales"];
-          const isActive = pathname === item.href || (!roots.includes(item.href) && pathname.startsWith(item.href));
+          const itemPath = item.href.split("?")[0];
+          const isActive = pathname === itemPath || (!roots.includes(itemPath) && pathname.startsWith(itemPath));
           const badge =
             item.href === "/seller/notifications" && unreadCount > 0 ? unreadCount :
             item.href === "/sales/inbox"           && waUnread > 0    ? waUnread : 0;

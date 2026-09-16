@@ -33,7 +33,7 @@ const adminNav: NavItem[] = [
   { label: "Fulfillment",        href: "/admin/delivery",          icon: Truck },
   { label: "Products",           href: "/admin/products",          icon: Package },
   { label: "Inventory",          href: "/admin/inventory",         icon: Boxes },
-  { label: "Customers",          href: "/admin/crm?tab=customers", icon: Users },
+  { label: "Customers",          href: "/admin/customers",         icon: Users },
 
   // ── NETWORK ─────────────────────────────────────────────────────────────
   { label: "Sellers",            href: "/admin/sellers",           icon: Store,           section: "NETWORK" },

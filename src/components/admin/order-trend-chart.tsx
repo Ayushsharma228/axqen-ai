@@ -45,7 +45,7 @@ export function AdminOrderTrendChart() {
     if (toDate)   params.set("to",   toDate);
     const res  = await fetch(`/api/admin/analytics?${params}`);
     const data = await res.json();
-    setTrend(data.trend ?? []);
+    setTrend(data.orders?.trend ?? []);
     setLoading(false);
   }, []);
 

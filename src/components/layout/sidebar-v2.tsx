@@ -11,6 +11,8 @@ import {
   Menu, X, ClipboardList, BarChart2, Boxes, Receipt, TrendingUp,
   Settings2, ShieldCheck, BanknoteIcon, MonitorDot, Zap, Layers,
   Bot, Activity, MessageCircle, HelpCircle, ChevronLeft, ChevronRight,
+  Network, Route, CreditCard, FileText, Cpu, BookOpen, Wrench,
+  BarChart, Globe, Key, ScrollText, SlidersHorizontal,
 } from "lucide-react";
 
 interface NavItem {
@@ -21,40 +23,59 @@ interface NavItem {
 }
 
 const adminNav: NavItem[] = [
-  { label: "Dashboard",         href: "/admin",                   icon: LayoutDashboard, section: "MAIN" },
-  { label: "Analytics",         href: "/admin/analytics",         icon: BarChart2 },
-  { label: "Automation",        href: "/admin/automation",        icon: Zap },
+  // ── COMMAND CENTER ──────────────────────────────────────────────────────
+  { label: "Overview",           href: "/admin",                   icon: LayoutDashboard, section: "COMMAND CENTER" },
+  { label: "AI Activity",        href: "/admin/ai-workforce",      icon: Bot },
+  { label: "Alerts",             href: "/admin/notifications",     icon: AlertTriangle },
 
-  { label: "Orders",            href: "/admin/orders",            icon: ShoppingCart,    section: "OPERATIONS" },
-  { label: "Delivery",          href: "/admin/delivery",          icon: Truck },
-  { label: "NDR",               href: "/admin/ndr",               icon: AlertTriangle },
-  { label: "Purchase Orders",   href: "/admin/purchase-orders",   icon: ClipboardList },
-  { label: "Inventory",         href: "/admin/inventory",         icon: Boxes },
-  { label: "Operations",        href: "/admin/operations",        icon: MonitorDot },
+  // ── COMMERCE ────────────────────────────────────────────────────────────
+  { label: "Orders",             href: "/admin/orders",            icon: ShoppingCart,    section: "COMMERCE" },
+  { label: "Fulfillment",        href: "/admin/delivery",          icon: Truck },
+  { label: "Products",           href: "/admin/products",          icon: Package },
+  { label: "Inventory",          href: "/admin/inventory",         icon: Boxes },
+  { label: "Customers",          href: "/admin/crm",               icon: Users },
 
-  { label: "Listing OS",        href: "/admin/listing-os",        icon: Layers,          section: "CATALOGUE" },
-  { label: "Listings",          href: "/admin/listings",          icon: ListChecks },
-  { label: "Products",          href: "/admin/products",          icon: Package },
+  // ── NETWORK ─────────────────────────────────────────────────────────────
+  { label: "Sellers",            href: "/admin/sellers",           icon: Store,           section: "NETWORK" },
+  { label: "Suppliers",          href: "/admin/purchase-orders",   icon: Network },
+  { label: "Shipping",           href: "/admin/delivery",          icon: Route },
 
-  { label: "Sellers",           href: "/admin/sellers",           icon: Store,           section: "SELLERS" },
-  { label: "Activation",        href: "/admin/activation",        icon: Activity },
-  { label: "KYC",               href: "/admin/kyc",               icon: ShieldCheck },
+  // ── FINANCE ─────────────────────────────────────────────────────────────
+  { label: "Transactions",       href: "/admin/reconciliation",    icon: Receipt,         section: "FINANCE" },
+  { label: "Seller Settlements", href: "/admin/remittance",        icon: BadgeIndianRupee },
+  { label: "Supplier Payments",  href: "/admin/supplier-payables", icon: TrendingUp },
+  { label: "Platform Revenue",   href: "/admin/analytics",         icon: BarChart },
+  { label: "Reconciliation",     href: "/admin/reconciliation",    icon: CheckSquare },
 
-  { label: "Reconciliation",    href: "/admin/reconciliation",    icon: CheckSquare,     section: "FINANCE" },
-  { label: "Remittance",        href: "/admin/remittance",        icon: BadgeIndianRupee },
-  { label: "Payouts",           href: "/admin/withdrawals",       icon: BanknoteIcon },
-  { label: "Supplier Payables", href: "/admin/supplier-payables", icon: TrendingUp },
+  // ── OPERATIONS ──────────────────────────────────────────────────────────
+  { label: "COD Verification",   href: "/admin/hillteck",          icon: MessageCircle,   section: "OPERATIONS" },
+  { label: "NDR Management",     href: "/admin/ndr",               icon: MonitorDot },
+  { label: "Automation",         href: "/admin/automation",        icon: Zap },
+  { label: "Tasks & Approvals",  href: "/admin/operations",        icon: ClipboardList },
 
-  { label: "CRM",               href: "/admin/crm",               icon: UserCheck,       section: "GROWTH" },
-  { label: "WhatsApp",          href: "/admin/whatsapp",          icon: MessageCircle },
-  { label: "Meta Ads",          href: "/admin/ad-spend",          icon: Megaphone },
-  { label: "Amazon",            href: "/admin/amazon",            icon: ShoppingCart },
+  // ── AI WORKFORCE ────────────────────────────────────────────────────────
+  { label: "AI Employees",       href: "/admin/ai-workforce",      icon: Cpu,             section: "AI WORKFORCE" },
+  { label: "AI Tasks",           href: "/admin/ai-workforce",      icon: ListChecks },
+  { label: "AI Tools",           href: "/admin/ai-workforce",      icon: Wrench },
+  { label: "AI Memory",          href: "/admin/ai-workforce",      icon: BookOpen },
+  { label: "Activity Logs",      href: "/admin/ai-workforce",      icon: ScrollText },
 
-  { label: "AI Workforce",      href: "/admin/ai-workforce",      icon: Bot,             section: "PLATFORM" },
-  { label: "Config",            href: "/admin/config",            icon: Settings2 },
-  { label: "Users",             href: "/admin/users",             icon: Users },
-  { label: "Support",           href: "/admin/support",           icon: HelpCircle },
-  { label: "Notifications",     href: "/admin/notifications",     icon: Bell },
+  // ── GROWTH ──────────────────────────────────────────────────────────────
+  { label: "Meta Ads",           href: "/admin/ad-spend",          icon: Megaphone,       section: "GROWTH" },
+  { label: "Sales & CRM",        href: "/admin/crm",               icon: UserCheck },
+  { label: "Campaigns",          href: "/admin/whatsapp",          icon: BarChart2 },
+
+  // ── PLATFORM ────────────────────────────────────────────────────────────
+  { label: "Integrations",       href: "/admin/config",            icon: Globe,           section: "PLATFORM" },
+  { label: "API & Webhooks",     href: "/admin/config",            icon: Key },
+  { label: "Notifications",      href: "/admin/notifications",     icon: Bell },
+  { label: "Plans & Billing",    href: "/admin/activation",        icon: CreditCard },
+
+  // ── ADMIN ───────────────────────────────────────────────────────────────
+  { label: "Team & Roles",       href: "/admin/users",             icon: ShieldCheck,     section: "ADMIN" },
+  { label: "Permissions",        href: "/admin/users",             icon: SlidersHorizontal },
+  { label: "Audit Logs",         href: "/admin/operations",        icon: FileText },
+  { label: "System Settings",    href: "/admin/config",            icon: Settings2 },
 ];
 
 const dropshippingNav: NavItem[] = [
@@ -169,9 +190,16 @@ export function SidebarV2({ role, plan, userName, userEmail }: SidebarV2Props) {
         style={{ borderBottom: "1px solid var(--border)" }}>
         <img src="/axqen-icon.png" alt="AXQEN" className="w-7 h-7 rounded-lg flex-shrink-0 object-cover" />
         {!collapsed && (
-          <span className="font-bold text-sm tracking-wide flex-1 truncate" style={{ color: "var(--text-primary)" }}>
-            AXQEN
-          </span>
+          <div className="flex-1 min-w-0">
+            <p className="font-bold text-sm tracking-wide truncate leading-tight" style={{ color: "var(--text-primary)" }}>
+              AXQEN
+            </p>
+            {role === "admin" && (
+              <p className="text-[9px] font-semibold uppercase tracking-widest truncate leading-tight" style={{ color: "var(--text-muted)" }}>
+                Admin Console
+              </p>
+            )}
+          </div>
         )}
         <button
           onClick={toggleCollapsed}

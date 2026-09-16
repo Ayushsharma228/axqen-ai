@@ -11,11 +11,13 @@ const DEFAULTS: Record<string, { value: string; label: string; description: stri
   ARYA_OUTREACH_TEMPLATE:   { value: "hello_world",   label: "Arya Outreach Template",     description: "Meta-approved WhatsApp template name for first outbound message", unit: "", type: "string" },
   ARYA_FOLLOWUP_TEMPLATE:   { value: "hello_world",   label: "Arya Follow-up Template",    description: "Meta-approved WhatsApp template name for automated follow-ups", unit: "", type: "string" },
   ARYA_TEMPLATE_LANG:       { value: "en_US",         label: "Template Language Code",     description: "Language code for WhatsApp templates (e.g. en_US, hi, en_IN)", unit: "", type: "string" },
-  // HillTeck integration
-  HILLTECK_API_KEY:         { value: "",              label: "HillTeck API Key",            description: "API key from HillTeck partner dashboard", unit: "", type: "string" },
-  HILLTECK_BASE_URL:        { value: "https://api.hillteck.com", label: "HillTeck Base URL", description: "API base URL provided by HillTeck team", unit: "", type: "string" },
-  HILLTECK_ENABLED:         { value: "false",         label: "HillTeck Auto-Verify",        description: "Automatically send all new COD orders to HillTeck for verification", unit: "", type: "string" },
-  HILLTECK_WEBHOOK_SECRET:  { value: "",              label: "HillTeck Webhook Secret",     description: "Webhook signing secret from HillTeck (for signature verification)", unit: "", type: "string" },
+  // AiSensy integration
+  HILLTECK_API_KEY:          { value: "",                              label: "AiSensy Campaign API Key",   description: "Campaign API Key from AiSensy → Manage → API Key", unit: "", type: "string" },
+  HILLTECK_BASE_URL:         { value: "https://backend.aisensy.com",  label: "AiSensy Base URL",           description: "AiSensy API base URL (leave as default)", unit: "", type: "string" },
+  HILLTECK_ENABLED:          { value: "false",                        label: "AiSensy Auto-Verify",        description: "Automatically send WhatsApp to all new COD orders via AiSensy", unit: "", type: "string" },
+  HILLTECK_WEBHOOK_SECRET:   { value: "",                             label: "AiSensy Webhook Secret",     description: "Optional signing secret for AiSensy webhook verification", unit: "", type: "string" },
+  HILLTECK_CAMPAIGN_COD:     { value: "",                             label: "COD Campaign Name",          description: "API Campaign name in AiSensy for COD order verification (e.g. COD_VERIFICATION)", unit: "", type: "string" },
+  HILLTECK_CAMPAIGN_SHIPPED: { value: "",                             label: "Shipped Campaign Name",      description: "API Campaign name in AiSensy for shipping notifications (e.g. ORDER_SHIPPED)", unit: "", type: "string" },
 };
 
 export async function GET(req: NextRequest) {

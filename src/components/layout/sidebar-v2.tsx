@@ -10,7 +10,7 @@ import {
   Wallet, BadgeIndianRupee, User, Megaphone, AlertTriangle, UserCheck,
   Menu, X, ClipboardList, BarChart2, Boxes, Receipt, TrendingUp,
   Settings2, ShieldCheck, BanknoteIcon, MonitorDot, Zap, Layers,
-  Bot, Activity, MessageCircle, HelpCircle,
+  Bot, Activity, MessageCircle, HelpCircle, ChevronLeft, ChevronRight,
 } from "lucide-react";
 
 interface NavItem {
@@ -24,27 +24,33 @@ const adminNav: NavItem[] = [
   { label: "Dashboard",         href: "/admin",                   icon: LayoutDashboard, section: "MAIN" },
   { label: "Analytics",         href: "/admin/analytics",         icon: BarChart2 },
   { label: "Automation",        href: "/admin/automation",        icon: Zap },
-  { label: "Operations",         href: "/admin/operations",        icon: MonitorDot,      section: "OPERATIONS" },
-  { label: "Orders",            href: "/admin/orders",            icon: ShoppingCart },
+
+  { label: "Orders",            href: "/admin/orders",            icon: ShoppingCart,    section: "OPERATIONS" },
   { label: "Delivery",          href: "/admin/delivery",          icon: Truck },
   { label: "NDR",               href: "/admin/ndr",               icon: AlertTriangle },
   { label: "Purchase Orders",   href: "/admin/purchase-orders",   icon: ClipboardList },
   { label: "Inventory",         href: "/admin/inventory",         icon: Boxes },
-  { label: "Listing OS",        href: "/admin/listing-os",        icon: Layers,          section: "LISTING OS" },
-  { label: "Listing Requests",  href: "/admin/listings",          icon: ListChecks },
+  { label: "Operations",        href: "/admin/operations",        icon: MonitorDot },
+
+  { label: "Listing OS",        href: "/admin/listing-os",        icon: Layers,          section: "CATALOGUE" },
+  { label: "Listings",          href: "/admin/listings",          icon: ListChecks },
   { label: "Products",          href: "/admin/products",          icon: Package },
-  { label: "CRM",               href: "/admin/crm",               icon: UserCheck,       section: "CRM" },
-  { label: "WhatsApp",          href: "/admin/whatsapp",          icon: MessageCircle },
+
+  { label: "Sellers",           href: "/admin/sellers",           icon: Store,           section: "SELLERS" },
+  { label: "Activation",        href: "/admin/activation",        icon: Activity },
+  { label: "KYC",               href: "/admin/kyc",               icon: ShieldCheck },
+
   { label: "Reconciliation",    href: "/admin/reconciliation",    icon: CheckSquare,     section: "FINANCE" },
   { label: "Remittance",        href: "/admin/remittance",        icon: BadgeIndianRupee },
   { label: "Payouts",           href: "/admin/withdrawals",       icon: BanknoteIcon },
-  { label: "Supplier Payables", href: "/admin/supplier-payables", icon: BadgeIndianRupee },
+  { label: "Supplier Payables", href: "/admin/supplier-payables", icon: TrendingUp },
+
+  { label: "CRM",               href: "/admin/crm",               icon: UserCheck,       section: "GROWTH" },
+  { label: "WhatsApp",          href: "/admin/whatsapp",          icon: MessageCircle },
   { label: "Meta Ads",          href: "/admin/ad-spend",          icon: Megaphone },
-  { label: "Amazon",            href: "/admin/amazon",            icon: ShoppingCart,    section: "MARKETPLACES" },
-  { label: "AI Workforce",      href: "/admin/ai-workforce",      icon: Bot,             section: "TEAM" },
-  { label: "Sellers",           href: "/admin/sellers",           icon: Store },
-  { label: "Activation",        href: "/admin/activation",        icon: Activity },
-  { label: "KYC",               href: "/admin/kyc",               icon: ShieldCheck },
+  { label: "Amazon",            href: "/admin/amazon",            icon: ShoppingCart },
+
+  { label: "AI Workforce",      href: "/admin/ai-workforce",      icon: Bot,             section: "PLATFORM" },
   { label: "Config",            href: "/admin/config",            icon: Settings2 },
   { label: "Users",             href: "/admin/users",             icon: Users },
   { label: "Support",           href: "/admin/support",           icon: HelpCircle },
@@ -115,9 +121,25 @@ interface SidebarV2Props {
 
 export function SidebarV2({ role, plan, userName, userEmail }: SidebarV2Props) {
   const pathname = usePathname();
+  const [collapsed,    setCollapsed]    = useState(false);
   const [unreadCount,  setUnreadCount]  = useState(0);
   const [waUnread,     setWaUnread]     = useState(0);
   const [mobileOpen,   setMobileOpen]   = useState(false);
+
+  // Persist collapsed state per role
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(`sidebar-collapsed-${role}`);
+      if (stored !== null) setCollapsed(stored === "true");
+    } catch {}
+  }, [role]);
+
+  function toggleCollapsed() {
+    setCollapsed(prev => {
+      try { localStorage.setItem(`sidebar-collapsed-${role}`, String(!prev)); } catch {}
+      return !prev;
+    });
+  }
 
   useEffect(() => { setMobileOpen(false); }, [pathname]);
 
@@ -141,48 +163,74 @@ export function SidebarV2({ role, plan, userName, userEmail }: SidebarV2Props) {
 
   const content = (
     <div className="flex flex-col h-full" style={{ background: "var(--bg-sidebar)" }}>
-      {/* Logo */}
-      <div className="h-16 px-5 flex items-center gap-3 flex-shrink-0" style={{ borderBottom: "1px solid var(--border)" }}>
-        <img src="/axqen-icon.png" alt="AXQEN" className="w-8 h-8 rounded-xl flex-shrink-0 object-cover" />
-        <span className="font-bold text-sm tracking-wide" style={{ color: "var(--text-primary)" }}>AXQEN</span>
+
+      {/* Logo + toggle */}
+      <div className="h-14 px-3 flex items-center gap-2 flex-shrink-0 relative"
+        style={{ borderBottom: "1px solid var(--border)" }}>
+        <img src="/axqen-icon.png" alt="AXQEN" className="w-7 h-7 rounded-lg flex-shrink-0 object-cover" />
+        {!collapsed && (
+          <span className="font-bold text-sm tracking-wide flex-1 truncate" style={{ color: "var(--text-primary)" }}>
+            AXQEN
+          </span>
+        )}
+        <button
+          onClick={toggleCollapsed}
+          className="hidden md:flex w-6 h-6 items-center justify-center rounded-lg transition-colors flex-shrink-0"
+          style={{ color: "var(--text-muted)" }}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          {collapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
+        </button>
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-3 py-3 overflow-y-auto">
+      <nav className="flex-1 px-2 py-2 overflow-y-auto overflow-x-hidden">
         {nav.map((item) => {
           const Icon = item.icon;
           const roots = ["/admin", "/seller", "/supplier", "/sales"];
           const isActive = pathname === item.href || (!roots.includes(item.href) && pathname.startsWith(item.href));
+          const badge =
+            item.href === "/seller/notifications" && unreadCount > 0 ? unreadCount :
+            item.href === "/sales/inbox"           && waUnread > 0    ? waUnread : 0;
+
           return (
             <div key={item.href}>
-              {/* Section label */}
-              {item.section && (
-                <p className="text-[10px] font-semibold uppercase tracking-widest px-3 pb-1 mt-5 mb-0.5 first:mt-2"
-                  style={{ color: "var(--text-muted)" }}>
+              {/* Section label — only when expanded */}
+              {item.section && !collapsed && (
+                <p className="text-[9px] font-bold uppercase tracking-widest px-2 pb-1 mt-5 mb-0.5"
+                  style={{ color: "var(--text-muted)", letterSpacing: "0.12em" }}>
                   {item.section}
                 </p>
               )}
-              <Link href={item.href}
-                className="flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all duration-100 mb-0.5"
+              {/* Section divider — only when collapsed */}
+              {item.section && collapsed && (
+                <div className="my-2 mx-2 h-px" style={{ background: "var(--border)" }} />
+              )}
+
+              <Link
+                href={item.href}
+                title={collapsed ? item.label : undefined}
+                className="flex items-center gap-2.5 py-2 rounded-xl text-sm transition-all duration-100 mb-0.5 relative"
                 style={{
+                  paddingLeft: collapsed ? "0" : "10px",
+                  paddingRight: collapsed ? "0" : "10px",
+                  justifyContent: collapsed ? "center" : "flex-start",
                   background: isActive ? "rgba(67,97,238,0.1)" : "transparent",
                   color: isActive ? "var(--accent)" : "var(--text-secondary)",
                   fontWeight: isActive ? 600 : 500,
                 }}
-                onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = "rgba(13,17,23,0.04)"; }}
+                onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = "var(--bg-muted)"; }}
                 onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
               >
                 <Icon className="w-4 h-4 flex-shrink-0" />
-                <span className="flex-1 truncate">{item.label}</span>
-                {item.href === "/seller/notifications" && unreadCount > 0 && (
-                  <span className="w-5 h-5 text-[10px] font-bold rounded-full bg-red-500 text-white flex items-center justify-center flex-shrink-0">
-                    {unreadCount > 9 ? "9+" : unreadCount}
+                {!collapsed && <span className="flex-1 truncate text-xs">{item.label}</span>}
+                {!collapsed && badge > 0 && (
+                  <span className="w-4 h-4 text-[9px] font-bold rounded-full bg-red-500 text-white flex items-center justify-center flex-shrink-0">
+                    {badge > 9 ? "9+" : badge}
                   </span>
                 )}
-                {item.href === "/sales/inbox" && waUnread > 0 && (
-                  <span className="w-5 h-5 text-[10px] font-bold rounded-full bg-green-500 text-white flex items-center justify-center flex-shrink-0">
-                    {waUnread > 9 ? "9+" : waUnread}
-                  </span>
+                {collapsed && badge > 0 && (
+                  <span className="absolute top-1 right-1 w-3 h-3 rounded-full bg-red-500" />
                 )}
               </Link>
             </div>
@@ -191,24 +239,34 @@ export function SidebarV2({ role, plan, userName, userEmail }: SidebarV2Props) {
       </nav>
 
       {/* Footer */}
-      <div className="px-3 py-4 flex-shrink-0" style={{ borderTop: "1px solid var(--border)" }}>
-        <div className="flex items-center gap-3 px-3 py-2 rounded-xl mb-1" style={{ background: "var(--bg-muted)" }}>
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+      <div className="px-2 py-3 flex-shrink-0" style={{ borderTop: "1px solid var(--border)" }}>
+        {/* User */}
+        <div className={`flex items-center gap-2.5 px-2 py-2 rounded-xl mb-1 ${collapsed ? "justify-center" : ""}`}
+          style={{ background: "var(--bg-muted)" }}
+          title={collapsed ? `${userName} · ${userEmail}` : undefined}>
+          <div className="w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
             style={{ background: "var(--accent)" }}>
             {initial}
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold truncate" style={{ color: "var(--text-primary)" }}>{userName || "User"}</p>
-            <p className="text-[10px] truncate" style={{ color: "var(--text-muted)" }}>{userEmail}</p>
-          </div>
+          {!collapsed && (
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold truncate" style={{ color: "var(--text-primary)" }}>{userName || "User"}</p>
+              <p className="text-[10px] truncate" style={{ color: "var(--text-muted)" }}>{userEmail}</p>
+            </div>
+          )}
         </div>
-        <button onClick={() => signOut({ callbackUrl: "/login" })}
-          className="flex items-center gap-3 w-full px-3 py-2 rounded-xl text-sm transition-all"
+
+        {/* Sign out */}
+        <button
+          onClick={() => signOut({ callbackUrl: "/login" })}
+          className={`flex items-center gap-2.5 w-full py-2 rounded-xl text-sm transition-all ${collapsed ? "justify-center px-0" : "px-2"}`}
           style={{ color: "var(--text-muted)" }}
+          title={collapsed ? "Sign out" : undefined}
           onMouseEnter={e => { e.currentTarget.style.color = "#EF4444"; e.currentTarget.style.background = "rgba(239,68,68,0.08)"; }}
-          onMouseLeave={e => { e.currentTarget.style.color = "var(--text-muted)"; e.currentTarget.style.background = "transparent"; }}>
+          onMouseLeave={e => { e.currentTarget.style.color = "var(--text-muted)"; e.currentTarget.style.background = "transparent"; }}
+        >
           <LogOut className="w-4 h-4 flex-shrink-0" />
-          <span className="font-medium">Sign Out</span>
+          {!collapsed && <span className="text-xs font-medium">Sign Out</span>}
         </button>
       </div>
     </div>
@@ -232,7 +290,7 @@ export function SidebarV2({ role, plan, userName, userEmail }: SidebarV2Props) {
       {mobileOpen && (
         <div className="md:hidden fixed inset-0 z-50 flex">
           <div className="absolute inset-0 bg-black/40" onClick={() => setMobileOpen(false)} />
-          <aside className="relative w-60 h-full z-10">
+          <aside className="relative w-56 h-full z-10">
             <button onClick={() => setMobileOpen(false)} className="absolute top-4 right-4 p-1.5 rounded-lg z-10"
               style={{ color: "var(--text-secondary)" }}>
               <X className="w-5 h-5" />
@@ -243,8 +301,14 @@ export function SidebarV2({ role, plan, userName, userEmail }: SidebarV2Props) {
       )}
 
       {/* Desktop */}
-      <aside className="hidden md:flex w-56 flex-col min-h-screen flex-shrink-0"
-        style={{ background: "var(--bg-sidebar)", borderRight: "1px solid var(--border)" }}>
+      <aside
+        className="hidden md:flex flex-col min-h-screen flex-shrink-0 transition-all duration-200"
+        style={{
+          width: collapsed ? "60px" : "216px",
+          background: "var(--bg-sidebar)",
+          borderRight: "1px solid var(--border)",
+        }}
+      >
         {content}
       </aside>
     </>

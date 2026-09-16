@@ -48,6 +48,8 @@ export default function AdminDeliveryPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [gettingAwb, setGettingAwb] = useState<string | null>(null);
   const [awbError, setAwbError] = useState<string | null>(null);
+  const [syncingDelhivery, setSyncingDelhivery] = useState(false);
+  const [syncResult, setSyncResult] = useState<{ updated: number; errors: string[] } | null>(null);
 
   // Bulk import state
   const [bulkOpen,     setBulkOpen]     = useState(false);
@@ -180,6 +182,21 @@ export default function AdminDeliveryPage() {
     setRefreshing(false);
   }
 
+  async function handleSyncDelhivery() {
+    setSyncingDelhivery(true);
+    setSyncResult(null);
+    try {
+      const res = await fetch("/api/admin/orders/sync-delhivery", { method: "POST" });
+      const data = await res.json();
+      setSyncResult({ updated: data.updated ?? 0, errors: data.errors ?? [] });
+      if (data.updated > 0) await fetchOrders();
+    } catch {
+      setSyncResult({ updated: 0, errors: ["Network error"] });
+    } finally {
+      setSyncingDelhivery(false);
+    }
+  }
+
   async function handleSaveAwb(order: Order) {
     const status  = statusInputs[order.id] || order.status;
     const awb     = (awbInputs[order.id] ?? "").trim() || order.awbNumber || "";
@@ -232,11 +249,18 @@ export default function AdminDeliveryPage() {
                 {bulkSaving ? "Saving..." : `Save All Changes`}
               </button>
             )}
+            <button onClick={handleSyncDelhivery} disabled={syncingDelhivery}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-50"
+              style={{ background: "var(--bg-muted)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
+              title="Poll Delhivery tracking API and auto-update all active shipment statuses">
+              <Truck className={`w-4 h-4 ${syncingDelhivery ? "animate-pulse" : ""}`} />
+              {syncingDelhivery ? "Syncing..." : "Sync Delhivery"}
+            </button>
             <button onClick={handleRefreshTracking} disabled={refreshing}
               className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-50"
               style={{ background: "var(--bg-muted)", color: "var(--text-primary)", border: "1px solid var(--border)" }}>
               <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
-              Refresh Tracking
+              Refresh
             </button>
           </div>
         }
@@ -264,6 +288,18 @@ export default function AdminDeliveryPage() {
       {awbError && (
         <div className="mb-4 flex items-center gap-2 bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm">
           <Truck className="w-4 h-4 flex-shrink-0" /> {awbError}
+        </div>
+      )}
+      {syncResult && (
+        <div className={`mb-4 flex items-center gap-2 px-4 py-3 rounded-xl text-sm border ${
+          syncResult.errors.length ? "bg-yellow-50 border-yellow-200 text-yellow-700" : "bg-green-50 border-green-200 text-green-700"
+        }`}>
+          <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+          <span>
+            Delhivery sync complete — <strong>{syncResult.updated} order{syncResult.updated !== 1 ? "s" : ""} updated</strong>
+            {syncResult.errors.length > 0 && ` · ${syncResult.errors.length} error(s): ${syncResult.errors[0]}`}
+          </span>
+          <button onClick={() => setSyncResult(null)} className="ml-auto text-lg leading-none opacity-60">×</button>
         </div>
       )}
       {/* Table */}

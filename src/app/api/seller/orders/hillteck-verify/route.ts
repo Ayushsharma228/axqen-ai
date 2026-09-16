@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
 
   const config = await getConfig();
   if (!config || !config.enabled)
-    return NextResponse.json({ error: "PrimeAssist is not configured yet" }, { status: 503 });
+    return NextResponse.json({ error: "WhatsApp notifications are not configured yet" }, { status: 503 });
 
   const [order, seller] = await Promise.all([
     prisma.order.findFirst({
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
     ? await requestAICall(orderPayload, config, seller ?? undefined)
     : await requestCODVerification(orderPayload, config, seller ?? undefined);
 
-  if (!ok) return NextResponse.json({ error: "PrimeAssist request failed" }, { status: 502 });
+  if (!ok) return NextResponse.json({ error: "WhatsApp send failed — check campaign config" }, { status: 502 });
 
   await prisma.order.update({
     where: { id: orderId },

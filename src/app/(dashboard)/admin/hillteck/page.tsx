@@ -22,6 +22,7 @@ interface RecentOrder {
 
 interface DashboardData {
   connected: boolean; enabled: boolean; baseUrl: string; webhookUrl: string;
+  campaignCOD: string; campaignShipped: string;
   stats: Stats; recent: RecentOrder[];
 }
 
@@ -43,9 +44,11 @@ function fmt(iso: string | null) {
 export default function HillteckPage() {
   const [data, setData]             = useState<DashboardData | null>(null);
   const [loading, setLoading]       = useState(true);
-  const [apiKey, setApiKey]         = useState("");
-  const [baseUrl, setBaseUrl]       = useState("");
-  const [enabled, setEnabled]       = useState(false);
+  const [apiKey, setApiKey]               = useState("");
+  const [baseUrl, setBaseUrl]             = useState("");
+  const [campaignCOD, setCampaignCOD]     = useState("");
+  const [campaignShipped, setCampaignShipped] = useState("");
+  const [enabled, setEnabled]             = useState(false);
   const [saving, setSaving]         = useState(false);
   const [saveMsg, setSaveMsg]       = useState("");
   const [copied, setCopied]         = useState(false);
@@ -59,6 +62,8 @@ export default function HillteckPage() {
       setData(d);
       setBaseUrl(d.baseUrl);
       setEnabled(d.enabled);
+      if (d.campaignCOD)     setCampaignCOD(d.campaignCOD);
+      if (d.campaignShipped) setCampaignShipped(d.campaignShipped);
     }
     setLoading(false);
   }, []);
@@ -68,9 +73,11 @@ export default function HillteckPage() {
   async function saveConfig() {
     setSaving(true); setSaveMsg("");
     const keys = [
-      { key: "HILLTECK_API_KEY",       value: apiKey.trim() },
-      { key: "HILLTECK_BASE_URL",      value: baseUrl.trim() },
-      { key: "HILLTECK_ENABLED",       value: enabled ? "true" : "false" },
+      { key: "HILLTECK_API_KEY",          value: apiKey.trim() },
+      { key: "HILLTECK_BASE_URL",         value: baseUrl.trim() },
+      { key: "HILLTECK_CAMPAIGN_COD",     value: campaignCOD.trim() },
+      { key: "HILLTECK_CAMPAIGN_SHIPPED", value: campaignShipped.trim() },
+      { key: "HILLTECK_ENABLED",          value: enabled ? "true" : "false" },
     ].filter(k => k.value !== "");
 
     for (const { key, value } of keys) {
@@ -113,8 +120,8 @@ export default function HillteckPage() {
   return (
     <div className="min-h-screen" style={{ background: "#F7F8FC" }}>
       <PageHero
-        title="HillTeck — COD Verification"
-        subtitle="Auto-verify COD orders via AI call and WhatsApp before processing"
+        title="AiSensy — COD Verification"
+        subtitle="Auto-verify COD orders via WhatsApp before processing"
         actions={
           <button onClick={load} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium"
             style={{ background: "white", border: "1px solid #E8EDF6", color: "#0C1220" }}>
@@ -160,7 +167,7 @@ export default function HillteckPage() {
           {data?.webhookUrl && (
             <div className="mb-4">
               <p className="text-xs font-semibold mb-1.5" style={{ color: "#6B7280" }}>
-                Give this webhook URL to HillTeck
+                Webhook URL — paste into AiSensy settings
               </p>
               <div className="flex items-center gap-2 px-3 py-2 rounded-xl"
                 style={{ background: "#F7F8FC", border: "1px solid #E8EDF6" }}>
@@ -181,26 +188,52 @@ export default function HillteckPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold mb-1" style={{ color: "#6B7280" }}>
-                API Key <span style={{ color: "#9CA3AF" }}>(from HillTeck dashboard)</span>
+                Campaign API Key <span style={{ color: "#9CA3AF" }}>(AiSensy → Manage → API Key)</span>
               </label>
               <input
                 type="password"
                 value={apiKey}
                 onChange={e => setApiKey(e.target.value)}
-                placeholder={data?.connected ? "••••••••••••••••" : "Paste API key here"}
+                placeholder={data?.connected ? "••••••••••••••••" : "Paste AiSensy Campaign API Key"}
                 className="w-full px-3 py-2 text-sm rounded-xl border focus:outline-none focus:ring-2 focus:ring-blue-400"
                 style={{ borderColor: "#E8EDF6" }}
               />
             </div>
             <div>
               <label className="block text-xs font-semibold mb-1" style={{ color: "#6B7280" }}>
-                Base URL <span style={{ color: "#9CA3AF" }}>(from HillTeck team)</span>
+                Base URL <span style={{ color: "#9CA3AF" }}>(leave blank for default)</span>
               </label>
               <input
                 type="text"
                 value={baseUrl}
                 onChange={e => setBaseUrl(e.target.value)}
-                placeholder="https://api.hillteck.com"
+                placeholder="https://backend.aisensy.com"
+                className="w-full px-3 py-2 text-sm rounded-xl border focus:outline-none focus:ring-2 focus:ring-blue-400"
+                style={{ borderColor: "#E8EDF6" }}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold mb-1" style={{ color: "#6B7280" }}>
+                COD Campaign Name <span style={{ color: "#9CA3AF" }}>(AiSensy API Campaign for verification)</span>
+              </label>
+              <input
+                type="text"
+                value={campaignCOD}
+                onChange={e => setCampaignCOD(e.target.value)}
+                placeholder="e.g. COD_VERIFICATION"
+                className="w-full px-3 py-2 text-sm rounded-xl border focus:outline-none focus:ring-2 focus:ring-blue-400"
+                style={{ borderColor: "#E8EDF6" }}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold mb-1" style={{ color: "#6B7280" }}>
+                Shipped Campaign Name <span style={{ color: "#9CA3AF" }}>(AiSensy API Campaign for shipping)</span>
+              </label>
+              <input
+                type="text"
+                value={campaignShipped}
+                onChange={e => setCampaignShipped(e.target.value)}
+                placeholder="e.g. ORDER_SHIPPED"
                 className="w-full px-3 py-2 text-sm rounded-xl border focus:outline-none focus:ring-2 focus:ring-blue-400"
                 style={{ borderColor: "#E8EDF6" }}
               />
@@ -240,8 +273,8 @@ export default function HillteckPage() {
               <div>
                 <p className="font-semibold">Not yet configured</p>
                 <p className="mt-0.5 opacity-80">
-                  Enter your HillTeck API key and base URL above. Get them from the HillTeck partner team.
-                  TODO: Update API endpoints in <code className="font-mono">src/lib/hillteck.ts</code> once HillTeck shares their API docs.
+                  Paste your AiSensy Campaign API Key above, then set the COD and Shipped campaign names
+                  to match the API Campaigns you created in AiSensy dashboard.
                 </p>
               </div>
             </div>
@@ -266,7 +299,7 @@ export default function HillteckPage() {
               <Phone className="w-10 h-10 mx-auto mb-3" style={{ color: "#D1D5DB" }} />
               <p className="text-sm font-medium" style={{ color: "#9CA3AF" }}>No verifications yet</p>
               <p className="text-xs mt-1" style={{ color: "#D1D5DB" }}>
-                COD orders will appear here once HillTeck is configured and enabled
+                COD orders will appear here once AiSensy is configured and enabled
               </p>
             </div>
           ) : (

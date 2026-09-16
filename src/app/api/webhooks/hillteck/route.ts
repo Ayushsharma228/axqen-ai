@@ -1,108 +1,177 @@
 /**
- * HillTeck Webhook Receiver
+ * AiSensy Webhook Receiver
  *
- * Give HillTeck this URL:  https://your-domain.com/api/webhooks/hillteck
- * They POST verification results and status updates here.
+ * Configure in AiSensy: Settings → Webhooks → https://your-domain.com/api/webhooks/hillteck
  *
- * No auth required (public endpoint) — we verify the signature instead.
+ * AiSensy fires this when a customer replies to a WhatsApp campaign message.
+ * The payload identifies the customer by their WhatsApp number (waId).
+ * We look up the most recent PENDING COD order for that phone number.
+ *
+ * AiSensy webhook payload shape:
+ * {
+ *   waId:         string,   // customer WhatsApp number (E.164 without +, e.g. "919876543210")
+ *   campaignName: string,   // name of the API Campaign that triggered this
+ *   messageType:  string,   // "button" for quick-reply taps, "text" for free-form
+ *   text?:        string,   // quick-reply button label OR free-form text
+ *   button?:      { text: string },  // alternative location for button label
+ *   timestamp?:   string | number,
+ * }
+ *
+ * Quick-reply button labels to recognise (set in your AiSensy template):
+ *   Confirm  → marks order CONFIRMED
+ *   Cancel   → marks order FAILED + CANCELLED
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getConfig, verifyWebhookSignature } from "@/lib/hillteck";
+import { verifyWebhookSignature, getConfig } from "@/lib/hillteck";
 
-type HillteckWebhookBody = {
-  event?:        string; // "VERIFICATION_RESULT" | "ORDER_NOTIFICATION_SENT" etc.
-  reference_id?: string; // our externalOrderId — TODO: confirm field name with HillTeck
-  status?:       string; // "CONFIRMED" | "FAILED" | "CANCELLED" | "NO_ANSWER" — TODO: confirm values
-  channel?:      string; // "IVR" | "WHATSAPP"
-  reason?:       string; // optional reason for failure
-  timestamp?:    string;
-};
+function normalisePhone(raw: string): string[] {
+  const digits = raw.replace(/\D/g, "");
+  const variants: string[] = [];
+  if (digits.length === 12 && digits.startsWith("91")) {
+    variants.push(`+${digits}`, digits.slice(2)); // +91XXXXXXXXXX and bare 10-digit
+  } else if (digits.length === 10) {
+    variants.push(digits, `+91${digits}`, `91${digits}`);
+  } else {
+    variants.push(`+${digits}`, digits);
+  }
+  return variants;
+}
 
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
 
-  // Verify signature if a webhook secret is configured
   const config = await getConfig();
   if (config?.webhookSecret) {
-    const sig = req.headers.get("x-hillteck-signature") // TODO: confirm header name
+    const sig = req.headers.get("x-aisensy-signature")
               ?? req.headers.get("x-signature")
               ?? "";
     if (!verifyWebhookSignature(rawBody, sig, config.webhookSecret)) {
+      console.error("[aisensy-webhook] signature mismatch");
       return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
     }
   }
 
-  let body: HillteckWebhookBody;
+  let body: Record<string, unknown>;
   try {
     body = JSON.parse(rawBody);
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const referenceId = body.reference_id;
-  if (!referenceId) {
-    // Log and accept — don't reject non-order events (e.g. ping/test webhooks)
-    console.log("[hillteck-webhook] non-order event:", body.event, body);
+  const waId = (body.waId as string | undefined)?.replace(/\D/g, "");
+  if (!waId) {
+    console.log("[aisensy-webhook] no waId — skipping:", body);
     return NextResponse.json({ ok: true });
   }
 
-  const order = await prisma.order.findFirst({
-    where: { externalOrderId: referenceId },
+  // Button label is in text or body.button.text depending on AiSensy version
+  const buttonLabel = (
+    (body.text as string)
+    ?? ((body.button as Record<string, unknown>)?.text as string)
+    ?? ""
+  ).trim().toLowerCase();
+
+  if (!buttonLabel) {
+    console.log("[aisensy-webhook] no button text — skipping:", body);
+    return NextResponse.json({ ok: true });
+  }
+
+  const phoneVariants = normalisePhone(waId);
+
+  // Find the most recent PENDING COD order whose customerAddress.phone matches
+  const orders = await prisma.order.findMany({
+    where: {
+      paymentMode:        "COD",
+      confirmationStatus: "PENDING",
+      status:             { notIn: ["DELIVERED", "CANCELLED", "RTO"] },
+    },
+    select: {
+      id: true, sellerId: true, externalOrderId: true, customerAddress: true,
+    },
+    orderBy: { confirmationRequestedAt: "desc" },
+    take:    200,
+  });
+
+  const order = orders.find(o => {
+    const phone = ((o.customerAddress as Record<string, unknown> | null)?.phone as string | undefined) ?? "";
+    const digits = phone.replace(/\D/g, "");
+    return phoneVariants.some(v => v.replace(/\D/g, "") === digits);
   });
 
   if (!order) {
-    console.warn(`[hillteck-webhook] order not found: reference_id=${referenceId}`);
-    return NextResponse.json({ ok: true }); // Accept to stop retries
+    console.warn(`[aisensy-webhook] no PENDING order for waId=${waId}`);
+    return NextResponse.json({ ok: true });
   }
 
   const now = new Date();
 
-  // Map HillTeck status → ConfirmationStatus enum
-  // TODO: Replace status values with HillTeck's actual values once docs arrive
-  const rawStatus = (body.status ?? "").toUpperCase();
-
-  if (rawStatus === "CONFIRMED") {
+  if (buttonLabel === "confirm" || buttonLabel.startsWith("confirm")) {
     await prisma.order.update({
       where: { id: order.id },
       data: {
         confirmationStatus:      "CONFIRMED" as never,
         confirmationCompletedAt: now,
-        confirmationChannel:     body.channel ?? "HILLTECK",
-        // Advance order to processing if it's still new
-        ...(order.status === "NEW" ? { status: "PROCESSING" as never } : {}),
       },
     });
-    console.log(`[hillteck-webhook] CONFIRMED order ${referenceId}`);
 
-  } else if (rawStatus === "FAILED" || rawStatus === "REJECTED") {
+    await prisma.orderTimeline.create({
+      data: {
+        orderId:   order.id,
+        event:     "Customer confirmed order via WhatsApp",
+        eventType: "ORDER_UPDATED",
+        actorRole: "CUSTOMER",
+        metadata:  { channel: "WHATSAPP", buttonLabel },
+      },
+    });
+
+    await prisma.notification.create({
+      data: {
+        userId:  order.sellerId,
+        type:    "ORDER_UPDATE",
+        title:   "Order Confirmed ✅",
+        message: `Customer confirmed order ${order.externalOrderId} via WhatsApp.`,
+        data:    { orderId: order.id },
+      },
+    });
+
+    console.log(`[aisensy-webhook] CONFIRMED order=${order.externalOrderId}`);
+
+  } else if (buttonLabel === "cancel" || buttonLabel.startsWith("cancel")) {
     await prisma.order.update({
       where: { id: order.id },
       data: {
         confirmationStatus:   "FAILED" as never,
         confirmationFailedAt: now,
-        confirmationChannel:  body.channel ?? "HILLTECK",
-        // Cancel the order on rejection
-        status: "CANCELLED" as never,
+        status:               "CANCELLED" as never,
       },
     });
-    console.log(`[hillteck-webhook] FAILED/REJECTED order ${referenceId}, reason: ${body.reason}`);
 
-  } else if (rawStatus === "CANCELLED" || rawStatus === "NO_ANSWER") {
-    await prisma.order.update({
-      where: { id: order.id },
+    await prisma.orderTimeline.create({
       data: {
-        confirmationStatus:   "CANCELLED" as never,
-        confirmationFailedAt: now,
-        confirmationChannel:  body.channel ?? "HILLTECK",
-        // Leave order as-is — admin decides what to do
+        orderId:   order.id,
+        event:     "Customer cancelled order via WhatsApp",
+        eventType: "ORDER_UPDATED",
+        actorRole: "CUSTOMER",
+        metadata:  { channel: "WHATSAPP", buttonLabel },
       },
     });
-    console.log(`[hillteck-webhook] NO_ANSWER/CANCELLED order ${referenceId}`);
+
+    await prisma.notification.create({
+      data: {
+        userId:  order.sellerId,
+        type:    "ORDER_UPDATE",
+        title:   "Order Cancelled by Customer",
+        message: `Customer cancelled order ${order.externalOrderId} via WhatsApp.`,
+        data:    { orderId: order.id },
+      },
+    });
+
+    console.log(`[aisensy-webhook] CANCELLED order=${order.externalOrderId}`);
 
   } else {
-    console.log(`[hillteck-webhook] unknown status '${rawStatus}' for order ${referenceId}, body:`, body);
+    console.log(`[aisensy-webhook] unrecognised reply "${buttonLabel}" for order=${order.externalOrderId}`);
   }
 
   return NextResponse.json({ ok: true });

@@ -321,7 +321,7 @@ export async function POST(req: NextRequest) {
       }
     } catch (err) {
       // Non-fatal — order is already saved; WhatsApp trigger failure should not block the webhook response
-      console.error("[Shopify Webhook] PrimeAssist trigger failed:", err);
+      console.error("[Shopify Webhook] AiSensy COD trigger failed:", err);
     }
   }
 

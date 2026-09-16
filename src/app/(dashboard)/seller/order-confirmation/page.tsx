@@ -498,7 +498,7 @@ export default function OrderConfirmationPage() {
                     <button
                       onClick={() => hillteckOk && handleHillteck(order.id, "whatsapp")}
                       disabled={!hillteckOk || whatsapping === order.id || order.confirmationStatus === "CONFIRMED"}
-                      title={!hillteckOk ? "PrimeAssist not configured yet" : "Resend WhatsApp confirmation message"}
+                      title={!hillteckOk ? "AiSensy not configured yet" : "Resend WhatsApp confirmation message"}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
                       style={{ background: "#F0FDF4", color: "#15803D", border: "1px solid #BBF7D0" }}
                     >
@@ -511,7 +511,7 @@ export default function OrderConfirmationPage() {
                     <button
                       onClick={() => hillteckOk && handleHillteck(order.id, "call")}
                       disabled={!hillteckOk || calling === order.id || order.confirmationStatus === "CONFIRMED"}
-                      title={!hillteckOk ? "PrimeAssist not configured yet" : "Initiate AI call to customer"}
+                      title={!hillteckOk ? "AiSensy not configured yet" : "Initiate AI call to customer"}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
                       style={{ background: "#EEF2FF", color: "#4361EE", border: "1px solid #C7D2FE" }}
                     >

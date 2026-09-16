@@ -47,10 +47,12 @@ export async function GET(req: NextRequest) {
   });
 
   return NextResponse.json({
-    connected:  !!config,
-    enabled:    config?.enabled ?? false,
-    baseUrl:    config?.baseUrl ?? "",
-    webhookUrl: `${process.env.NEXTAUTH_URL ?? ""}/api/webhooks/hillteck`,
+    connected:       !!config,
+    enabled:         config?.enabled ?? false,
+    baseUrl:         config?.baseUrl ?? "",
+    campaignCOD:     config?.campaignCOD ?? "",
+    campaignShipped: config?.campaignShipped ?? "",
+    webhookUrl:      `${process.env.NEXTAUTH_URL ?? ""}/api/webhooks/hillteck`,
     stats: {
       total_cod:    (counts["NOT_REQUIRED"] ?? 0) + (counts["PENDING"] ?? 0) +
                     (counts["CONFIRMED"] ?? 0) + (counts["FAILED"] ?? 0) + (counts["CANCELLED"] ?? 0),
@@ -75,7 +77,7 @@ export async function POST(req: NextRequest) {
   if (!orderId) return NextResponse.json({ error: "orderId required" }, { status: 400 });
 
   const config = await getConfig();
-  if (!config) return NextResponse.json({ error: "HillTeck not configured" }, { status: 400 });
+  if (!config) return NextResponse.json({ error: "AiSensy not configured" }, { status: 400 });
 
   const order = await prisma.order.findUnique({
     where:  { id: orderId },
@@ -101,14 +103,14 @@ export async function POST(req: NextRequest) {
     config,
   );
 
-  if (!ok) return NextResponse.json({ error: "HillTeck request failed" }, { status: 502 });
+  if (!ok) return NextResponse.json({ error: "AiSensy request failed" }, { status: 502 });
 
   await prisma.order.update({
     where: { id: orderId },
     data:  {
       confirmationStatus:      "PENDING" as never,
       confirmationRequestedAt: new Date(),
-      confirmationChannel:     "HILLTECK",
+      confirmationChannel:     "WHATSAPP",
     },
   });
 

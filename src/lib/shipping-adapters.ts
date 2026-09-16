@@ -201,6 +201,61 @@ export async function delhiveryCreateShipment(
   };
 }
 
+// ── Delhivery: Tracking / Status Poll ────────────────────────────────────────
+
+export interface DelhiveryTrackResult {
+  awb: string;
+  status: string;       // AXQEN OrderStatus
+  statusCode: string;   // raw Delhivery code e.g. "DL"
+  statusText: string;   // human-readable
+  city: string;
+}
+
+const DELHIVERY_STATUS_CODE_MAP: Record<string, string> = {
+  MNF: "PROCESSING",
+  PU:  "SHIPPED",
+  IT:  "IN_TRANSIT",
+  OD:  "IN_TRANSIT",
+  DL:  "DELIVERED",
+  RTO: "RTO",
+  RTD: "RTO",
+};
+
+export async function delhiveryTrackShipments(
+  apiToken: string,
+  awbs: string[],
+  baseUrl?: string,
+): Promise<DelhiveryTrackResult[]> {
+  if (!awbs.length) return [];
+  const host = baseUrl?.replace(/\/$/, "") || "https://track.delhivery.com";
+  const params = new URLSearchParams({ waybill: awbs.join(","), token: apiToken });
+  const res = await fetch(`${host}/api/v1/packages/json/?${params}`);
+  if (!res.ok) throw new Error(`Delhivery tracking HTTP ${res.status}`);
+  const data: Record<string, unknown> = await res.json();
+  const shipments = (data.ShipmentData ?? []) as Record<string, unknown>[];
+
+  return shipments.map((entry) => {
+    const s = (entry.Shipment ?? {}) as Record<string, unknown>;
+    const scans = (s.Scans ?? []) as Record<string, unknown>[];
+    const latest = scans[scans.length - 1] ?? {};
+    const scanDetail = (latest.ScanDetail ?? {}) as Record<string, unknown>;
+
+    const rawCode = (
+      (s.StatusCode ?? s.Status ?? scanDetail.ScanType ?? "") as string
+    ).trim().toUpperCase();
+
+    const rawText = (
+      (s.Status ?? scanDetail.Scan ?? "") as string
+    ).trim();
+
+    const city = ((s.PickUpLocation ?? scanDetail.ScannedLocation ?? "") as string).trim();
+    const awbNo = (s.Waybill ?? "") as string;
+    const axqenStatus = DELHIVERY_STATUS_CODE_MAP[rawCode] ?? "";
+
+    return { awb: awbNo, status: axqenStatus, statusCode: rawCode, statusText: rawText, city };
+  });
+}
+
 // ── Custom REST API ───────────────────────────────────────────────────────────
 export async function customCreateShipment(
   apiKey: string,

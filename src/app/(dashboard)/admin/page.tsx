@@ -85,56 +85,31 @@ export default async function AdminDashboard() {
 
   return (
     <div className="flex-1 overflow-auto" style={{ background: "var(--bg-page)" }}>
-      <div className="p-6 md:p-8">
+      <div className="p-5 md:p-7">
 
         {/* ── Heading ── */}
-        <div className="mb-6">
-          <p className="text-xs mb-1 font-medium" style={{ color: "var(--text-muted)" }}>
-            Good {greeting()} — {todayStr}
-          </p>
-          <h1 style={{ fontSize: "2.2rem", lineHeight: 1.15, fontWeight: 900, color: "var(--text-primary)" }}>
-            Make it{" "}
-            <span style={{
-              background: "linear-gradient(90deg, #4361EE, #7C3AED)",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-            }}>
-              Simple
-            </span>
-            , {firstName}.
-          </h1>
-        </div>
-
-        {/* ── Filter pills ── */}
-        <div className="flex items-center gap-2 mb-6 flex-wrap">
-          {[
-            { label: "Overview",  active: true },
-            { label: "Orders",    href: "/admin/orders" },
-            { label: "Pending",   href: "/admin/orders?status=PROCESSING" },
-            { label: "Delivered", href: "/admin/orders?status=DELIVERED" },
-            { label: "Finance",   href: "/admin/finance" },
-          ].map(({ label, href, active }) =>
-            href ? (
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <p className="text-xs font-medium mb-0.5" style={{ color: "var(--text-muted)" }}>
+              {todayStr}
+            </p>
+            <h1 className="text-xl font-bold" style={{ color: "var(--text-primary)" }}>
+              Good {greeting()}, {firstName}
+            </h1>
+          </div>
+          <div className="flex items-center gap-2">
+            {[
+              { label: "Orders",    href: "/admin/orders" },
+              { label: "Finance",   href: "/admin/finance" },
+              { label: "Sellers",   href: "/admin/sellers" },
+            ].map(({ label, href }) => (
               <Link key={label} href={href}
-                className="px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all"
-                style={{
-                  background: "var(--bg-card)",
-                  color: "var(--text-secondary)",
-                  border: "1px solid var(--border)",
-                }}>
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold hidden md:block"
+                style={{ background: "var(--bg-card)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}>
                 {label}
               </Link>
-            ) : (
-              <span key={label} className="px-3.5 py-1.5 rounded-full text-xs font-semibold"
-                style={{
-                  background: active ? "var(--accent)" : "var(--bg-card)",
-                  color: active ? "#fff" : "var(--text-secondary)",
-                  border: "1px solid transparent",
-                }}>
-                {label}
-              </span>
-            )
-          )}
+            ))}
+          </div>
         </div>
 
         {/* ── Main two-column layout ── */}

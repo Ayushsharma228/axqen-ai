@@ -1,47 +1,115 @@
 /**
- * PrimeAssist Integration
+ * AiSensy Integration
  *
- * Handles COD order verification and order notifications via WhatsApp AI workflows.
- * API base: https://api.primeassist.ai
- * Auth:     X-Api-Key header (store-scoped, generated in PrimeAssist → Integration → API Key)
- * Docs:     https://primeassist1.gitlab.io/docs/
+ * Handles COD order verification and order notifications via WhatsApp templates.
+ * API: https://backend.aisensy.com/campaign/t1/api/v2
+ * Auth: apiKey in request body (Campaign API Key from AiSensy → Manage → API Key)
  *
- * Config stored in platformConfig table under keys:
- *   HILLTECK_API_KEY, HILLTECK_BASE_URL, HILLTECK_ENABLED, HILLTECK_WEBHOOK_SECRET
+ * Config stored in platformConfig table:
+ *   HILLTECK_API_KEY          — Campaign API Key (JWT token from AiSensy)
+ *   HILLTECK_ENABLED          — "true" / "false"
+ *   HILLTECK_CAMPAIGN_COD     — Name of the API Campaign for COD verification
+ *   HILLTECK_CAMPAIGN_SHIPPED — Name of the API Campaign for shipping notification
+ *   HILLTECK_WEBHOOK_SECRET   — Optional: secret to verify incoming webhooks
+ *
+ * Templates to create in AiSensy (Campaigns → Templates):
+ *
+ * COD Verification template params (in order):
+ *   {{1}} customer name
+ *   {{2}} order number  (e.g. #1034)
+ *   {{3}} seller name   (e.g. Vrinandya Store)
+ *   {{4}} order amount  (e.g. 1499.00)
+ *   {{5}} product names (e.g. Wireless Earbuds)
+ *   Example: "Hi {{1}}, your order {{2}} from {{3}} for ₹{{4}} ({{5}}) has been placed.
+ *             Reply to confirm or cancel."
+ *   Add Quick Reply buttons: "Confirm" and "Cancel"
+ *
+ * Shipping Notification template params (in order):
+ *   {{1}} customer name
+ *   {{2}} order number
+ *   {{3}} courier name  (e.g. BlueDart)
+ *   {{4}} AWB number
+ *   {{5}} tracking URL
  */
 
 import { prisma } from "@/lib/prisma";
 import { createHmac } from "crypto";
 
 export type HillteckConfig = {
-  apiKey:        string;
-  baseUrl:       string;
-  enabled:       boolean;
-  webhookSecret: string;
+  apiKey:          string;
+  baseUrl:         string;
+  enabled:         boolean;
+  webhookSecret:   string;
+  campaignCOD:     string;
+  campaignShipped: string;
 };
 
 export async function getConfig(): Promise<HillteckConfig | null> {
   const rows = await prisma.platformConfig.findMany({
-    where: { key: { in: ["HILLTECK_API_KEY", "HILLTECK_BASE_URL", "HILLTECK_ENABLED", "HILLTECK_WEBHOOK_SECRET"] } },
+    where: {
+      key: {
+        in: [
+          "HILLTECK_API_KEY", "HILLTECK_BASE_URL", "HILLTECK_ENABLED",
+          "HILLTECK_WEBHOOK_SECRET", "HILLTECK_CAMPAIGN_COD", "HILLTECK_CAMPAIGN_SHIPPED",
+        ],
+      },
+    },
   });
   const map: Record<string, string> = Object.fromEntries(rows.map(r => [r.key, r.value]));
   const apiKey = map["HILLTECK_API_KEY"] ?? "";
   if (!apiKey) return null;
   return {
     apiKey,
-    baseUrl:       map["HILLTECK_BASE_URL"] ?? "https://api.primeassist.ai",
-    enabled:       (map["HILLTECK_ENABLED"] ?? "false") === "true",
-    webhookSecret: map["HILLTECK_WEBHOOK_SECRET"] ?? "",
+    baseUrl:         map["HILLTECK_BASE_URL"] ?? "https://backend.aisensy.com",
+    enabled:         (map["HILLTECK_ENABLED"] ?? "false") === "true",
+    webhookSecret:   map["HILLTECK_WEBHOOK_SECRET"] ?? "",
+    campaignCOD:     map["HILLTECK_CAMPAIGN_COD"] ?? "",
+    campaignShipped: map["HILLTECK_CAMPAIGN_SHIPPED"] ?? "",
   };
 }
 
-// Normalize to E.164. Handles bare 10-digit Indian numbers and 91-prefixed numbers.
+// Normalize to E.164 — handles bare 10-digit Indian numbers
 function toE164(raw: string): string {
   const digits = raw.replace(/\D/g, "");
   if (digits.length === 10) return `+91${digits}`;
   if (digits.length === 12 && digits.startsWith("91")) return `+${digits}`;
   if (raw.startsWith("+") && digits.length >= 10) return `+${digits}`;
   return "";
+}
+
+// Core AiSensy campaign sender
+async function sendCampaign(
+  config:         HillteckConfig,
+  campaignName:   string,
+  destination:    string,
+  userName:       string,
+  templateParams: string[],
+  source:         string,
+): Promise<boolean> {
+  try {
+    const res = await fetch(`${config.baseUrl}/campaign/t1/api/v2`, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        apiKey:         config.apiKey,
+        campaignName,
+        destination,
+        userName,
+        source,
+        templateParams,
+      }),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      console.error(`[aisensy] campaign="${campaignName}" ${res.status}: ${text}`);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error("[aisensy] sendCampaign failed:", err);
+    return false;
+  }
 }
 
 type OrderForVerification = {
@@ -54,77 +122,59 @@ type OrderForVerification = {
 };
 
 /**
- * Trigger a PrimeAssist WhatsApp COD verification workflow.
+ * Send WhatsApp COD verification message via AiSensy.
  *
- * Uses trigger_type=order_created with event_id=order.id (AXQEN UUID).
- * The (event_id, trigger_type) pair is unique per PrimeAssist store, so
- * calling this twice for the same order returns 409 — handled as success.
- *
- * Seller should configure an "order_created" workflow in PrimeAssist that:
- *   1. Sends WhatsApp: "Your order {{order.number}} from {{seller.name}} — Confirm or Cancel?"
- *   2. If confirmed + address missing → asks customer for full address
- *   3. Webhooks result back to /api/webhooks/primeassist
+ * Template params sent (must match template order in AiSensy):
+ *   {{1}} customer name
+ *   {{2}} order number
+ *   {{3}} seller name
+ *   {{4}} order amount
+ *   {{5}} product names
  */
 export async function requestCODVerification(
   order:   OrderForVerification,
   config:  HillteckConfig,
   seller?: { name?: string | null; brandName?: string | null },
 ): Promise<boolean> {
-  const addr     = order.customerAddress;
-  const phone    = toE164((addr?.phone as string) ?? "");
+  if (!config.campaignCOD) {
+    console.warn("[aisensy] HILLTECK_CAMPAIGN_COD not configured in platform config");
+    return false;
+  }
+
+  const phone = toE164((order.customerAddress?.phone as string) ?? "");
   if (!phone) {
-    console.warn(`[primeassist] no valid phone for order ${order.externalOrderId}`);
+    console.warn(`[aisensy] no valid phone for order ${order.externalOrderId}`);
     return false;
   }
 
-  const addrStr    = [addr?.houseNo, addr?.street, addr?.address, addr?.city, addr?.state, addr?.pincode]
-    .filter(Boolean).join(", ");
+  const sellerName = seller?.brandName || seller?.name || "AXQEN";
   const itemsStr   = order.items.map(i => i.name).join(", ");
-  const sellerName = seller?.brandName || seller?.name || "";
 
-  try {
-    const res = await fetch(`${config.baseUrl}/api/v1/merchants/trigger_event`, {
-      method:  "POST",
-      headers: { "X-Api-Key": config.apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        trigger_type: "order_created",
-        event_id:     order.id,
-        phone,
-        data: {
-          "{{order.number}}":        order.externalOrderId,
-          "{{order.amount}}":        order.totalAmount.toFixed(2),
-          "{{order.products.name}}": itemsStr,
-          "{{customer.name}}":       order.customerName ?? "",
-          "{{customer.phone}}":      phone,
-          ...(sellerName ? { "{{seller.name}}":   sellerName } : {}),
-          ...(addrStr    ? { "{{order.address}}": addrStr    } : {}),
-        },
-      }),
-    });
-
-    if (res.status === 409) {
-      // Already queued — idempotent
-      return true;
-    }
-    if (!res.ok) {
-      const text = await res.text();
-      console.error(`[primeassist] trigger_event ${res.status} order=${order.externalOrderId}: ${text}`);
-      return false;
-    }
-    const ack = await res.json() as { matched_workflows?: number };
-    if ((ack.matched_workflows ?? 0) === 0) {
-      console.warn(`[primeassist] 0 workflows matched for order_created — configure a workflow in PrimeAssist dashboard`);
-    }
-    return true;
-  } catch (err) {
-    console.error("[primeassist] trigger_event failed:", err);
-    return false;
-  }
+  return sendCampaign(
+    config,
+    config.campaignCOD,
+    phone,
+    order.customerName ?? "Customer",
+    [
+      order.customerName ?? "Customer",   // {{1}}
+      order.externalOrderId,              // {{2}}
+      sellerName,                         // {{3}}
+      order.totalAmount.toFixed(2),       // {{4}}
+      itemsStr || "your order",           // {{5}}
+    ],
+    "COD_VERIFICATION",
+  );
 }
 
 /**
- * Trigger a WhatsApp shipping notification when an order is fulfilled.
- * Uses trigger_type=fulfillment_created; event_id=`${order.id}-fulfilled`.
+ * Send WhatsApp shipping notification via AiSensy.
+ *
+ * Template params sent:
+ *   {{1}} customer name
+ *   {{2}} order number
+ *   {{3}} courier name
+ *   {{4}} AWB / tracking number
+ *   {{5}} tracking URL
  */
 export async function notifyFulfillment(
   order: {
@@ -138,102 +188,43 @@ export async function notifyFulfillment(
   },
   config: HillteckConfig,
 ): Promise<boolean> {
+  if (!config.campaignShipped) return false;
+
   const phone = toE164((order.customerAddress?.phone as string) ?? "");
   if (!phone) return false;
 
-  try {
-    const res = await fetch(`${config.baseUrl}/api/v1/merchants/trigger_event`, {
-      method:  "POST",
-      headers: { "X-Api-Key": config.apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        trigger_type: "fulfillment_created",
-        event_id:     `${order.id}-fulfilled`,
-        phone,
-        data: {
-          "{{order.number}}":                       order.externalOrderId,
-          "{{customer.name}}":                      order.customerName ?? "",
-          "{{order.fulfillment.tracking.company}}": order.courier ?? "",
-          "{{order.fulfillment.tracking.number}}":  order.awbNumber ?? "",
-          "{{order.fulfillment.tracking.url}}":     order.trackingUrl ?? "",
-        },
-      }),
-    });
-    if (res.status === 409) return true;
-    if (!res.ok) { console.error(`[primeassist] fulfillment notify ${res.status}`); return false; }
-    return true;
-  } catch (err) {
-    console.error("[primeassist] fulfillment notify failed:", err);
-    return false;
-  }
+  return sendCampaign(
+    config,
+    config.campaignShipped,
+    phone,
+    order.customerName ?? "Customer",
+    [
+      order.customerName ?? "Customer",   // {{1}}
+      order.externalOrderId,              // {{2}}
+      order.courier ?? "",                // {{3}}
+      order.awbNumber ?? "",              // {{4}}
+      order.trackingUrl ?? "",            // {{5}}
+    ],
+    "ORDER_SHIPPED",
+  );
 }
 
+// Legacy alias
+export const sendWhatsAppNotification = notifyFulfillment;
+
 /**
- * Trigger a PrimeAssist Voice AI call for COD verification.
- *
- * Used as a follow-up when the customer hasn't responded to the WhatsApp message.
- * Uses trigger_type=rto_initiated with event_id=`${order.id}-call` so it doesn't
- * conflict with the WhatsApp order_created event for the same order.
- *
- * Seller should configure an "rto_initiated" Voice AI workflow in PrimeAssist that:
- *   1. Calls the customer and asks them to confirm or cancel the order
- *   2. Webhooks result back to /api/webhooks/primeassist
+ * AI Call — AiSensy is WhatsApp-only.
+ * Falls back to sending a WhatsApp message instead.
+ * For real AI voice calls, wire up a separate calling service.
  */
 export async function requestAICall(
   order:   OrderForVerification,
   config:  HillteckConfig,
   seller?: { name?: string | null; brandName?: string | null },
 ): Promise<boolean> {
-  const addr     = order.customerAddress;
-  const phone    = toE164((addr?.phone as string) ?? "");
-  if (!phone) {
-    console.warn(`[primeassist] no valid phone for AI call order ${order.externalOrderId}`);
-    return false;
-  }
-
-  const addrStr    = [addr?.houseNo, addr?.street, addr?.address, addr?.city, addr?.state, addr?.pincode]
-    .filter(Boolean).join(", ");
-  const itemsStr   = order.items.map(i => i.name).join(", ");
-  const sellerName = seller?.brandName || seller?.name || "";
-
-  try {
-    const res = await fetch(`${config.baseUrl}/api/v1/merchants/trigger_event`, {
-      method:  "POST",
-      headers: { "X-Api-Key": config.apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        trigger_type: "rto_initiated",          // Voice AI workflow trigger
-        event_id:     `${order.id}-call`,       // suffix avoids 409 conflict with WhatsApp event
-        phone,
-        data: {
-          "{{order.number}}":        order.externalOrderId,
-          "{{order.amount}}":        order.totalAmount.toFixed(2),
-          "{{order.products.name}}": itemsStr,
-          "{{customer.name}}":       order.customerName ?? "",
-          "{{customer.phone}}":      phone,
-          ...(sellerName ? { "{{seller.name}}":   sellerName } : {}),
-          ...(addrStr    ? { "{{order.address}}": addrStr    } : {}),
-        },
-      }),
-    });
-
-    if (res.status === 409) return true; // Already called — idempotent
-    if (!res.ok) {
-      const text = await res.text();
-      console.error(`[primeassist] AI call trigger ${res.status} order=${order.externalOrderId}: ${text}`);
-      return false;
-    }
-    const ack = await res.json() as { matched_workflows?: number };
-    if ((ack.matched_workflows ?? 0) === 0) {
-      console.warn(`[primeassist] 0 workflows matched for rto_initiated — configure a Voice AI workflow in PrimeAssist`);
-    }
-    return true;
-  } catch (err) {
-    console.error("[primeassist] AI call trigger failed:", err);
-    return false;
-  }
+  console.warn("[aisensy] AI calling not supported — sending WhatsApp instead");
+  return requestCODVerification(order, config, seller);
 }
-
-// Legacy alias — kept for any older callers
-export const sendWhatsAppNotification = notifyFulfillment;
 
 export function verifyWebhookSignature(payload: string, signature: string, secret: string): boolean {
   if (!secret) return true;

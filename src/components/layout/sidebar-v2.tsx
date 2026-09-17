@@ -38,7 +38,6 @@ const adminNav: NavItem[] = [
   // ── NETWORK ─────────────────────────────────────────────────────────────
   { label: "Sellers",            href: "/admin/sellers",           icon: Store,           section: "NETWORK" },
   { label: "Suppliers",          href: "/admin/purchase-orders",   icon: Network },
-  { label: "Shipping",           href: "/admin/delivery",          icon: Route },
 
   // ── FINANCE ─────────────────────────────────────────────────────────────
   { label: "Transactions",       href: "/admin/reconciliation",    icon: Receipt,         section: "FINANCE" },

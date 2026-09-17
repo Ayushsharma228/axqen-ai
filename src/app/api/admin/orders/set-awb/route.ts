@@ -15,27 +15,28 @@ export async function POST(req: NextRequest) {
   }
 
   const isCancelled = status === "CANCELLED";
-  if (!isCancelled && !awb) {
-    return NextResponse.json({ error: "Order ID and AWB required" }, { status: 400 });
-  }
+  const awbTrimmed  = awb?.trim() ?? "";
 
   const order = await prisma.order.findUnique({ where: { id: orderId } });
   if (!order) return NextResponse.json({ error: "Order not found" }, { status: 404 });
 
-  const courierName = courier?.trim() || "Delhivery";
-  const awbTrimmed  = awb?.trim() ?? "";
-
-  await prisma.order.update({
-    where: { id: orderId },
-    data: isCancelled
-      ? { status: "CANCELLED" as never }
-      : {
-          awbNumber:   awbTrimmed,
-          courier:     courierName,
-          trackingUrl: getCarrierTrackingUrl(courierName, awbTrimmed) || null,
-          status:      (status ?? "SHIPPED") as never,
-        },
-  });
+  if (isCancelled) {
+    await prisma.order.update({ where: { id: orderId }, data: { status: "CANCELLED" as never } });
+  } else if (!awbTrimmed) {
+    // No AWB provided — status-only update, leave AWB fields untouched
+    await prisma.order.update({ where: { id: orderId }, data: { status: (status ?? "SHIPPED") as never } });
+  } else {
+    const courierName = courier?.trim() || "Delhivery";
+    await prisma.order.update({
+      where: { id: orderId },
+      data: {
+        awbNumber:   awbTrimmed,
+        courier:     courierName,
+        trackingUrl: getCarrierTrackingUrl(courierName, awbTrimmed) || null,
+        status:      (status ?? "SHIPPED") as never,
+      },
+    });
+  }
 
   return NextResponse.json({ success: true });
 }

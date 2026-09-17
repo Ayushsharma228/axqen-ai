@@ -3,13 +3,30 @@
  *
  * Runs every 5 minutes. Finds all orders without an AWB and auto-creates
  * Delhivery shipments using the admin DELHIVERY_API_TOKEN env var.
- * Pickup location: supplier's configured DELHIVERY provider baseUrl,
- * or DELHIVERY_PICKUP_LOCATION env var as fallback.
+ *
+ * Pickup location priority:
+ *   1. Per-supplier DELHIVERY provider baseUrl (from SupplierShippingProvider)
+ *   2. DELHIVERY_PICKUP_LOCATION env var
+ *   3. Auto-fetched from Delhivery warehouse API (first warehouse)
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { delhiveryCreateShipment } from "@/lib/shipping-adapters";
+
+async function fetchDelhiveryPickupLocation(token: string): Promise<string> {
+  try {
+    const res = await fetch("https://track.delhivery.com/api/backend/clientwarehouse/get/", {
+      headers: { Authorization: `Token ${token}` },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const warehouses = (data?.results ?? data?.data ?? []) as { name: string }[];
+      if (warehouses.length > 0) return warehouses[0].name;
+    }
+  } catch {}
+  return "";
+}
 
 export async function GET(req: NextRequest) {
   const auth = req.headers.get("authorization");
@@ -22,9 +39,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ skipped: true, reason: "DELHIVERY_API_TOKEN not set" });
   }
 
-  const defaultPickup = process.env.DELHIVERY_PICKUP_LOCATION ?? "";
+  // Resolve default pickup location: env var → auto-fetch from Delhivery API
+  const defaultPickup = process.env.DELHIVERY_PICKUP_LOCATION
+    || await fetchDelhiveryPickupLocation(adminToken);
 
-  // Find orders that need AWB: no AWB, not cancelled/delivered/RTO, have supplier assigned
+  if (!defaultPickup) {
+    return NextResponse.json({ skipped: true, reason: "No Delhivery pickup location found. Add DELHIVERY_PICKUP_LOCATION env var or create a pickup location in your Delhivery account." });
+  }
+
+  // Find orders that need AWB: no AWB, not cancelled/delivered/RTO
   const orders = await prisma.order.findMany({
     where: {
       awbNumber: null,
@@ -42,7 +65,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ processed: 0, note: "No orders need AWB" });
   }
 
-  // Pre-fetch supplier pickup locations (supplierId → pickup location name)
+  // Pre-fetch per-supplier pickup locations (supplierId → pickup location name)
   const supplierIds = [...new Set(orders.map(o => o.supplierId).filter(Boolean) as string[])];
   const pickupBySupplier: Record<string, string> = {};
   if (supplierIds.length) {
@@ -60,14 +83,7 @@ export async function GET(req: NextRequest) {
   const errors: string[] = [];
 
   for (const order of orders) {
-    const pickupLocation = (order.supplierId && pickupBySupplier[order.supplierId])
-      || defaultPickup;
-
-    if (!pickupLocation) {
-      skipped++;
-      errors.push(`Order ${order.externalOrderId}: no pickup location configured`);
-      continue;
-    }
+    const pickupLocation = (order.supplierId && pickupBySupplier[order.supplierId]) || defaultPickup;
 
     const addr = (order.customerAddress ?? {}) as Record<string, string>;
     const phone   = (addr.phone ?? "").replace(/\D/g, "").slice(-10);
@@ -98,11 +114,11 @@ export async function GET(req: NextRequest) {
       await prisma.order.update({
         where: { id: order.id },
         data: {
-          awbNumber:         result.awb,
-          courier:           result.courier,
-          trackingUrl:       result.trackingUrl ?? null,
+          awbNumber:          result.awb,
+          courier:            result.courier,
+          trackingUrl:        result.trackingUrl ?? null,
           supplierTrackingNo: result.awb,
-          supplierCourier:   result.courier,
+          supplierCourier:    result.courier,
         },
       });
 
@@ -111,8 +127,8 @@ export async function GET(req: NextRequest) {
           orderId:   order.id,
           actorRole: "SYSTEM",
           event:     "AWB_CREATED",
-          details:   `Auto-created Delhivery AWB: ${result.awb}`,
-          metadata:  { awb: result.awb, courier: result.courier, auto: true },
+          details:   `Auto-created Delhivery AWB: ${result.awb} (pickup: ${pickupLocation})`,
+          metadata:  { awb: result.awb, courier: result.courier, pickupLocation, auto: true },
         },
       });
 
@@ -123,5 +139,5 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ processed: orders.length, created, skipped, errors });
+  return NextResponse.json({ processed: orders.length, created, skipped, errors, defaultPickup });
 }

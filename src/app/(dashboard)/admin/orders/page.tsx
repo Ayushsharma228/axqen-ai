@@ -310,7 +310,7 @@ export default function AdminOrdersPage() {
   const [totalOrders, setTotalOrders]     = useState(0);
   const [page, setPage]                   = useState(1);
   const [totalPages, setTotalPages]       = useState(1);
-  const [counts, setCounts]               = useState({ new: 0, processing: 0, cancelled: 0, total: 0 });
+  const [counts, setCounts]               = useState({ new: 0, shipped: 0, cancelled: 0, total: 0 });
   const PAGE_LIMIT = 50;
   const [loading, setLoading]             = useState(true);
   const [search, setSearch]               = useState("");
@@ -346,13 +346,14 @@ export default function AdminOrdersPage() {
     const base = new URLSearchParams();
     if (sellerFilter) base.set("sellerId", sellerFilter);
     base.set("limit", "1");
-    const [n, p, c, all] = await Promise.all([
+    const [n, sh, it, c, all] = await Promise.all([
       fetch(`/api/admin/orders?${base}&status=NEW`).then(r => r.json()),
-      fetch(`/api/admin/orders?${base}&status=PROCESSING`).then(r => r.json()),
+      fetch(`/api/admin/orders?${base}&status=SHIPPED`).then(r => r.json()),
+      fetch(`/api/admin/orders?${base}&status=IN_TRANSIT`).then(r => r.json()),
       fetch(`/api/admin/orders?${base}&status=CANCELLED`).then(r => r.json()),
       fetch(`/api/admin/orders?${base}`).then(r => r.json()),
     ]);
-    setCounts({ new: n.total ?? 0, processing: p.total ?? 0, cancelled: c.total ?? 0, total: all.total ?? 0 });
+    setCounts({ new: n.total ?? 0, shipped: (sh.total ?? 0) + (it.total ?? 0), cancelled: c.total ?? 0, total: all.total ?? 0 });
   }, [sellerFilter]);
 
   useEffect(() => { fetchCounts(); }, [fetchCounts]);
@@ -599,47 +600,65 @@ export default function AdminOrdersPage() {
       <div className="px-4 md:px-8 py-6">
 
         {/* ── Status cards ── */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
           {[
             {
-              label: "All Orders", value: counts.total, sub: "total received",
-              color: "#4361EE", bg: "rgba(67,97,238,0.08)", border: "rgba(67,97,238,0.2)",
-              active: statusFilter === "",
-              onClick: () => { setStatusFilter(""); setPage(1); },
+              label: "Pending Orders",
+              value: counts.new,
+              sub: "awaiting confirmation",
+              icon: "🕐",
+              color: "#D97706",
+              bg: "rgba(245,158,11,0.07)",
+              border: "rgba(245,158,11,0.25)",
+              activeFilter: "NEW",
             },
             {
-              label: "New / Pending", value: counts.new, sub: "awaiting confirmation",
-              color: "#D97706", bg: "rgba(245,158,11,0.08)", border: "rgba(245,158,11,0.2)",
-              active: statusFilter === "NEW",
-              onClick: () => { setStatusFilter("NEW"); setPage(1); },
+              label: "Shipped Orders",
+              value: counts.shipped,
+              sub: "shipped & in transit",
+              icon: "🚚",
+              color: "#2563EB",
+              bg: "rgba(37,99,235,0.07)",
+              border: "rgba(37,99,235,0.25)",
+              activeFilter: "SHIPPED",
             },
             {
-              label: "Confirmed", value: counts.processing, sub: "supplier assigned",
-              color: "#16A34A", bg: "rgba(22,163,74,0.08)", border: "rgba(22,163,74,0.2)",
-              active: statusFilter === "PROCESSING",
-              onClick: () => { setStatusFilter("PROCESSING"); setPage(1); },
+              label: "Cancelled Orders",
+              value: counts.cancelled,
+              sub: "by seller or admin",
+              icon: "✕",
+              color: "#EF4444",
+              bg: "rgba(239,68,68,0.07)",
+              border: "rgba(239,68,68,0.25)",
+              activeFilter: "CANCELLED",
             },
-            {
-              label: "Cancelled", value: counts.cancelled, sub: "by seller or admin",
-              color: "#EF4444", bg: "rgba(239,68,68,0.08)", border: "rgba(239,68,68,0.2)",
-              active: statusFilter === "CANCELLED",
-              onClick: () => { setStatusFilter("CANCELLED"); setPage(1); },
-            },
-          ].map(({ label, value, sub, color, bg, border, active, onClick }) => (
-            <button key={label} onClick={onClick}
-              className="rounded-2xl p-4 text-left transition-all"
-              style={{
-                background: active ? bg : "var(--bg-card)",
-                border: `1px solid ${active ? border : "var(--border)"}`,
-                boxShadow: active ? `0 0 0 2px ${color}25` : "var(--shadow-card)",
-              }}>
-              <p className="text-2xl font-black leading-none mb-1" style={{ color: active ? color : "var(--text-primary)" }}>
-                {value.toLocaleString()}
-              </p>
-              <p className="text-xs font-semibold" style={{ color: active ? color : "var(--text-secondary)" }}>{label}</p>
-              <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>{sub}</p>
-            </button>
-          ))}
+          ].map(({ label, value, sub, icon, color, bg, border, activeFilter }) => {
+            const active = statusFilter === activeFilter;
+            return (
+              <button key={label}
+                onClick={() => { setStatusFilter(active ? "" : activeFilter); setPage(1); }}
+                className="rounded-2xl p-5 text-left transition-all group"
+                style={{
+                  background: active ? bg : "var(--bg-card)",
+                  border: `1px solid ${active ? border : "var(--border)"}`,
+                  boxShadow: active ? `0 0 0 3px ${color}18` : "var(--shadow-card)",
+                }}>
+                <div className="flex items-start justify-between mb-3">
+                  <span className="text-xl">{icon}</span>
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                    style={{ background: active ? `${color}18` : "var(--bg-muted)", color: active ? color : "var(--text-400)" }}>
+                    {active ? "Filtered" : "Click to filter"}
+                  </span>
+                </div>
+                <p className="text-3xl font-black leading-none mb-1.5"
+                  style={{ color: active ? color : "var(--text-primary)" }}>
+                  {value.toLocaleString()}
+                </p>
+                <p className="text-sm font-semibold" style={{ color: active ? color : "var(--text-secondary)" }}>{label}</p>
+                <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>{sub}</p>
+              </button>
+            );
+          })}
         </div>
 
         <div className="card overflow-hidden">

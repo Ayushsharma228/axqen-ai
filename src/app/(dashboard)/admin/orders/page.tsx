@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { ShoppingCart, Trash2, Plus, X, Loader2, CalendarDays, CheckCircle2, XCircle, UserCheck, Download, ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
+import { ShoppingCart, Trash2, Plus, X, Loader2, CalendarDays, CheckCircle2, XCircle, UserCheck, Download, ChevronLeft, ChevronRight, ExternalLink, Package, Pencil } from "lucide-react";
 import { PageHero } from "@/components/layout/page-hero";
 
 interface Seller   { id: string; name: string | null; email: string; }
@@ -334,6 +334,8 @@ export default function AdminOrdersPage() {
   const [bulkSaving, setBulkSaving]         = useState(false);
   const [bulkStatus, setBulkStatus]         = useState("");
   const [bulkUpdating, setBulkUpdating]     = useState(false);
+  const [createAwbLoading, setCreateAwbLoading] = useState<Record<string, boolean>>({});
+  const [editingStatus, setEditingStatus]       = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/admin/sellers").then((r) => r.json()).then((d) => setSellers(d.sellers ?? []));
@@ -483,6 +485,29 @@ export default function AdminOrdersPage() {
     setBulkStatus("");
     await fetchOrders();
     setBulkUpdating(false);
+  }
+
+  async function handleCreateAwb(orderId: string) {
+    setCreateAwbLoading(p => ({ ...p, [orderId]: true }));
+    const res = await fetch("/api/admin/deliveries/create-awb", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId }),
+    });
+    const data = await res.json();
+    setCreateAwbLoading(p => ({ ...p, [orderId]: false }));
+    if (!res.ok) { alert(data.error || "Failed to create AWB"); return; }
+    await fetchOrders();
+  }
+
+  async function handleStatusUpdate(orderId: string, status: string) {
+    await fetch("/api/admin/orders/update-status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId, status }),
+    });
+    setEditingStatus(null);
+    await fetchOrders();
   }
 
   function exportToCSV() {
@@ -735,9 +760,26 @@ export default function AdminOrdersPage() {
                         </td>
                         <td className="px-4 py-3 text-sm font-semibold text-gray-800 whitespace-nowrap">₹{order.totalAmount.toLocaleString()}</td>
                         <td className="px-4 py-3">
-                          <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_COLOR[order.status] ?? "bg-gray-100 text-gray-600"}`}>
-                            {order.status}
-                          </span>
+                          {editingStatus === order.id ? (
+                            <select
+                              autoFocus
+                              defaultValue={order.status}
+                              onChange={e => handleStatusUpdate(order.id, e.target.value)}
+                              onBlur={() => setEditingStatus(null)}
+                              className="text-xs px-2 py-1 rounded-lg border border-blue-400 outline-none bg-white text-gray-800 cursor-pointer"
+                            >
+                              {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                          ) : (
+                            <button
+                              onClick={() => setEditingStatus(order.id)}
+                              title="Click to edit status"
+                              className={`group flex items-center gap-1 text-xs px-2 py-1 rounded-full font-medium ${STATUS_COLOR[order.status] ?? "bg-gray-100 text-gray-600"} hover:opacity-80`}
+                            >
+                              {order.status}
+                              <Pencil className="w-2.5 h-2.5 opacity-0 group-hover:opacity-60" />
+                            </button>
+                          )}
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
                           {order.supplier ? (
@@ -765,7 +807,23 @@ export default function AdminOrdersPage() {
                           />
                         </td>
                         <td className="px-4 py-3">
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-1 flex-wrap">
+                            {!order.awbNumber && !["CANCELLED", "DELIVERED", "RTO"].includes(order.status) && (
+                              <button
+                                onClick={() => handleCreateAwb(order.id)}
+                                disabled={createAwbLoading[order.id]}
+                                title="Create Delhivery AWB"
+                                className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold disabled:opacity-50 whitespace-nowrap"
+                                style={{ background: "#EEF2FF", color: "#4338CA", border: "1px solid #C7D2FE" }}>
+                                {createAwbLoading[order.id] ? <Loader2 className="w-3 h-3 animate-spin" /> : <Package className="w-3 h-3" />}
+                                AWB
+                              </button>
+                            )}
+                            {order.awbNumber && (
+                              <span className="text-[10px] font-mono text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
+                                {order.awbNumber}
+                              </span>
+                            )}
                             {canAssign && (
                               <button
                                 onClick={() => setAssignOrder(order)}

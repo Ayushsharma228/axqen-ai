@@ -35,14 +35,14 @@ type Order = {
 };
 
 const TABS: Array<{ key: string | null; label: string; icon: React.ElementType; color: string }> = [
-  { key: null,             label: "All",         icon: ShoppingCart, color: "#6B7280" },
-  { key: "ASSIGNED",       label: "Pending",     icon: Clock,        color: "#F59E0B" },
-  { key: "ACCEPTED",       label: "Accepted",    icon: CheckCircle,  color: "#3B82F6" },
-  { key: "PROCESSING",     label: "Processing",  icon: RefreshCw,    color: "#8B5CF6" },
-  { key: "PACKED",         label: "Packed",      icon: Package,      color: "#0EA5E9" },
-  { key: "READY_TO_SHIP",  label: "Ready",       icon: AlertCircle,  color: "#F97316" },
-  { key: "DISPATCHED",     label: "Dispatched",  icon: Truck,        color: "#16A34A" },
-  { key: "REJECTED",       label: "Rejected",    icon: XCircle,      color: "#EF4444" },
+  { key: null,             label: "All",               icon: ShoppingCart, color: "#6B7280" },
+  { key: "ASSIGNED",       label: "Pending",           icon: Clock,        color: "#F59E0B" },
+  { key: "ACCEPTED",       label: "Accepted",          icon: CheckCircle,  color: "#3B82F6" },
+  { key: "PROCESSING",     label: "Processing",        icon: RefreshCw,    color: "#8B5CF6" },
+  { key: "PACKED",         label: "Packed",            icon: Package,      color: "#0EA5E9" },
+  { key: "READY_TO_SHIP",  label: "Delhivery Pending", icon: Send,         color: "#4361EE" },
+  { key: "DISPATCHED",     label: "Dispatched",        icon: Truck,        color: "#16A34A" },
+  { key: "REJECTED",       label: "Rejected",          icon: XCircle,      color: "#EF4444" },
 ];
 
 const STATUS_BADGE: Record<string, { bg: string; text: string; label: string }> = {
@@ -50,7 +50,7 @@ const STATUS_BADGE: Record<string, { bg: string; text: string; label: string }> 
   ACCEPTED:      { bg: "#EFF6FF", text: "#3B82F6", label: "Accepted" },
   PROCESSING:    { bg: "#F5F3FF", text: "#7C3AED", label: "Processing" },
   PACKED:        { bg: "#F0F9FF", text: "#0369A1", label: "Packed" },
-  READY_TO_SHIP: { bg: "#FFF7ED", text: "#EA580C", label: "Ready to Ship" },
+  READY_TO_SHIP: { bg: "#EEF2FF", text: "#4361EE", label: "Delhivery Pending" },
   DISPATCHED:    { bg: "#F0FDF4", text: "#15803D", label: "Dispatched" },
   REJECTED:      { bg: "#FEF2F2", text: "#DC2626", label: "Rejected" },
 };
@@ -142,25 +142,20 @@ export default function SupplierOrdersPage() {
   const checkedProcessing = checkedOrders.filter((o) => o.supplierStatus === "PROCESSING").length;
   const checkedPacked     = checkedOrders.filter((o) => o.supplierStatus === "PACKED").length;
   const checkedPushable   = checkedOrders.filter((o) =>
-    ["ACCEPTED","PROCESSING","PACKED","READY_TO_SHIP"].includes(o.supplierStatus ?? "")).length;
+    ["ACCEPTED","PROCESSING","PACKED"].includes(o.supplierStatus ?? "")).length;
+  const checkedReadyToShip = checkedOrders.filter((o) => o.supplierStatus === "READY_TO_SHIP").length;
 
   const bulkPushToDelhivery = async () => {
     const targets = filteredOrders.filter((o) =>
-      checkedIds.has(o.id) && ["ACCEPTED","PROCESSING","PACKED","READY_TO_SHIP"].includes(o.supplierStatus ?? "")
+      checkedIds.has(o.id) && ["ACCEPTED","PROCESSING","PACKED"].includes(o.supplierStatus ?? "")
     );
     if (!targets.length) return;
-    // Load providers once
-    const res = await fetch("/api/supplier/shipping-providers");
-    const d   = await res.json();
-    const active = (d.providers ?? []).filter((p: { isActive: boolean }) => p.isActive);
-    if (!active.length) { alert("No shipping provider connected. Add one in Profile → Shipping."); return; }
-    const providerId = active[0].id;
     setBulkActioning(true);
     await Promise.allSettled(targets.map((o) =>
-      fetch(`/api/supplier/orders/${o.id}/create-shipment`, {
+      fetch(`/api/supplier/orders/${o.id}/action`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ providerId, shipmentMode: "Surface", weight: 0.5, length: 23, breadth: 13, height: 4 }),
+        body: JSON.stringify({ action: "READY_TO_SHIP" }),
       })
     ));
     await fetchOrders();
@@ -332,6 +327,23 @@ export default function SupplierOrdersPage() {
                   Push to Delhivery ({checkedPushable})
                 </button>
               )}
+              {checkedReadyToShip > 0 && (
+                <button
+                  onClick={async () => {
+                    if (checkedReadyToShip === 1) {
+                      const target = filteredOrders.find((o) => checkedIds.has(o.id) && o.supplierStatus === "READY_TO_SHIP");
+                      if (target) openDispatch(target.id);
+                    } else {
+                      alert(`Select orders one at a time to create AWB — each needs individual package details.`);
+                    }
+                  }}
+                  disabled={bulkActioning}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50"
+                  style={{ background: "#16A34A" }}>
+                  <Truck className="w-3 h-3" />
+                  Create AWB ({checkedReadyToShip})
+                </button>
+              )}
               <button onClick={() => setCheckedIds(new Set())}
                 className="ml-auto text-xs font-medium px-2 py-1 rounded-lg"
                 style={{ color: "var(--text-400)" }}>
@@ -439,12 +451,20 @@ export default function SupplierOrdersPage() {
                                 </button>
                               </>
                             )}
-                            {["ACCEPTED","PROCESSING","PACKED","READY_TO_SHIP"].includes(order.supplierStatus ?? "") && (
-                              <button onClick={() => openDispatch(order.id)} disabled={isActioning}
+                            {["ACCEPTED","PROCESSING","PACKED"].includes(order.supplierStatus ?? "") && (
+                              <button onClick={() => runAction(order.id, "READY_TO_SHIP")} disabled={isActioning}
                                 className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold text-white"
                                 style={{ background: "#4361EE" }}>
                                 <Send className="w-3 h-3" />
-                                Push to Delhivery
+                                {isActioning ? "..." : "Push to Delhivery"}
+                              </button>
+                            )}
+                            {order.supplierStatus === "READY_TO_SHIP" && (
+                              <button onClick={() => openDispatch(order.id)} disabled={isActioning}
+                                className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold text-white"
+                                style={{ background: "#16A34A" }}>
+                                <Truck className="w-3 h-3" />
+                                {isActioning ? "..." : "Create AWB"}
                               </button>
                             )}
                             {nextAction && order.supplierStatus !== "ASSIGNED" && order.supplierStatus !== "READY_TO_SHIP" && (

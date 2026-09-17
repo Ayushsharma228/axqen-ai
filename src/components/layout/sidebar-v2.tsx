@@ -124,6 +124,7 @@ const supplierNav: NavItem[] = [
   { label: "Performance",     href: "/supplier/performance",     icon: TrendingUp },
   { label: "Order Queue",     href: "/supplier/orders",          icon: ShoppingCart,    section: "ORDERS" },
   { label: "Purchase Orders", href: "/supplier/purchase-orders", icon: ClipboardList },
+  { label: "Shipping",        href: "/supplier/shipping",        icon: Truck },
   { label: "My Products",     href: "/supplier/products",        icon: Package,         section: "CATALOGUE" },
   { label: "Add Product",     href: "/supplier/products/new",    icon: CheckSquare },
   { label: "Inventory",       href: "/supplier/inventory",       icon: Boxes },

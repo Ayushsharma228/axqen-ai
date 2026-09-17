@@ -27,6 +27,7 @@ const adminNav: NavItem[] = [
   { label: "Overview",           href: "/admin",                   icon: LayoutDashboard, section: "COMMAND CENTER" },
   { label: "AI Activity",        href: "/admin/ai-workforce",      icon: Bot },
   { label: "Alerts",             href: "/admin/notifications",     icon: AlertTriangle },
+  { label: "Support",            href: "/admin/support",           icon: HelpCircle },
 
   // ── COMMERCE ────────────────────────────────────────────────────────────
   { label: "Orders",             href: "/admin/orders",            icon: ShoppingCart,    section: "COMMERCE" },

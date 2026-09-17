@@ -17,9 +17,10 @@ export async function GET(req: NextRequest) {
   const dateFrom   = searchParams.get("dateFrom")   ?? "";
   const dateTo     = searchParams.get("dateTo")     ?? "";
   const source     = searchParams.get("source")     ?? "";
-  const ndrOnly    = searchParams.get("ndr")        === "true";
-  const page       = Math.max(1, parseInt(searchParams.get("page")  ?? "1"));
-  const limit      = Math.min(100, parseInt(searchParams.get("limit") ?? "50"));
+  const ndrOnly        = searchParams.get("ndr")            === "true";
+  const supplierStatus = searchParams.get("supplierStatus") ?? "";
+  const page           = Math.max(1, parseInt(searchParams.get("page")  ?? "1"));
+  const limit          = Math.min(100, parseInt(searchParams.get("limit") ?? "50"));
 
   // status can be a single value or comma-separated list
   const statusList = status ? status.split(",").map(s => s.trim()).filter(Boolean) : [];
@@ -27,6 +28,7 @@ export async function GET(req: NextRequest) {
   const where = {
     ...(sellerId   ? { sellerId }   : {}),
     ...(supplierId ? { supplierId } : {}),
+    ...(supplierStatus ? { supplierStatus: supplierStatus as never } : {}),
     ...(statusList.length === 1
       ? { status: statusList[0] as never }
       : statusList.length > 1

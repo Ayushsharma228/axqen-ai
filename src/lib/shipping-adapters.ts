@@ -133,37 +133,34 @@ export async function delhiveryCreateShipment(
     name:           input.customerName,
     add:            input.address,
     city:           input.city,
-    state:          input.state,
+    state:          input.state || "Uttar Pradesh",
     country:        "India",
     pin:            input.pincode,
     phone:          input.phone.replace(/\D/g, "").slice(-10),
     order:          input.externalOrderId,
     payment_mode:   "COD",
     products_desc:  input.productDesc,
-    cod_amount:     String(input.totalAmount),
-    order_date:     new Date().toISOString().replace("T", " ").split(".")[0],
-    total_amount:   String(input.totalAmount),
+    hsn_code:       "",
+    cod_amount:     input.totalAmount,
+    order_date:     new Date(Date.now()).toISOString().replace("T", " ").split(".")[0],
+    total_amount:   input.totalAmount,
     seller_inv:     input.externalOrderId,
-    quantity:       "1",
+    seller_add:     returnAdd ? `${returnAdd}, ${returnCity}` : "",
+    seller_name:    process.env.RETURN_NAME ?? "",
+    quantity:       1,
     waybill:        "",
     shipment_width:  input.breadth ?? 13,
     shipment_height: input.height  ?? 4,
     weight:          input.weight  ?? 0.5,
     shipment_length: input.length  ?? 23,
     pickup_location: pickupName,
-    // Only set shipment_type for Express — Surface is Delhivery's default
-    ...(input.shipmentMode === "Express" ? { shipment_type: "Express" } : {}),
+    return_pin:     returnPincode,
+    return_city:    returnCity,
+    return_phone:   returnPhone,
+    return_add:     returnAdd,
+    return_state:   returnState,
+    return_country: "India",
   };
-
-  // Only include return address fields when we have valid data
-  if (returnAdd && returnCity && returnPincode) {
-    shipment.return_add     = returnAdd;
-    shipment.return_city    = returnCity;
-    shipment.return_state   = returnState;
-    shipment.return_pin     = returnPincode;
-    shipment.return_phone   = returnPhone;
-    shipment.return_country = "India";
-  }
 
   const payload = {
     shipments: [shipment],
@@ -187,11 +184,7 @@ export async function delhiveryCreateShipment(
   const pkg = (result?.packages as Record<string, unknown>[])?.[0];
   if (!pkg?.waybill || pkg?.status === "Error") {
     const remark = (pkg?.remark ?? result?.rmk ?? result?.error ?? JSON.stringify(result).slice(0, 300)) as string;
-    // "internal Error" = Express not enabled on this Delhivery account / pickup location
-    if (typeof remark === "string" && remark.toLowerCase().includes("internal error")) {
-      throw new Error(`Delhivery Express is not enabled for your pickup location or account. Log into one.delhivery.com and ensure your pickup point has Express (Air) service active, or contact Delhivery support.`);
-    }
-    throw new Error(`Delhivery: ${remark}`);
+    throw new Error(`Delhivery (pickup: ${pickupName}): ${remark}`);
   }
 
   return {

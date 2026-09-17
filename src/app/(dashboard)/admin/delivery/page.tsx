@@ -73,7 +73,7 @@ export default function AdminFulfillmentPage() {
   const [refreshing,   setRefreshing]   = useState(false);
   const [counts,       setCounts]       = useState<Record<string, number>>({});
 
-  const [dateRange,    setDateRange]    = useState<7 | 14>(7);
+  const [dateRange,    setDateRange]    = useState<0 | 7 | 14>(7);
 
   type CourierRow = { courier: string; total: number; delivered: number; rto: number };
   type StateRow   = { state: string;   total: number; delivered: number; rto: number };
@@ -102,11 +102,13 @@ export default function AdminFulfillmentPage() {
 
   const fetchInsights = useCallback(async () => {
     setInsightsLoading(true);
-    const { currentStart, currentEnd } = getDateBounds(dateRange);
     const params = new URLSearchParams();
     if (sellerFilter) params.set("sellerId", sellerFilter);
-    params.set("dateFrom", currentStart.toISOString());
-    params.set("dateTo",   currentEnd.toISOString());
+    if (dateRange !== 0) {
+      const { currentStart, currentEnd } = getDateBounds(dateRange);
+      params.set("dateFrom", currentStart.toISOString());
+      params.set("dateTo",   currentEnd.toISOString());
+    }
     const data = await fetch(`/api/admin/analytics/delivery?${params}`).then(r => r.json());
     setCouriers(data.couriers ?? []);
     setStates(data.states ?? []);
@@ -242,17 +244,17 @@ export default function AdminFulfillmentPage() {
               <Truck className="w-3.5 h-3.5 text-[#9CA3AF]" />
               <div>
                 <p className="text-[13px] font-bold text-[#0C1220]">By Courier</p>
-                <p className="text-[11px] text-[#9CA3AF]">Last {dateRange} days</p>
+                <p className="text-[11px] text-[#9CA3AF]">{dateRange === 0 ? "All time" : `Last ${dateRange} days`}</p>
               </div>
             </div>
             <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-[#F3F4F6]">
-              {([7, 14] as const).map(r => (
-                <button key={r} onClick={() => setDateRange(r)}
+              {([{ label: "7d", value: 7 }, { label: "14d", value: 14 }, { label: "All", value: 0 }] as const).map(({ label, value }) => (
+                <button key={value} onClick={() => setDateRange(value)}
                   className="px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all"
-                  style={dateRange === r
+                  style={dateRange === value
                     ? { background: "white", color: "#0C1220", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }
                     : { color: "#9CA3AF" }}>
-                  {r}d
+                  {label}
                 </button>
               ))}
             </div>
@@ -298,7 +300,7 @@ export default function AdminFulfillmentPage() {
             <MapPin className="w-3.5 h-3.5 text-[#9CA3AF]" />
             <div>
               <p className="text-[13px] font-bold text-[#0C1220]">By State</p>
-              <p className="text-[11px] text-[#9CA3AF]">Last {dateRange} days</p>
+              <p className="text-[11px] text-[#9CA3AF]">{dateRange === 0 ? "All time" : `Last ${dateRange} days`}</p>
             </div>
           </div>
           {insightsLoading ? (

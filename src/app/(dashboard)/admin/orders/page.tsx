@@ -450,11 +450,17 @@ export default function AdminOrdersPage() {
   async function handleDelete(orderIds: string[]) {
     if (!confirm(`Delete ${orderIds.length} order${orderIds.length > 1 ? "s" : ""}? This cannot be undone.`)) return;
     setDeleting(true);
-    await fetch("/api/admin/orders", {
+    const res = await fetch("/api/admin/orders", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ orderIds }),
     });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || "Failed to delete orders. Please try again.");
+      setDeleting(false);
+      return;
+    }
     setSelected(new Set());
     await fetchOrders();
     setDeleting(false);

@@ -98,8 +98,14 @@ export async function DELETE(req: NextRequest) {
   const { orderIds } = await req.json() as { orderIds: string[] };
   if (!orderIds?.length) return NextResponse.json({ error: "No order IDs provided" }, { status: 400 });
 
-  const { count } = await prisma.order.deleteMany({ where: { id: { in: orderIds } } });
-  return NextResponse.json({ deleted: count });
+  // Delete related records that lack onDelete: Cascade first
+  await prisma.$transaction([
+    prisma.supplierPayment.deleteMany({ where: { orderId: { in: orderIds } } }),
+    prisma.purchaseOrder.deleteMany({ where: { orderId: { in: orderIds } } }),
+    prisma.order.deleteMany({ where: { id: { in: orderIds } } }),
+  ]);
+
+  return NextResponse.json({ deleted: orderIds.length });
 }
 
 // POST — manually create an order

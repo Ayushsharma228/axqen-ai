@@ -40,7 +40,7 @@ const adminNav: NavItem[] = [
   { label: "Suppliers",          href: "/admin/purchase-orders",   icon: Network },
 
   // ── FINANCE ─────────────────────────────────────────────────────────────
-  { label: "Transactions",       href: "/admin/reconciliation",    icon: Receipt,         section: "FINANCE" },
+  { label: "Transactions",       href: "/admin/finance",           icon: Receipt,         section: "FINANCE" },
   { label: "Seller Settlements", href: "/admin/remittance",        icon: BadgeIndianRupee },
   { label: "Supplier Payments",  href: "/admin/supplier-payables", icon: TrendingUp },
   { label: "Platform Revenue",   href: "/admin/analytics",         icon: BarChart },

@@ -152,9 +152,42 @@ export default function SupplierShippingPage() {
       {/* Pending to Ship Tab */}
       {activeTab === "pending" && (
         <div className="bg-white rounded-xl border border-gray-100">
-          <div className="px-5 py-4 border-b border-gray-100">
-            <h3 className="font-bold text-gray-800">Pending to Ship</h3>
-            <p className="text-xs text-gray-400 mt-0.5">These orders are ready — ship them according to the address below</p>
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+            <div>
+              <h3 className="font-bold text-gray-800">Pending to Ship</h3>
+              <p className="text-xs text-gray-400 mt-0.5">These orders are ready — ship them according to the address below</p>
+            </div>
+            {pending.length > 0 && (
+              <button
+                onClick={() => {
+                  const headers = ["Order ID", "Date", "Customer", "Phone", "Address", "Product", "Amount"];
+                  const rows = pending.map(o => {
+                    const addr = o.customerAddress ?? {};
+                    const addressLine = [addr.address, addr.city, addr.state, addr.pincode].filter(Boolean).join(", ");
+                    return [
+                      `#${o.externalOrderId}`,
+                      new Date(o.createdAt).toLocaleDateString("en-IN"),
+                      o.customerName || "",
+                      addr.phone || "",
+                      addressLine,
+                      o.items?.map(i => `${i.name} x${i.quantity}`).join(" | ") || "",
+                      o.totalAmount,
+                    ];
+                  });
+                  const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+                  const blob = new Blob([csv], { type: "text/csv" });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `pending-to-ship-${new Date().toISOString().slice(0,10)}.csv`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors border border-indigo-200"
+              >
+                ↓ Export CSV
+              </button>
+            )}
           </div>
 
           {pendingLoading ? (

@@ -336,6 +336,8 @@ export default function AdminOrdersPage() {
   const [bulkUpdating, setBulkUpdating]     = useState(false);
   const [createAwbLoading, setCreateAwbLoading] = useState<Record<string, boolean>>({});
   const [editingStatus, setEditingStatus]       = useState<string | null>(null);
+  const [syncingDelhivery, setSyncingDelhivery] = useState(false);
+  const [syncResult, setSyncResult]             = useState<{ created: number; skipped: number; errors: string[] } | null>(null);
 
   useEffect(() => {
     fetch("/api/admin/sellers").then((r) => r.json()).then((d) => setSellers(d.sellers ?? []));
@@ -511,6 +513,16 @@ export default function AdminOrdersPage() {
     await fetchOrders();
   }
 
+  async function handleSyncDelhivery() {
+    setSyncingDelhivery(true);
+    setSyncResult(null);
+    const res = await fetch("/api/admin/deliveries/sync-delhivery", { method: "POST" });
+    const data = await res.json();
+    setSyncResult({ created: data.created ?? 0, skipped: data.skipped ?? 0, errors: data.errors ?? [] });
+    if ((data.created ?? 0) > 0) await fetchOrders();
+    setSyncingDelhivery(false);
+  }
+
   function exportToCSV() {
     const params = new URLSearchParams();
     if (search)       params.set("search",   search);
@@ -545,11 +557,20 @@ export default function AdminOrdersPage() {
         onSearchChange={setSearch}
         onSearchSubmit={fetchOrders}
         actions={
-          <button onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white"
-            style={{ background: "#16A34A" }}>
-            <Plus className="w-4 h-4" /> Add Order
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={handleSyncDelhivery} disabled={syncingDelhivery}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold disabled:opacity-60"
+              style={{ background: "#EEF2FF", color: "#4338CA", border: "1px solid #C7D2FE" }}>
+              {syncingDelhivery
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> Syncing...</>
+                : <><Package className="w-4 h-4" /> Sync to Delhivery</>}
+            </button>
+            <button onClick={() => setShowAddModal(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white"
+              style={{ background: "#16A34A" }}>
+              <Plus className="w-4 h-4" /> Add Order
+            </button>
+          </div>
         }
         filters={
           <div className="flex items-center gap-2 flex-wrap">
@@ -598,6 +619,34 @@ export default function AdminOrdersPage() {
       />
 
       <div className="px-4 md:px-8 py-6">
+
+        {/* ── Delhivery sync result ── */}
+        {syncResult && (
+          <div className="mb-4 flex items-start gap-3 px-4 py-3 rounded-xl text-sm"
+            style={{
+              background: syncResult.errors.length && !syncResult.created ? "#FEF2F2" : "#F0FDF4",
+              border: `1px solid ${syncResult.errors.length && !syncResult.created ? "#FEE2E2" : "#D1FAE5"}`,
+              color: syncResult.errors.length && !syncResult.created ? "#DC2626" : "#15803D",
+            }}>
+            <div className="flex-1">
+              <p className="font-semibold">
+                {syncResult.created > 0
+                  ? `✓ ${syncResult.created} order${syncResult.created !== 1 ? "s" : ""} pushed to Delhivery`
+                  : "No new AWBs created"}
+                {syncResult.skipped > 0 && ` · ${syncResult.skipped} skipped (incomplete address)`}
+              </p>
+              {syncResult.errors.length > 0 && (
+                <ul className="mt-1 text-xs space-y-0.5 opacity-80">
+                  {syncResult.errors.slice(0, 5).map((e, i) => <li key={i}>• {e}</li>)}
+                  {syncResult.errors.length > 5 && <li>• …and {syncResult.errors.length - 5} more</li>}
+                </ul>
+              )}
+            </div>
+            <button onClick={() => setSyncResult(null)} className="opacity-60 hover:opacity-100">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
         {/* ── Status cards ── */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">

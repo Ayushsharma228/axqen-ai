@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import {
   ShoppingCart, CheckCircle, XCircle, Clock, Package,
-  Truck, AlertCircle, RefreshCw, ChevronRight, Loader2, Zap,
+  Truck, AlertCircle, RefreshCw, ChevronRight, Loader2, Zap, Send,
 } from "lucide-react";
 import { PageHero } from "@/components/layout/page-hero";
 
@@ -141,6 +141,31 @@ export default function SupplierOrdersPage() {
   const checkedAccepted   = checkedOrders.filter((o) => o.supplierStatus === "ACCEPTED").length;
   const checkedProcessing = checkedOrders.filter((o) => o.supplierStatus === "PROCESSING").length;
   const checkedPacked     = checkedOrders.filter((o) => o.supplierStatus === "PACKED").length;
+  const checkedPushable   = checkedOrders.filter((o) =>
+    ["ACCEPTED","PROCESSING","PACKED","READY_TO_SHIP"].includes(o.supplierStatus ?? "")).length;
+
+  const bulkPushToDelhivery = async () => {
+    const targets = filteredOrders.filter((o) =>
+      checkedIds.has(o.id) && ["ACCEPTED","PROCESSING","PACKED","READY_TO_SHIP"].includes(o.supplierStatus ?? "")
+    );
+    if (!targets.length) return;
+    // Load providers once
+    const res = await fetch("/api/supplier/shipping-providers");
+    const d   = await res.json();
+    const active = (d.providers ?? []).filter((p: { isActive: boolean }) => p.isActive);
+    if (!active.length) { alert("No shipping provider connected. Add one in Profile → Shipping."); return; }
+    const providerId = active[0].id;
+    setBulkActioning(true);
+    await Promise.allSettled(targets.map((o) =>
+      fetch(`/api/supplier/orders/${o.id}/create-shipment`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ providerId, shipmentMode: "Surface", weight: 0.5, length: 23, breadth: 13, height: 4 }),
+      })
+    ));
+    await fetchOrders();
+    setBulkActioning(false);
+  };
 
   const runBulkAction = async (action: string, forStatus: string) => {
     const targets = filteredOrders
@@ -299,6 +324,14 @@ export default function SupplierOrdersPage() {
                   Ready to Ship ({checkedPacked})
                 </button>
               )}
+              {checkedPushable > 0 && (
+                <button onClick={bulkPushToDelhivery} disabled={bulkActioning}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50"
+                  style={{ background: "#4361EE" }}>
+                  {bulkActioning ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+                  Push to Delhivery ({checkedPushable})
+                </button>
+              )}
               <button onClick={() => setCheckedIds(new Set())}
                 className="ml-auto text-xs font-medium px-2 py-1 rounded-lg"
                 style={{ color: "var(--text-400)" }}>
@@ -406,11 +439,12 @@ export default function SupplierOrdersPage() {
                                 </button>
                               </>
                             )}
-                            {order.supplierStatus === "READY_TO_SHIP" && (
+                            {["ACCEPTED","PROCESSING","PACKED","READY_TO_SHIP"].includes(order.supplierStatus ?? "") && (
                               <button onClick={() => openDispatch(order.id)} disabled={isActioning}
-                                className="px-2 py-1 rounded-lg text-xs font-semibold text-white"
-                                style={{ background: "#16A34A" }}>
-                                Dispatch
+                                className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold text-white"
+                                style={{ background: "#4361EE" }}>
+                                <Send className="w-3 h-3" />
+                                Push to Delhivery
                               </button>
                             )}
                             {nextAction && order.supplierStatus !== "ASSIGNED" && order.supplierStatus !== "READY_TO_SHIP" && (
@@ -586,7 +620,7 @@ export default function SupplierOrdersPage() {
           <div className="rounded-2xl w-full max-w-md shadow-2xl" style={{ background: "var(--bg-card)" }}>
             <div className="px-6 py-4 flex items-center justify-between"
               style={{ borderBottom: "1px solid var(--border)" }}>
-              <h3 className="font-semibold" style={{ color: "var(--text-900)" }}>Mark as Dispatched</h3>
+              <h3 className="font-semibold" style={{ color: "var(--text-900)" }}>Push to Delhivery</h3>
               <button onClick={() => { setShowDispatch(null); setShippingProviders([]); setAutoDispatchError(""); }}
                 className="text-2xl leading-none" style={{ color: "var(--text-400)" }}>×</button>
             </div>

@@ -63,7 +63,6 @@ const PROVIDER_HELP: Record<string, {
 
 const PROVIDERS = [
   { value: "SHIPROCKET", label: "Shiprocket" },
-  { value: "DELHIVERY",  label: "Delhivery"  },
   { value: "CUSTOM",     label: "Custom API" },
 ];
 

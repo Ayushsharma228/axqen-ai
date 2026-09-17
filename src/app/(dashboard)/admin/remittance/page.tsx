@@ -3,11 +3,12 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   IndianRupee, CheckSquare, Square, Calculator, Send,
-  ChevronDown, ChevronRight, History, Clock, CheckCircle2, BadgeCheck, RotateCcw,
+  ChevronRight, History, Clock, CheckCircle2, BadgeCheck, RotateCcw,
+  ArrowLeft, Search, Store,
 } from "lucide-react";
 import { PageHero } from "@/components/layout/page-hero";
 
-interface Seller { id: string; name: string | null; email: string; }
+interface Seller { id: string; name: string | null; email: string; brandName: string | null; }
 
 interface Order {
   id: string; externalOrderId: string; status: string; courier?: string | null;
@@ -102,6 +103,7 @@ function OrderBreakdownTable({ orders }: { orders: HistoryOrder[] }) {
 export default function AdminRemittancePage() {
   const [sellers, setSellers] = useState<Seller[]>([]);
   const [sellerId, setSellerId] = useState("");
+  const [sellerSearch, setSellerSearch] = useState("");
   const [tab, setTab] = useState<"pending" | "history">("pending");
 
   // Pending
@@ -330,23 +332,75 @@ export default function AdminRemittancePage() {
       <PageHero title="Remittance" subtitle="Calculate and generate remittance for sellers" />
 
       <div className="px-8 py-6 space-y-5">
-      <div className="card p-4 flex items-center gap-4">
-        <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Select Seller</label>
-        <select value={sellerId} onChange={(e) => { setSellerId(e.target.value); setTab("pending"); }}
-          className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-          <option value="">— choose a seller —</option>
-          {sellers.map((s) => <option key={s.id} value={s.id}>{s.name || s.email} ({s.email})</option>)}
-        </select>
-        {sellerId && (
-          <div className="flex border border-gray-200 rounded-lg overflow-hidden text-sm">
-            <button onClick={() => setTab("pending")} className={`px-4 py-2 transition-colors ${tab === "pending" ? "bg-blue-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}>Pending</button>
-            <button onClick={() => setTab("history")} className={`px-4 py-2 border-l border-gray-200 flex items-center gap-1.5 transition-colors ${tab === "history" ? "bg-blue-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}>
-              <History className="w-3.5 h-3.5" /> History
-              {upcomingHistory.length > 0 && <span className="bg-yellow-400 text-yellow-900 text-xs font-bold rounded-full w-4 h-4 flex items-center justify-center">{upcomingHistory.length}</span>}
-            </button>
+
+      {/* ── No seller selected — show card grid ── */}
+      {!sellerId && (
+        <div className="space-y-4">
+          {/* Search */}
+          <div className="relative max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search sellers…"
+              value={sellerSearch}
+              onChange={e => setSellerSearch(e.target.value)}
+              className="pl-9 pr-4 py-2 w-full text-sm border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
           </div>
-        )}
-      </div>
+
+          {sellers.length === 0 ? (
+            <div className="py-16 text-center text-sm text-gray-400">Loading sellers…</div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              {sellers
+                .filter(s => {
+                  const q = sellerSearch.toLowerCase();
+                  return !q || (s.brandName || "").toLowerCase().includes(q) || (s.name || "").toLowerCase().includes(q) || s.email.toLowerCase().includes(q);
+                })
+                .map(s => (
+                  <button key={s.id}
+                    onClick={() => { setSellerId(s.id); setTab("pending"); }}
+                    className="text-left bg-white border border-gray-200 rounded-xl p-4 hover:border-blue-400 hover:shadow-sm transition-all group">
+                    <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center mb-3 group-hover:bg-blue-100 transition-colors">
+                      <Store className="w-4 h-4 text-blue-500" />
+                    </div>
+                    <p className="text-sm font-semibold text-gray-900 truncate">{s.brandName || s.name || s.email}</p>
+                    <p className="text-xs text-gray-400 truncate mt-0.5">{s.email}</p>
+                  </button>
+                ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Seller selected — show header + tabs ── */}
+      {sellerId && (() => {
+        const sel = sellers.find(s => s.id === sellerId);
+        return (
+          <div className="flex items-center gap-3">
+            <button onClick={() => { setSellerId(""); setTab("pending"); }}
+              className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
+              <ArrowLeft className="w-4 h-4 text-gray-500" />
+            </button>
+            <div className="flex items-center gap-2 flex-1">
+              <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
+                <Store className="w-4 h-4 text-blue-500" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-gray-900">{sel?.brandName || sel?.name || sel?.email}</p>
+                <p className="text-xs text-gray-400">{sel?.email}</p>
+              </div>
+            </div>
+            <div className="flex border border-gray-200 rounded-lg overflow-hidden text-sm">
+              <button onClick={() => setTab("pending")} className={`px-4 py-2 transition-colors ${tab === "pending" ? "bg-blue-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}>Pending</button>
+              <button onClick={() => setTab("history")} className={`px-4 py-2 border-l border-gray-200 flex items-center gap-1.5 transition-colors ${tab === "history" ? "bg-blue-600 text-white" : "text-gray-500 hover:bg-gray-50"}`}>
+                <History className="w-3.5 h-3.5" /> History
+                {upcomingHistory.length > 0 && <span className="bg-yellow-400 text-yellow-900 text-xs font-bold rounded-full w-4 h-4 flex items-center justify-center">{upcomingHistory.length}</span>}
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {success && (
         <div className={`rounded-xl p-4 text-sm font-semibold border ${success.total >= 0 ? "bg-green-50 border-green-200 text-green-700" : "bg-red-50 border-red-200 text-red-700"}`}>

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   RefreshCw, Truck, Save, CheckCircle2, ExternalLink,
   RotateCcw, AlertTriangle, Loader2, ChevronLeft, ChevronRight,
+  TrendingUp, TrendingDown, Minus,
 } from "lucide-react";
 
 interface Seller { id: string; name: string | null; email: string; brandName: string | null; }
@@ -41,12 +42,197 @@ const PAGE_LIMIT = 50;
 type TabKey = "" | "SHIPPED" | "IN_TRANSIT" | "DELIVERED" | "RTO" | "NDR";
 
 const TABS: { key: TabKey; label: string; sub: string; color: string; border: string; bg: string }[] = [
-  { key: "SHIPPED",    label: "Shipped",    sub: "picked up by courier",  color: "#4361EE", border: "rgba(67,97,238,0.2)",   bg: "rgba(67,97,238,0.08)" },
-  { key: "IN_TRANSIT", label: "In Transit", sub: "on the way",            color: "#D97706", border: "rgba(245,158,11,0.2)",  bg: "rgba(245,158,11,0.08)" },
-  { key: "DELIVERED",  label: "Delivered",  sub: "successfully delivered", color: "#16A34A", border: "rgba(22,163,74,0.2)",   bg: "rgba(22,163,74,0.08)" },
-  { key: "RTO",        label: "RTO",        sub: "return to origin",       color: "#F97316", border: "rgba(249,115,22,0.2)",  bg: "rgba(249,115,22,0.08)" },
-  { key: "NDR",        label: "NDR",        sub: "delivery exception",     color: "#EF4444", border: "rgba(239,68,68,0.2)",   bg: "rgba(239,68,68,0.08)" },
+  { key: "SHIPPED",    label: "Shipped",    sub: "picked up by courier",   color: "#4361EE", border: "rgba(67,97,238,0.2)",   bg: "rgba(67,97,238,0.08)" },
+  { key: "IN_TRANSIT", label: "In Transit", sub: "on the way",             color: "#D97706", border: "rgba(245,158,11,0.2)",  bg: "rgba(245,158,11,0.08)" },
+  { key: "DELIVERED",  label: "Delivered",  sub: "successfully delivered",  color: "#16A34A", border: "rgba(22,163,74,0.2)",   bg: "rgba(22,163,74,0.08)" },
+  { key: "RTO",        label: "RTO",        sub: "return to origin",        color: "#F97316", border: "rgba(249,115,22,0.2)",  bg: "rgba(249,115,22,0.08)" },
+  { key: "NDR",        label: "NDR",        sub: "delivery exception",      color: "#EF4444", border: "rgba(239,68,68,0.2)",   bg: "rgba(239,68,68,0.08)" },
 ];
+
+const COMP_STATUSES: { key: string; label: string; color: string; lightColor: string }[] = [
+  { key: "SHIPPED",    label: "Shipped",    color: "#4361EE", lightColor: "#A5B4FC" },
+  { key: "IN_TRANSIT", label: "In Transit", color: "#D97706", lightColor: "#FCD34D" },
+  { key: "DELIVERED",  label: "Delivered",  color: "#16A34A", lightColor: "#86EFAC" },
+  { key: "RTO",        label: "RTO",        color: "#F97316", lightColor: "#FCA5A5" },
+  { key: "NDR",        label: "NDR",        color: "#EF4444", lightColor: "#FECACA" },
+];
+
+function getDateBounds(range: number) {
+  const now = new Date();
+  const currentEnd = new Date(now);
+  currentEnd.setHours(23, 59, 59, 999);
+  const currentStart = new Date(now);
+  currentStart.setDate(currentStart.getDate() - range + 1);
+  currentStart.setHours(0, 0, 0, 0);
+
+  const previousEnd = new Date(currentStart);
+  previousEnd.setDate(previousEnd.getDate() - 1);
+  previousEnd.setHours(23, 59, 59, 999);
+  const previousStart = new Date(previousEnd);
+  previousStart.setDate(previousStart.getDate() - range + 1);
+  previousStart.setHours(0, 0, 0, 0);
+
+  return { currentStart, currentEnd, previousStart, previousEnd };
+}
+
+// ── Comparison Bar Chart ──────────────────────────────────────────────────────
+function ComparisonChart({
+  current,
+  previous,
+  range,
+}: {
+  current: Record<string, number>;
+  previous: Record<string, number>;
+  range: number;
+}) {
+  const maxVal = Math.max(
+    1,
+    ...COMP_STATUSES.flatMap(({ key }) => [current[key] ?? 0, previous[key] ?? 0])
+  );
+  const barH = 100;
+  const barW = 18;
+  const gap  = 6;
+  const groupW = barW * 2 + gap + 20;
+  const svgW = COMP_STATUSES.length * groupW + 20;
+  const svgH = barH + 52;
+
+  return (
+    <div className="overflow-x-auto">
+      <div style={{ minWidth: svgW + 40 }}>
+        {/* Legend */}
+        <div className="flex items-center gap-4 mb-3">
+          <div className="flex items-center gap-1.5">
+            <div className="w-3 h-3 rounded-sm" style={{ background: "#4361EE" }} />
+            <span className="text-xs" style={{ color: "var(--text-secondary)" }}>
+              This {range}d
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="w-3 h-3 rounded-sm" style={{ background: "#CBD5E1" }} />
+            <span className="text-xs" style={{ color: "var(--text-secondary)" }}>
+              Prev {range}d
+            </span>
+          </div>
+        </div>
+
+        <svg width="100%" viewBox={`0 0 ${svgW} ${svgH}`} className="overflow-visible">
+          {/* Horizontal grid lines */}
+          {[0, 0.25, 0.5, 0.75, 1].map((frac) => {
+            const y = 4 + barH * (1 - frac);
+            return (
+              <g key={frac}>
+                <line x1={0} y1={y} x2={svgW} y2={y}
+                  stroke="#E2E8F0" strokeWidth="1" strokeDasharray="4 3" />
+                {frac > 0 && (
+                  <text x={svgW - 2} y={y - 2} textAnchor="end"
+                    fontSize="8" fill="#94A3B8">
+                    {Math.round(maxVal * frac)}
+                  </text>
+                )}
+              </g>
+            );
+          })}
+
+          {COMP_STATUSES.map(({ key, label, color }, gi) => {
+            const curr = current[key] ?? 0;
+            const prev = previous[key] ?? 0;
+            const currH = Math.max(2, (curr / maxVal) * barH);
+            const prevH = Math.max(2, (prev / maxVal) * barH);
+            const x = gi * groupW + 10;
+            const diff = curr - prev;
+
+            return (
+              <g key={key}>
+                {/* Current bar */}
+                <rect
+                  x={x}
+                  y={4 + barH - currH}
+                  width={barW}
+                  height={currH}
+                  rx={3}
+                  fill={color}
+                />
+                {/* Current value label */}
+                {curr > 0 && (
+                  <text
+                    x={x + barW / 2}
+                    y={4 + barH - currH - 3}
+                    textAnchor="middle"
+                    fontSize="9"
+                    fontWeight="600"
+                    fill={color}>
+                    {curr}
+                  </text>
+                )}
+
+                {/* Previous bar */}
+                <rect
+                  x={x + barW + gap}
+                  y={4 + barH - prevH}
+                  width={barW}
+                  height={prevH}
+                  rx={3}
+                  fill="#CBD5E1"
+                />
+                {prev > 0 && (
+                  <text
+                    x={x + barW + gap + barW / 2}
+                    y={4 + barH - prevH - 3}
+                    textAnchor="middle"
+                    fontSize="9"
+                    fill="#94A3B8">
+                    {prev}
+                  </text>
+                )}
+
+                {/* Group label */}
+                <text
+                  x={x + barW + gap / 2}
+                  y={barH + 18}
+                  textAnchor="middle"
+                  fontSize="9"
+                  fontWeight="600"
+                  fill="#64748B">
+                  {label}
+                </text>
+
+                {/* Delta badge */}
+                <text
+                  x={x + barW + gap / 2}
+                  y={barH + 32}
+                  textAnchor="middle"
+                  fontSize="8"
+                  fill={diff > 0 ? "#16A34A" : diff < 0 ? "#EF4444" : "#94A3B8"}>
+                  {diff > 0 ? `+${diff}` : diff < 0 ? `${diff}` : "—"}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+    </div>
+  );
+}
+
+// ── Delta badge ───────────────────────────────────────────────────────────────
+function Delta({ curr, prev }: { curr: number; prev: number }) {
+  if (prev === 0 && curr === 0) return null;
+  const diff = curr - prev;
+  const pct  = prev === 0 ? null : Math.round(Math.abs(diff / prev) * 100);
+  if (diff === 0) return (
+    <span className="flex items-center gap-0.5 text-[10px] font-semibold" style={{ color: "#94A3B8" }}>
+      <Minus className="w-2.5 h-2.5" /> Same
+    </span>
+  );
+  const up = diff > 0;
+  return (
+    <span className="flex items-center gap-0.5 text-[10px] font-semibold"
+      style={{ color: up ? "#16A34A" : "#EF4444" }}>
+      {up ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
+      {pct !== null ? `${pct}%` : `${diff > 0 ? "+" : ""}${diff}`}
+    </span>
+  );
+}
 
 export default function AdminFulfillmentPage() {
   const [orders, setOrders]         = useState<Order[]>([]);
@@ -66,6 +252,19 @@ export default function AdminFulfillmentPage() {
   const [syncResult, setSyncResult] = useState<{ updated: number; errors: string[] } | null>(null);
   const [counts, setCounts]         = useState<Record<string, number>>({});
 
+  // Comparison state
+  const [dateRange, setDateRange]   = useState<7 | 14>(7);
+  const [compCurrent, setCompCurrent]   = useState<Record<string, number>>({});
+  const [compPrevious, setCompPrevious] = useState<Record<string, number>>({});
+  const [compLoading, setCompLoading]   = useState(false);
+
+  // Insights
+  type CourierRow = { courier: string; total: number; delivered: number; rto: number };
+  type StateRow   = { state: string;   total: number; delivered: number; rto: number };
+  const [couriers, setCouriers]   = useState<CourierRow[]>([]);
+  const [states,   setStates]     = useState<StateRow[]>([]);
+  const [insightsLoading, setInsightsLoading] = useState(false);
+
   useEffect(() => {
     fetch("/api/admin/sellers")
       .then(r => r.json())
@@ -78,28 +277,77 @@ export default function AdminFulfillmentPage() {
     base.set("limit", "1");
 
     const statuses = ["SHIPPED", "IN_TRANSIT", "DELIVERED", "RTO"];
-    const results = await Promise.all([
-      ...statuses.map(s =>
+    const results = await Promise.all(
+      statuses.map(s =>
         fetch(`/api/admin/orders?${base}&status=${s}`).then(r => r.json())
-      ),
-      // NDR: filter by ndrStatus present — reuse search trick; API doesn't have ndr param so we'll count from full fetch
-      fetch(`/api/admin/orders?${base}&status=IN_TRANSIT`).then(r => r.json()),
-    ]);
-
-    const next: Record<string, number> = {};
-    statuses.forEach((s, i) => { next[s] = results[i].total ?? 0; });
-    // NDR count will be computed from in-transit/shipped orders with ndrStatus
-    // Fetch a rough count via a separate call
+      )
+    );
     const ndrBase = new URLSearchParams();
     if (sellerFilter) ndrBase.set("sellerId", sellerFilter);
     ndrBase.set("limit", "1");
     ndrBase.set("ndr", "true");
     const ndrRes = await fetch(`/api/admin/orders?${ndrBase}`).then(r => r.json());
+
+    const next: Record<string, number> = {};
+    statuses.forEach((s, i) => { next[s] = results[i].total ?? 0; });
     next["NDR"] = ndrRes.total ?? 0;
     setCounts(next);
   }, [sellerFilter]);
 
+  const fetchInsights = useCallback(async () => {
+    setInsightsLoading(true);
+    const { currentStart, currentEnd } = getDateBounds(dateRange);
+    const params = new URLSearchParams();
+    if (sellerFilter) params.set("sellerId", sellerFilter);
+    params.set("dateFrom", currentStart.toISOString());
+    params.set("dateTo",   currentEnd.toISOString());
+    const data = await fetch(`/api/admin/analytics/delivery?${params}`).then(r => r.json());
+    setCouriers(data.couriers ?? []);
+    setStates(data.states ?? []);
+    setInsightsLoading(false);
+  }, [dateRange, sellerFilter]);
+
+  const fetchComparison = useCallback(async () => {
+    setCompLoading(true);
+    const { currentStart, currentEnd, previousStart, previousEnd } = getDateBounds(dateRange);
+    const statuses = ["SHIPPED", "IN_TRANSIT", "DELIVERED", "RTO"];
+
+    const base = new URLSearchParams();
+    if (sellerFilter) base.set("sellerId", sellerFilter);
+    base.set("limit", "1");
+
+    const [currRes, prevRes, currNdr, prevNdr] = await Promise.all([
+      Promise.all(statuses.map(s =>
+        fetch(`/api/admin/orders?${base}&status=${s}&dateFrom=${currentStart.toISOString()}&dateTo=${currentEnd.toISOString()}`)
+          .then(r => r.json())
+      )),
+      Promise.all(statuses.map(s =>
+        fetch(`/api/admin/orders?${base}&status=${s}&dateFrom=${previousStart.toISOString()}&dateTo=${previousEnd.toISOString()}`)
+          .then(r => r.json())
+      )),
+      fetch(`/api/admin/orders?${base}&ndr=true&dateFrom=${currentStart.toISOString()}&dateTo=${currentEnd.toISOString()}`)
+        .then(r => r.json()),
+      fetch(`/api/admin/orders?${base}&ndr=true&dateFrom=${previousStart.toISOString()}&dateTo=${previousEnd.toISOString()}`)
+        .then(r => r.json()),
+    ]);
+
+    const currCounts: Record<string, number> = {};
+    const prevCounts: Record<string, number> = {};
+    statuses.forEach((s, i) => {
+      currCounts[s] = currRes[i].total ?? 0;
+      prevCounts[s] = prevRes[i].total ?? 0;
+    });
+    currCounts["NDR"] = currNdr.total ?? 0;
+    prevCounts["NDR"] = prevNdr.total ?? 0;
+
+    setCompCurrent(currCounts);
+    setCompPrevious(prevCounts);
+    setCompLoading(false);
+  }, [dateRange, sellerFilter]);
+
   useEffect(() => { fetchCounts(); }, [fetchCounts]);
+  useEffect(() => { fetchComparison(); }, [fetchComparison]);
+  useEffect(() => { fetchInsights(); }, [fetchInsights]);
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -111,7 +359,6 @@ export default function AdminFulfillmentPage() {
     } else if (tab) {
       params.set("status", tab);
     } else {
-      // default: all fulfilment-relevant statuses
       params.set("status", "SHIPPED,IN_TRANSIT,DELIVERED,RTO");
     }
     params.set("page",  String(page));
@@ -139,7 +386,7 @@ export default function AdminFulfillmentPage() {
         orderId: order.id,
         awb: order.awbNumber ?? "",
         status,
-        courier: order.courier ?? "Delhivery",
+        courier: order.courier ?? "",
       }),
     });
     setStatusInputs((p) => { const n = { ...p }; delete n[order.id]; return n; });
@@ -161,7 +408,7 @@ export default function AdminFulfillmentPage() {
           orderId: o.id,
           awb: o.awbNumber ?? "",
           status: statusInputs[o.id],
-          courier: o.courier ?? "Delhivery",
+          courier: o.courier ?? "",
         }),
       })
     ));
@@ -188,7 +435,7 @@ export default function AdminFulfillmentPage() {
 
   async function handleRefresh() {
     setRefreshing(true);
-    await Promise.all([fetchOrders(), fetchCounts()]);
+    await Promise.all([fetchOrders(), fetchCounts(), fetchComparison(), fetchInsights()]);
     setRefreshing(false);
   }
 
@@ -233,7 +480,7 @@ export default function AdminFulfillmentPage() {
           </div>
         </div>
 
-        {/* Search + seller filter row */}
+        {/* Search + seller filter */}
         <div className="flex items-center gap-2 mt-4">
           <input
             value={search}
@@ -258,11 +505,13 @@ export default function AdminFulfillmentPage() {
 
       <div className="px-6 md:px-8 pb-8 space-y-4">
 
-        {/* ── Status cards ── */}
+        {/* ── Status cards (all-time totals, used as tab filters) ── */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           {TABS.map(({ key, label, sub, color, border, bg }) => {
             const active = tab === key;
-            const count  = key === "NDR" ? (counts["NDR"] ?? 0) : (counts[key] ?? 0);
+            const count  = counts[key] ?? 0;
+            const curr   = compCurrent[key] ?? 0;
+            const prev   = compPrevious[key] ?? 0;
             return (
               <button key={key} onClick={() => { setTab(key); setPage(1); }}
                 className="rounded-2xl p-4 text-left transition-all"
@@ -272,10 +521,10 @@ export default function AdminFulfillmentPage() {
                   boxShadow: active ? `0 0 0 2px ${color}20` : "var(--shadow-card)",
                 }}>
                 <div className="flex items-center gap-2 mb-2">
-                  {key === "SHIPPED"    && <Truck     className="w-3.5 h-3.5" style={{ color: active ? color : "var(--text-muted)" }} />}
-                  {key === "IN_TRANSIT" && <Truck     className="w-3.5 h-3.5" style={{ color: active ? color : "var(--text-muted)" }} />}
-                  {key === "DELIVERED"  && <CheckCircle2 className="w-3.5 h-3.5" style={{ color: active ? color : "var(--text-muted)" }} />}
-                  {key === "RTO"        && <RotateCcw className="w-3.5 h-3.5" style={{ color: active ? color : "var(--text-muted)" }} />}
+                  {key === "SHIPPED"    && <Truck         className="w-3.5 h-3.5" style={{ color: active ? color : "var(--text-muted)" }} />}
+                  {key === "IN_TRANSIT" && <Truck         className="w-3.5 h-3.5" style={{ color: active ? color : "var(--text-muted)" }} />}
+                  {key === "DELIVERED"  && <CheckCircle2  className="w-3.5 h-3.5" style={{ color: active ? color : "var(--text-muted)" }} />}
+                  {key === "RTO"        && <RotateCcw     className="w-3.5 h-3.5" style={{ color: active ? color : "var(--text-muted)" }} />}
                   {key === "NDR"        && <AlertTriangle className="w-3.5 h-3.5" style={{ color: active ? color : "var(--text-muted)" }} />}
                 </div>
                 <p className="text-2xl font-black leading-none mb-1"
@@ -284,9 +533,160 @@ export default function AdminFulfillmentPage() {
                 </p>
                 <p className="text-xs font-semibold" style={{ color: active ? color : "var(--text-secondary)" }}>{label}</p>
                 <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>{sub}</p>
+                {/* Mini delta for date range */}
+                <div className="mt-1.5">
+                  <Delta curr={curr} prev={prev} />
+                </div>
               </button>
             );
           })}
+        </div>
+
+        {/* ── Comparison Chart ── */}
+        <div className="rounded-2xl p-5" style={{ background: "var(--bg-card)", border: "1px solid var(--border)", boxShadow: "var(--shadow-card)" }}>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>Period Comparison</h2>
+              <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
+                Current {dateRange}d vs previous {dateRange}d
+              </p>
+            </div>
+            <div className="flex items-center gap-1 p-1 rounded-xl" style={{ background: "var(--bg-muted)" }}>
+              {([7, 14] as const).map((r) => (
+                <button key={r} onClick={() => setDateRange(r)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                  style={dateRange === r
+                    ? { background: "var(--bg-card)", color: "var(--text-primary)", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }
+                    : { color: "var(--text-muted)" }}>
+                  {r}d
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {compLoading ? (
+            <div className="py-10 flex items-center justify-center gap-2 text-sm" style={{ color: "var(--text-muted)" }}>
+              <Loader2 className="w-4 h-4 animate-spin" /> Loading comparison...
+            </div>
+          ) : (
+            <>
+              {/* Summary row */}
+              <div className="grid grid-cols-5 gap-2 mb-5">
+                {COMP_STATUSES.map(({ key, label, color }) => {
+                  const curr = compCurrent[key] ?? 0;
+                  const prev = compPrevious[key] ?? 0;
+                  return (
+                    <div key={key} className="rounded-xl p-3 text-center"
+                      style={{ background: "var(--bg-muted)" }}>
+                      <p className="text-lg font-black" style={{ color }}>{curr}</p>
+                      <p className="text-[10px] font-semibold mt-0.5" style={{ color: "var(--text-secondary)" }}>{label}</p>
+                      <div className="flex justify-center mt-1">
+                        <Delta curr={curr} prev={prev} />
+                      </div>
+                      <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>prev: {prev}</p>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Bar chart */}
+              <ComparisonChart current={compCurrent} previous={compPrevious} range={dateRange} />
+            </>
+          )}
+        </div>
+
+        {/* ── Courier & State Insights ── */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+          {/* Courier breakdown */}
+          <div className="rounded-2xl p-5" style={{ background: "var(--bg-card)", border: "1px solid var(--border)", boxShadow: "var(--shadow-card)" }}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>By Courier Partner</h2>
+                <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>Last {dateRange} days</p>
+              </div>
+              <Truck className="w-4 h-4" style={{ color: "var(--text-muted)" }} />
+            </div>
+            {insightsLoading ? (
+              <div className="py-6 flex items-center justify-center gap-2 text-sm" style={{ color: "var(--text-muted)" }}>
+                <Loader2 className="w-4 h-4 animate-spin" />
+              </div>
+            ) : couriers.length === 0 ? (
+              <p className="py-6 text-center text-sm" style={{ color: "var(--text-muted)" }}>No data for this period</p>
+            ) : (
+              <div className="space-y-2">
+                {couriers.map((c, i) => {
+                  const deliveryRate = c.total > 0 ? Math.round((c.delivered / c.total) * 100) : 0;
+                  const rtoRate      = c.total > 0 ? Math.round((c.rto      / c.total) * 100) : 0;
+                  const maxTotal     = couriers[0]?.total ?? 1;
+                  const barW         = Math.round((c.total / maxTotal) * 100);
+                  return (
+                    <div key={c.courier}>
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-bold w-4 text-right" style={{ color: "var(--text-muted)" }}>{i + 1}</span>
+                          <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{c.courier}</span>
+                        </div>
+                        <div className="flex items-center gap-3 text-xs">
+                          <span className="font-bold" style={{ color: "var(--text-primary)" }}>{c.total}</span>
+                          <span style={{ color: "#16A34A" }}>✓ {deliveryRate}%</span>
+                          <span style={{ color: "#F97316" }}>↩ {rtoRate}%</span>
+                        </div>
+                      </div>
+                      <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--bg-muted)" }}>
+                        <div className="h-full rounded-full" style={{ width: `${barW}%`, background: "#4361EE" }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* State breakdown */}
+          <div className="rounded-2xl p-5" style={{ background: "var(--bg-card)", border: "1px solid var(--border)", boxShadow: "var(--shadow-card)" }}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>By State</h2>
+                <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>Last {dateRange} days · delivery &amp; RTO rates</p>
+              </div>
+              <CheckCircle2 className="w-4 h-4" style={{ color: "var(--text-muted)" }} />
+            </div>
+            {insightsLoading ? (
+              <div className="py-6 flex items-center justify-center gap-2 text-sm" style={{ color: "var(--text-muted)" }}>
+                <Loader2 className="w-4 h-4 animate-spin" />
+              </div>
+            ) : states.length === 0 ? (
+              <p className="py-6 text-center text-sm" style={{ color: "var(--text-muted)" }}>No data for this period</p>
+            ) : (
+              <div className="space-y-2">
+                {states.map((s, i) => {
+                  const deliveryRate = s.total > 0 ? Math.round((s.delivered / s.total) * 100) : 0;
+                  const rtoRate      = s.total > 0 ? Math.round((s.rto      / s.total) * 100) : 0;
+                  const maxTotal     = states[0]?.total ?? 1;
+                  const barW         = Math.round((s.total / maxTotal) * 100);
+                  return (
+                    <div key={s.state}>
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-bold w-4 text-right" style={{ color: "var(--text-muted)" }}>{i + 1}</span>
+                          <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{s.state}</span>
+                        </div>
+                        <div className="flex items-center gap-3 text-xs">
+                          <span className="font-bold" style={{ color: "var(--text-primary)" }}>{s.total}</span>
+                          <span style={{ color: "#16A34A" }}>✓ {deliveryRate}%</span>
+                          <span style={{ color: "#F97316" }}>↩ {rtoRate}%</span>
+                        </div>
+                      </div>
+                      <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--bg-muted)" }}>
+                        <div className="h-full rounded-full" style={{ width: `${barW}%`, background: "#16A34A" }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* ── Sync result banner ── */}
@@ -314,7 +714,7 @@ export default function AdminFulfillmentPage() {
               {tab ? `${tab.replace("_", " ")} Orders` : "All Shipments"} ({totalOrders})
             </span>
             <span className="ml-auto text-xs" style={{ color: "var(--text-400)" }}>
-              AWB auto-synced from Delhivery
+              AWB auto-synced from couriers
             </span>
           </div>
 

@@ -901,7 +901,7 @@ export default function AdminOrdersPage() {
                                 <UserCheck className="w-3.5 h-3.5" />
                               </button>
                             )}
-                            {isNew ? (
+                            {isNew && (
                               <>
                                 <button
                                   onClick={() => handleConfirm(order)}
@@ -918,15 +918,14 @@ export default function AdminOrdersPage() {
                                   <XCircle className="w-4 h-4" />
                                 </button>
                               </>
-                            ) : (
-                              <button
-                                onClick={() => handleDelete([order.id])}
-                                disabled={deleting}
-                                title="Delete order"
-                                className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40">
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
                             )}
+                            <button
+                              onClick={() => handleDelete([order.id])}
+                              disabled={deleting}
+                              title="Delete order"
+                              className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                           </div>
                         </td>
                       </tr>

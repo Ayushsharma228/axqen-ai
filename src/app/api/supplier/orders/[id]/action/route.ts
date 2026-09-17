@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { dispatchEvent } from "@/lib/automation/engine";
-import { getCarrierTrackingUrl, delhiveryCreateShipment } from "@/lib/shipping-adapters";
+import { getCarrierTrackingUrl } from "@/lib/shipping-adapters";
 
 type Action =
   | "ACCEPT"
@@ -191,70 +191,6 @@ export async function POST(
   } else if (action === "REJECT") {
     dispatchEvent({ type: "SUPPLIER_REJECTED", entityId: id, entityType: "ORDER",
                     payload: { supplierId: session.user.id, reason: note }, actorId: session.user.id });
-  }
-
-  // Auto-create Delhivery AWB when supplier pushes to Delhivery
-  if (action === "READY_TO_SHIP") {
-    const adminToken = process.env.DELHIVERY_API_TOKEN;
-    if (adminToken) {
-      try {
-        // Get supplier's pickup location name (stored in their DELHIVERY provider's baseUrl)
-        const delhiveryProvider = await prisma.supplierShippingProvider.findFirst({
-          where: { supplierId: session.user.id, provider: "DELHIVERY", isActive: true },
-          select: { baseUrl: true },
-        });
-        const pickupLocation = delhiveryProvider?.baseUrl?.trim()
-          || process.env.DELHIVERY_PICKUP_LOCATION
-          || "";
-
-        if (pickupLocation) {
-          const addr = (order.customerAddress ?? {}) as Record<string, string>;
-          const productDesc = order.items.map(i => `${i.name} x${i.quantity}`).join(", ") || "Product";
-
-          const awbResult = await delhiveryCreateShipment(adminToken, {
-            externalOrderId: order.externalOrderId,
-            customerName:    order.customerName ?? "Customer",
-            address:         addr.address ?? addr.address1 ?? "",
-            city:            addr.city ?? "",
-            state:           addr.state ?? addr.province ?? "",
-            pincode:         addr.pincode ?? addr.zip ?? "",
-            phone:           (addr.phone ?? "").replace(/\D/g, "").slice(-10),
-            totalAmount:     order.totalAmount,
-            productDesc,
-            weight:  0.5,
-            length:  23,
-            breadth: 13,
-            height:  4,
-            shipmentMode: "Surface",
-          }, pickupLocation);
-
-          // Store AWB in order
-          await prisma.order.update({
-            where: { id },
-            data: {
-              awbNumber:         awbResult.awb,
-              courier:           awbResult.courier,
-              trackingUrl:       awbResult.trackingUrl ?? null,
-              supplierTrackingNo: awbResult.awb,
-              supplierCourier:   awbResult.courier,
-            },
-          });
-
-          await prisma.orderTimeline.create({
-            data: {
-              orderId:   id,
-              actorRole: "SYSTEM",
-              event:     "AWB_CREATED",
-              details:   `Auto-created Delhivery AWB: ${awbResult.awb}`,
-              metadata:  { awb: awbResult.awb, courier: awbResult.courier },
-            },
-          });
-        }
-      } catch (err) {
-        // Non-fatal — order is already READY_TO_SHIP; AWB creation failure should not block
-        console.error("[Auto-AWB] Delhivery AWB creation failed for order", order.externalOrderId, err instanceof Error ? err.message : err);
-      }
-    }
   }
 
   return NextResponse.json({ success: true, supplierStatus: ACTION_TO_STATUS[action] });

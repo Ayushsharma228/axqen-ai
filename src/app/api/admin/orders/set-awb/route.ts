@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     // No AWB provided — status-only update, leave AWB fields untouched
     await prisma.order.update({ where: { id: orderId }, data: { status: (status ?? "SHIPPED") as never } });
   } else {
-    const courierName = courier?.trim() || "Delhivery";
+    const courierName = courier?.trim() || "";
     await prisma.order.update({
       where: { id: orderId },
       data: {

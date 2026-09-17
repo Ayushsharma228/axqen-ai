@@ -3,7 +3,6 @@ import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import {
   shiprocketCreateShipment,
-  delhiveryCreateShipment,
   customCreateShipment,
   getCarrierTrackingUrl,
   ShipmentInput,
@@ -76,9 +75,7 @@ export async function POST(
         return NextResponse.json({ error: "Shiprocket email/password not configured" }, { status: 400 });
       result = await shiprocketCreateShipment(plainApiKey, plainApiSecret, input);
     } else if (provider.provider === "DELHIVERY") {
-      if (!plainApiKey)
-        return NextResponse.json({ error: "Delhivery API token not configured" }, { status: 400 });
-      result = await delhiveryCreateShipment(plainApiKey, input, provider.baseUrl ?? undefined);
+      return NextResponse.json({ error: "Delhivery API shipment creation is disabled. Enter the AWB manually from the admin orders panel." }, { status: 400 });
     } else if (provider.provider === "CUSTOM") {
       if (!plainApiKey || !provider.baseUrl)
         return NextResponse.json({ error: "Custom provider API key/URL not configured" }, { status: 400 });

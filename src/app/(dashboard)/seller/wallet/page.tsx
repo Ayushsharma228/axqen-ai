@@ -275,10 +275,15 @@ export default function SellerWalletPage() {
 
               {/* Current balance */}
               <div className="rounded-xl px-4 py-3"
-                style={{ background: "rgba(0,198,122,0.08)", border: "1px solid rgba(0,198,122,0.2)" }}>
-                <p className="text-xs" style={{ color: "var(--text-400)" }}>Balance to be paid out</p>
-                <p className="text-2xl font-bold mt-0.5" style={{ color: "#00C67A" }}>
-                  {loading ? "—" : `₹${fmt(available)}`}
+                style={available < 0
+                  ? { background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)" }
+                  : { background: "rgba(0,198,122,0.08)", border: "1px solid rgba(0,198,122,0.2)" }}>
+                <p className="text-xs" style={{ color: "var(--text-400)" }}>
+                  {available < 0 ? "Wallet deficit" : "Balance to be paid out"}
+                </p>
+                <p className="text-2xl font-bold mt-0.5"
+                  style={{ color: available < 0 ? "#EF4444" : "#00C67A" }}>
+                  {loading ? "—" : `${available < 0 ? "-" : ""}₹${fmt(available)}`}
                 </p>
               </div>
 

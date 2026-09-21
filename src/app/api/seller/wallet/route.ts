@@ -35,10 +35,16 @@ export async function GET(req: NextRequest) {
   // Paid list for transaction log display
   const paid = transactions.filter(t => t.bankTxId !== null);
 
+  // Total actually settled/transferred to seller's bank (CREDIT with bankTxId)
+  const totalSettled = transactions
+    .filter(t => t.type === "CREDIT" && t.bankTxId !== null)
+    .reduce((s, t) => s + t.amount, 0);
+
   return NextResponse.json({
     balance,
     totalRemittance,
     totalDeductions,
+    totalSettled,
     upcomingAmount,
     upcoming,
     paid,

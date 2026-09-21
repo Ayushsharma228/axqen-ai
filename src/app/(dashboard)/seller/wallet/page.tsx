@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   Wallet, TrendingUp, TrendingDown, Clock, CheckCircle2,
   ArrowUpRight, ArrowDownRight, CalendarCheck,
-  Copy, CopyCheck, Download,
+  Copy, CopyCheck, Download, BadgeCheck,
 } from "lucide-react";
 import { PageHero } from "@/components/layout/page-hero";
 
@@ -15,6 +15,7 @@ interface Transaction {
 interface BankDetails { bankHolder: string | null; bankAccount: string | null; bankIfsc: string | null; }
 interface WalletData {
   balance: number; totalRemittance: number; totalDeductions: number;
+  totalSettled: number;
   upcomingAmount: number; upcoming: Transaction[]; paid: Transaction[];
   transactions: Transaction[];
   bankDetails: BankDetails;
@@ -91,41 +92,70 @@ export default function SellerWalletPage() {
         title="Wallet & Payouts"
         subtitle="Your earnings, payouts, and transaction history"
         cards={
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {[
-              {
-                label: "Total Remittance",
-                value: loading ? "—" : `₹${fmt(data?.totalRemittance ?? 0)}`,
-                sub: `${(data?.paid.length ?? 0) + (data?.upcoming.length ?? 0)} remittance entries`,
-                icon: TrendingUp, color: "#00C67A", bg: "rgba(0,198,122,0.12)",
-              },
-              {
-                label: "Total Deductions",
-                value: loading ? "—" : `₹${fmt(data?.totalDeductions ?? 0)}`,
-                sub: "RTO & adjustments",
-                icon: TrendingDown, color: "#EF4444", bg: "rgba(239,68,68,0.1)",
-              },
-              {
-                label: "Wallet Balance",
-                value: loading ? "—" : `${available < 0 ? "−" : ""}₹${fmt(available)}`,
-                sub: available < 0 ? "In deficit" : "Remittance minus deductions",
-                icon: Wallet,
-                color: available < 0 ? "#EF4444" : "#F59E0B",
-                bg: available < 0 ? "rgba(239,68,68,0.1)" : "rgba(245,158,11,0.1)",
-              },
-            ].map(({ label, value, sub, icon: Icon, color, bg }) => (
-              <div key={label} className="rounded-2xl px-5 py-4"
-                style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
-                <div className="flex items-center justify-between mb-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>{label}</p>
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: bg }}>
-                    <Icon className="w-4 h-4" style={{ color }} />
-                  </div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {/* Delivered remittance — positive */}
+            <div className="rounded-2xl px-5 py-4"
+              style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>Earned (Delivered)</p>
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "rgba(0,198,122,0.12)" }}>
+                  <TrendingUp className="w-4 h-4" style={{ color: "#00C67A" }} />
                 </div>
-                <p className="text-xl font-bold leading-tight" style={{ color: "var(--text-primary)" }}>{value}</p>
-                <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>{sub}</p>
               </div>
-            ))}
+              <p className="text-xl font-bold leading-tight" style={{ color: "#00C67A" }}>
+                {loading ? "—" : `+₹${fmt(data?.totalRemittance ?? 0)}`}
+              </p>
+              <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>From delivered orders</p>
+            </div>
+
+            {/* RTO deductions — negative */}
+            <div className="rounded-2xl px-5 py-4"
+              style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>RTO Deductions</p>
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "rgba(239,68,68,0.1)" }}>
+                  <TrendingDown className="w-4 h-4" style={{ color: "#EF4444" }} />
+                </div>
+              </div>
+              <p className="text-xl font-bold leading-tight" style={{ color: "#EF4444" }}>
+                {loading ? "—" : `-₹${fmt(data?.totalDeductions ?? 0)}`}
+              </p>
+              <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>RTO charges & adjustments</p>
+            </div>
+
+            {/* Settled / paid out */}
+            <div className="rounded-2xl px-5 py-4"
+              style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>Settled to Bank</p>
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "rgba(99,102,241,0.1)" }}>
+                  <BadgeCheck className="w-4 h-4" style={{ color: "#6366F1" }} />
+                </div>
+              </div>
+              <p className="text-xl font-bold leading-tight" style={{ color: "#6366F1" }}>
+                {loading ? "—" : `₹${fmt(data?.totalSettled ?? 0)}`}
+              </p>
+              <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>Transferred to your account</p>
+            </div>
+
+            {/* Wallet balance */}
+            <div className="rounded-2xl px-5 py-4"
+              style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>Wallet Balance</p>
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center"
+                  style={{ background: available < 0 ? "rgba(239,68,68,0.1)" : "rgba(245,158,11,0.1)" }}>
+                  <Wallet className="w-4 h-4" style={{ color: available < 0 ? "#EF4444" : "#F59E0B" }} />
+                </div>
+              </div>
+              <p className="text-xl font-bold leading-tight"
+                style={{ color: available < 0 ? "#EF4444" : "#F59E0B" }}>
+                {loading ? "—" : `${available < 0 ? "−" : ""}₹${fmt(available)}`}
+              </p>
+              <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+                {available < 0 ? "In deficit" : "Pending payout"}
+              </p>
+            </div>
           </div>
         }
       />

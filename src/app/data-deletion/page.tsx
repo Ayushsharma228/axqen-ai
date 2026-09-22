@@ -29,7 +29,7 @@ export default function DataDeletionPage() {
           <div className="bg-gray-50 border border-gray-200 rounded-xl p-5 space-y-3">
             <h2 className="text-base font-semibold text-gray-900">How to delete Amazon data</h2>
             <p><strong>Option 1 — From your dashboard (instant):</strong><br />
-            Log in to <a href="https://app.vrinandyaventures.in" className="text-blue-600 underline">app.vrinandyaventures.in</a> → Amazon Seller Central → Disconnect. This immediately deletes your refresh token and stops all SP-API calls.
+            Log in to <a href="https://axqen.app" className="text-blue-600 underline">axqen.app</a> → Amazon Seller Central → Disconnect. This immediately deletes your refresh token and stops all SP-API calls.
             </p>
             <p><strong>Option 2 — Revoke from Amazon directly:</strong><br />
             Log in to Seller Central → Apps &amp; Services → Manage Your Apps → find AXQEN → Revoke access. Amazon will also notify us to stop using the token.

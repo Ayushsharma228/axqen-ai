@@ -45,7 +45,7 @@ function kv(rows: [string, string][]): string {
     .join("")}</table>`;
 }
 
-const DASH = "https://vrinandyaventures.in";
+const DASH = "https://axqen.app";
 const link = (label: string, href: string) =>
   `<a href="${DASH}${href}" style="color:#00C67A;font-weight:600">${label}</a>`;
 

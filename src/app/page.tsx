@@ -21,12 +21,12 @@ export const metadata: Metadata = {
     title: "AXQEN – Done-For-You COD Dropshipping Platform India",
     description:
       "Connect your Shopify store, pick verified products, and let our team handle fulfilment, tracking, RTOs, and weekly payouts. You focus on ads.",
-    url: "https://app.vrinandyaventures.in",
+    url: "https://axqen.app",
     siteName: "AXQEN",
     locale: "en_IN",
     type: "website",
     // TODO: add real OG image — 1200×630px
-    // images: [{ url: "https://app.vrinandyaventures.in/og-image.png", width: 1200, height: 630 }],
+    // images: [{ url: "https://axqen.app/og-image.png", width: 1200, height: 630 }],
   },
   twitter: {
     card: "summary_large_image",
@@ -34,7 +34,7 @@ export const metadata: Metadata = {
     description: "Automate your Shopify COD dropshipping. Verified suppliers, weekly payouts, live tracking — with a human on WhatsApp when you need one.",
   },
   robots: { index: true, follow: true },
-  alternates: { canonical: "https://app.vrinandyaventures.in" },
+  alternates: { canonical: "https://axqen.app" },
 };
 
 const JSON_LD = {
@@ -42,10 +42,10 @@ const JSON_LD = {
   "@graph": [
     {
       "@type": "Organization",
-      "@id": "https://app.vrinandyaventures.in/#organization",
+      "@id": "https://axqen.app/#organization",
       name: "AXQEN",
-      url: "https://app.vrinandyaventures.in",
-      logo: "https://app.vrinandyaventures.in/logo.png", // TODO: add real logo URL
+      url: "https://axqen.app",
+      logo: "https://axqen.app/logo.png", // TODO: add real logo URL
       contactPoint: {
         "@type": "ContactPoint",
         telephone: "+91-85339-49379",

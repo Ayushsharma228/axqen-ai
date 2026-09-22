@@ -112,7 +112,7 @@ export default function CompanyPage() {
               { label: "PAN",            value: "AALCV7054P"                                              },
               { label: "Address",        value: "4/210 Unt Gali, Kacheri Ghat, Agra, UP – 282004"        },
               { label: "Email",          value: "connect@vrinandyaventures.in"                            },
-              { label: "Website",        value: "app.vrinandyaventures.in"                                },
+              { label: "Website",        value: "axqen.app"                                               },
             ].map((r) => (
               <div key={r.label} className="flex flex-col gap-0.5">
                 <span className="text-xs font-semibold" style={{ color: C.muted }}>{r.label}</span>

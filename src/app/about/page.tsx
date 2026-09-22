@@ -271,13 +271,13 @@ export default function AboutPage() {
                   </svg>
                   connect@vrinandyaventures.in
                 </a>
-                <a href="https://app.vrinandyaventures.in"
+                <a href="https://axqen.app"
                   className="flex items-center gap-2"
                   style={{ fontSize: "0.85rem", color: C.blue, fontFamily: "var(--font-space)", fontWeight: 500 }}>
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>
                   </svg>
-                  app.vrinandyaventures.in
+                  axqen.app
                 </a>
               </div>
             </div>

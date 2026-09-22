@@ -16,7 +16,7 @@ export default function TermsOfServicePage() {
 
           <div>
             <h2 className="text-lg font-semibold text-gray-900 mb-2">1. Acceptance of Terms</h2>
-            <p>By accessing or using the AXQEN platform (&quot;Service&quot;) at <strong>app.vrinandyaventures.in</strong>, you agree to be bound by these Terms of Service. If you do not agree, do not use the Service.</p>
+            <p>By accessing or using the AXQEN platform (&quot;Service&quot;) at <strong>axqen.app</strong>, you agree to be bound by these Terms of Service. If you do not agree, do not use the Service.</p>
           </div>
 
           <div>

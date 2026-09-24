@@ -46,13 +46,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ history });
   }
 
-  // Default: pending unremitted orders + platform config defaults
+  // Default: pending unremitted DELIVERED orders only (RTO auto-deducts when remittance is scheduled)
   const [orders, configRows] = await Promise.all([
     prisma.order.findMany({
       where: {
         sellerId,
         remittedAt: null,
-        OR: [{ status: "DELIVERED" }, { status: "RTO" }],
+        status: "DELIVERED",
       },
       include: { items: { select: { name: true, quantity: true } } },
       orderBy: { createdAt: "desc" },
@@ -93,26 +93,29 @@ export async function POST(req: NextRequest) {
   const now = new Date();
 
   for (const o of includedOrders) {
-    const isRTO = o.isRTO as boolean;
-    const productCost = parseFloat(o.productCost) || 0;
+    const productCost    = parseFloat(o.productCost)    || 0;
     const shippingCharge = parseFloat(o.shippingCharge) || 0;
-    const packingCharge = parseFloat(o.packingCharge) || 0;
-    const rtoCharge = parseFloat(o.rtoCharge) || 0;
-    const net = isRTO
-      ? -(productCost + rtoCharge + packingCharge)
-      : o.orderAmount - productCost - shippingCharge - packingCharge;
+    const packingCharge  = parseFloat(o.packingCharge)  || 0;
+    const net = o.orderAmount - productCost - shippingCharge - packingCharge;
     totalRemittance += net;
   }
 
-  const txType = totalRemittance >= 0 ? "CREDIT" : "DEBIT";
-  const txNote = txType === "DEBIT"
-    ? `RTO Deduction for ${includedOrders.length} order(s)`
-    : (note || `Remittance for ${includedOrders.length} order(s)`);
+  // Auto-settle pending RTO orders as a DEBIT alongside this remittance
+  const pendingRtoOrders = await prisma.order.findMany({
+    where: { sellerId, remittedAt: null, status: "RTO" },
+    select: { id: true, productCost: true, rtoCharge: true, packingCharge: true },
+  });
+  const totalRtoDeduction = pendingRtoOrders.reduce(
+    (s, o) => s + (o.productCost ?? 0) + (o.rtoCharge ?? 0) + (o.packingCharge ?? 0),
+    0
+  );
+
+  const txNote = note || `Remittance for ${includedOrders.length} order(s)`;
 
   const tx = await prisma.walletTransaction.create({
     data: {
       sellerId,
-      type: txType,
+      type: "CREDIT",
       amount: Math.abs(totalRemittance),
       note: txNote,
       remittanceDate: remittanceDate ? new Date(remittanceDate) : null,
@@ -120,12 +123,29 @@ export async function POST(req: NextRequest) {
     },
   });
 
+  // Create DEBIT transaction for RTO deductions if any pending RTO orders exist
+  let rtoTx = null;
+  if (pendingRtoOrders.length > 0 && totalRtoDeduction > 0) {
+    rtoTx = await prisma.walletTransaction.create({
+      data: {
+        sellerId,
+        type: "DEBIT",
+        amount: totalRtoDeduction,
+        note: `RTO Deduction for ${pendingRtoOrders.length} order(s)`,
+        remittanceDate: remittanceDate ? new Date(remittanceDate) : null,
+        bankTxId: bankTxId?.trim() || null,
+      },
+    });
+    await prisma.order.updateMany({
+      where: { id: { in: pendingRtoOrders.map((o) => o.id) } },
+      data: { remittedAt: now, remittanceTxId: rtoTx.id },
+    });
+  }
+
   for (const o of includedOrders) {
     const productCost    = parseFloat(o.productCost)    || 0;
     const shippingCharge = parseFloat(o.shippingCharge) || 0;
     const packingCharge  = parseFloat(o.packingCharge)  || 0;
-    const rtoCharge      = parseFloat(o.rtoCharge)      || 0;
-    const isRTO          = o.isRTO as boolean;
 
     await prisma.order.update({
       where: { id: o.id },
@@ -133,7 +153,6 @@ export async function POST(req: NextRequest) {
         productCost,
         shippingCharge,
         packingCharge,
-        rtoCharge,
         remittedAt: now,
         remittanceTxId: tx.id,
       },
@@ -150,10 +169,10 @@ export async function POST(req: NextRequest) {
         if (orderRecord) {
           const breakdown = await calculateSettlement({
             totalAmount:    orderRecord.totalAmount,
-            productCost:    isRTO ? 0 : productCost,
-            shippingCharge: isRTO ? 0 : shippingCharge,
+            productCost,
+            shippingCharge,
             packingCharge,
-            rtoCharge:      isRTO ? rtoCharge : 0,
+            rtoCharge:      0,
             source:         orderRecord.source,
           });
           await prisma.settlement.create({
@@ -162,22 +181,22 @@ export async function POST(req: NextRequest) {
               sellerId:         orderRecord.sellerId,
               supplierId:       orderRecord.supplierId ?? undefined,
               marketplace:      orderRecord.source,
-              sellingPrice:     isRTO ? 0 : breakdown.sellingPrice,
-              productCost:      isRTO ? 0 : breakdown.productCost,
-              shippingCharge:   isRTO ? 0 : breakdown.shippingCharge,
+              sellingPrice:     breakdown.sellingPrice,
+              productCost:      breakdown.productCost,
+              shippingCharge:   breakdown.shippingCharge,
               packingCharge:    breakdown.packingCharge,
-              platformFee:      isRTO ? 0 : breakdown.platformFee,
-              gstOnFees:        isRTO ? 0 : breakdown.gstOnFees,
+              platformFee:      breakdown.platformFee,
+              gstOnFees:        breakdown.gstOnFees,
               codFee:           0,
               marketplaceFee:   0,
               adSpend:          0,
-              rtoCharge:        isRTO ? rtoCharge : 0,
+              rtoCharge:        0,
               otherDeductions:  0,
-              grossProfit:      isRTO ? -(productCost + rtoCharge + packingCharge) : breakdown.grossProfit,
-              netProfit:        isRTO ? -(productCost + rtoCharge + packingCharge) : breakdown.netProfit,
-              netPayable:       isRTO ? -(productCost + rtoCharge + packingCharge) : breakdown.netPayable,
-              platformEarnings: isRTO ? 0 : breakdown.platformEarnings,
-              supplierPayable:  isRTO ? 0 : breakdown.supplierPayable,
+              grossProfit:      breakdown.grossProfit,
+              netProfit:        breakdown.netProfit,
+              netPayable:       breakdown.netPayable,
+              platformEarnings: breakdown.platformEarnings,
+              supplierPayable:  breakdown.supplierPayable,
               walletTxId:       tx.id,
               status:           "SETTLED",
             },
@@ -189,7 +208,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ success: true, transaction: tx, totalRemittance });
+  return NextResponse.json({ success: true, transaction: tx, totalRemittance, rtoDeduction: totalRtoDeduction, rtoOrderCount: pendingRtoOrders.length });
 }
 
 // DELETE: reset a remittance — un-remits linked orders so admin can recalculate

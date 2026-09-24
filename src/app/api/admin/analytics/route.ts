@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
   // ── Parallel queries ─────────────────────────────────────────────────────
   const [orders, settlements, sellerRows, supplierPaymentAgg, activeSellers, pendingWd, leadStages, waStatuses, activationStages, walletCreditAgg, orderChargeAgg] = await Promise.all([
     prisma.order.findMany({
-      where: dateWhere,
+      where: { ...dateWhere, status: { not: "HIDDEN" as never } },
       select: { status: true, totalAmount: true, createdAt: true, sellerId: true, packingCharge: true, productCost: true, shippingCharge: true, courier: true },
       orderBy: { createdAt: "asc" },
     }),
@@ -66,7 +66,7 @@ export async function GET(req: NextRequest) {
     }),
     // Platform charges (packingCharge) + product cost aggregate from orders
     prisma.order.aggregate({
-      where: dateWhere,
+      where: { ...dateWhere, status: { not: "HIDDEN" as never } },
       _sum: { packingCharge: true, productCost: true, shippingCharge: true, totalAmount: true },
     }),
   ]);

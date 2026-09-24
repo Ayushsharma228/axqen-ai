@@ -104,6 +104,7 @@ enum OrderStatus {
   DELIVERED
   CANCELLED
   RTO
+  HIDDEN
 }
 
 enum PaymentMode {

@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
       ? { status: statusList[0] as never }
       : statusList.length > 1
         ? { status: { in: statusList as never[] } }
-        : {}),
+        : { status: { not: "HIDDEN" as never } }),
     ...(ndrOnly ? { ndrStatus: { not: null } } : {}),
     ...(source     ? { source: source as never } : {}),
     ...(dateFrom || dateTo ? {
@@ -98,11 +98,28 @@ export async function DELETE(req: NextRequest) {
   const { orderIds } = await req.json() as { orderIds: string[] };
   if (!orderIds?.length) return NextResponse.json({ error: "No order IDs provided" }, { status: 400 });
 
-  // Delete related records that lack onDelete: Cascade first
+  // Soft-delete: mark as HIDDEN so Shopify re-sync cannot resurrect these orders.
+  // Only applies to SHOPIFY-sourced orders; non-Shopify orders are hard-deleted.
+  const shopifyOrders = await prisma.order.findMany({
+    where: { id: { in: orderIds }, source: "SHOPIFY" },
+    select: { id: true },
+  });
+  const shopifyIds = new Set(shopifyOrders.map((o) => o.id));
+  const hardDeleteIds = orderIds.filter((id) => !shopifyIds.has(id));
+
   await prisma.$transaction([
-    prisma.supplierPayment.deleteMany({ where: { orderId: { in: orderIds } } }),
-    prisma.purchaseOrder.deleteMany({ where: { orderId: { in: orderIds } } }),
-    prisma.order.deleteMany({ where: { id: { in: orderIds } } }),
+    // Soft-delete Shopify orders by hiding them
+    ...(shopifyIds.size > 0
+      ? [prisma.order.updateMany({ where: { id: { in: [...shopifyIds] } }, data: { status: "HIDDEN" } })]
+      : []),
+    // Hard-delete non-Shopify orders (they won't resync)
+    ...(hardDeleteIds.length > 0
+      ? [
+          prisma.supplierPayment.deleteMany({ where: { orderId: { in: hardDeleteIds } } }),
+          prisma.purchaseOrder.deleteMany({ where: { orderId: { in: hardDeleteIds } } }),
+          prisma.order.deleteMany({ where: { id: { in: hardDeleteIds } } }),
+        ]
+      : []),
   ]);
 
   return NextResponse.json({ deleted: orderIds.length });

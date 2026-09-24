@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
       where: {
         sellerId: session.user.id,
         ...createdAtFilter,
-        ...(statusFilter && statusFilter !== "ALL" ? { status: statusFilter as import("@prisma/client").OrderStatus } : {}),
+        ...(statusFilter && statusFilter !== "ALL" ? { status: statusFilter as import("@prisma/client").OrderStatus } : { status: { not: "HIDDEN" as import("@prisma/client").OrderStatus } }),
         ...(search ? {
           OR: [
             { externalOrderId: { contains: search, mode: "insensitive" } },

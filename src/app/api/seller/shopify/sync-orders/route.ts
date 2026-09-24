@@ -29,7 +29,7 @@ function mapShopifyStatus(financial: string, fulfillment: string | null): OrderS
 }
 
 // Orders in these states are locked — Shopify status does not overwrite AXQEN state.
-const LOCKED_STATUSES: OrderStatus[] = ["PROCESSING", "SHIPPED", "IN_TRANSIT", "DELIVERED", "CANCELLED", "RTO"];
+const LOCKED_STATUSES: OrderStatus[] = ["PROCESSING", "SHIPPED", "IN_TRANSIT", "DELIVERED", "CANCELLED", "RTO", "HIDDEN"];
 
 // Fetch all Shopify orders using cursor-based pagination (max 250/page).
 // Returns the complete order list across all pages.
@@ -136,9 +136,10 @@ export async function syncShopifyOrders(sellerId: string): Promise<{ created: nu
 
     if (existing) {
       const isLocked = existing.awbNumber || existing.courier || LOCKED_STATUSES.includes(existing.status);
-      // For cancellations/refunds, always honour Shopify even if locked
+      // For cancellations/refunds, honour Shopify unless the order is HIDDEN (user deleted it)
       const isCancellation = financialStatus === "refunded" || financialStatus === "voided";
-      const finalStatus: OrderStatus = isCancellation ? OrderStatus.CANCELLED : (isLocked ? existing.status : status);
+      const isHidden = existing.status === OrderStatus.HIDDEN;
+      const finalStatus: OrderStatus = isHidden ? OrderStatus.HIDDEN : isCancellation ? OrderStatus.CANCELLED : (isLocked ? existing.status : status);
       toUpdate.push({
         id: existing.id,
         status: finalStatus,

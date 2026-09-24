@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
 
   const [orders, walletTxns, adSpendRows, store, platformFeePerOrder] = await Promise.all([
     prisma.order.findMany({
-      where: { sellerId, ...dateWhere },
+      where: { sellerId, ...dateWhere, status: { not: "HIDDEN" as import("@prisma/client").OrderStatus } },
       select: {
         id: true,
         externalOrderId: true,
@@ -229,7 +229,7 @@ export async function GET(req: NextRequest) {
     const prevLte   = new Date(gteDate.getTime() - 1);
     const prevGte   = new Date(prevLte.getTime() - duration);
     const prevOrders = await prisma.order.findMany({
-      where: { sellerId, createdAt: { gte: prevGte, lte: prevLte } },
+      where: { sellerId, createdAt: { gte: prevGte, lte: prevLte }, status: { not: "HIDDEN" as import("@prisma/client").OrderStatus } },
       select: { status: true, totalAmount: true, packingCharge: true, productCost: true, shippingCharge: true, rtoCharge: true },
     });
     const pt  = prevOrders.length;

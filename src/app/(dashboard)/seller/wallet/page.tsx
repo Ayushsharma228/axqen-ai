@@ -77,9 +77,9 @@ export default function SellerWalletPage() {
     a.click();
   }
 
-  const allTx      = data?.transactions ?? [];
-  const upcoming   = data?.upcoming ?? [];
-  const paid       = (data?.paid ?? []).filter(t => t.bankTxId !== null);
+  const allTx      = (data?.transactions ?? []).filter(t => t.amount > 0);
+  const upcoming   = (data?.upcoming ?? []).filter(t => t.amount > 0);
+  const paid       = (data?.paid ?? []).filter(t => t.bankTxId !== null && t.amount > 0);
   const deductions = allTx.filter(t => t.type === "DEBIT");
   const displayed  = tab === "All" ? allTx : tab === "Upcoming" ? upcoming : tab === "Paid" ? paid : deductions;
 
@@ -92,7 +92,7 @@ export default function SellerWalletPage() {
         title="Wallet & Payouts"
         subtitle="Your earnings, payouts, and transaction history"
         cards={
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Delivered remittance — positive */}
             <div className="rounded-2xl px-5 py-4"
               style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>

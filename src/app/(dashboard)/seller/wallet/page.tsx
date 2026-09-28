@@ -77,7 +77,7 @@ export default function SellerWalletPage() {
     a.click();
   }
 
-  const allTx      = (data?.transactions ?? []).filter(t => t.amount > 0);
+  const allTx      = (data?.transactions ?? []).filter(t => t.type === "DEBIT" || t.amount > 0);
   const upcoming   = (data?.upcoming ?? []).filter(t => t.amount > 0);
   const paid       = (data?.paid ?? []).filter(t => t.bankTxId !== null && t.amount > 0);
   const deductions = allTx.filter(t => t.type === "DEBIT" && !t.note?.startsWith("Payout withdrawal"));

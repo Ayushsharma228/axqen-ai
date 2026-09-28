@@ -46,13 +46,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ history });
   }
 
-  // Default: pending unremitted DELIVERED orders only (RTO auto-deducts when remittance is scheduled)
+  // Default: pending unremitted DELIVERED + RTO orders
   const [orders, configRows] = await Promise.all([
     prisma.order.findMany({
       where: {
         sellerId,
         remittedAt: null,
-        status: "DELIVERED",
+        OR: [{ status: "DELIVERED" }, { status: "RTO" }],
       },
       include: { items: { select: { name: true, quantity: true } } },
       orderBy: { createdAt: "desc" },

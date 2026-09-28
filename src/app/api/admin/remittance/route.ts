@@ -133,7 +133,6 @@ export async function POST(req: NextRequest) {
         amount: totalRtoDeduction,
         note: `RTO Deduction for ${pendingRtoOrders.length} order(s)`,
         remittanceDate: remittanceDate ? new Date(remittanceDate) : null,
-        bankTxId: bankTxId?.trim() || null,
       },
     });
     await prisma.order.updateMany({

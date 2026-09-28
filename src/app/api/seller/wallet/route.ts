@@ -23,14 +23,14 @@ export async function GET(req: NextRequest) {
 
   // Total remittance = ALL credit entries (confirmed + upcoming)
   const totalRemittance = transactions.filter(t => t.type === "CREDIT").reduce((s, t) => s + t.amount, 0);
-  // Total deductions = ALL debit entries
-  const totalDeductions = transactions.filter(t => t.type === "DEBIT").reduce((s, t) => s + t.amount, 0);
-  // Net balance = remittance - deductions
-  const balance = totalRemittance - totalDeductions;
-
-  // Upcoming = credits not yet confirmed (no bankTxId)
+  // Total deductions = DEBIT entries that are RTO/adjustments (NOT payout withdrawals)
+  const totalDeductions = transactions
+    .filter(t => t.type === "DEBIT" && !t.note?.startsWith("Payout withdrawal"))
+    .reduce((s, t) => s + t.amount, 0);
+  // Balance = unpaid credits (no bankTxId yet) — drops to 0 as remittances are marked paid
   const upcoming = transactions.filter(t => t.bankTxId === null && t.type === "CREDIT");
   const upcomingAmount = upcoming.reduce((s, t) => s + t.amount, 0);
+  const balance = upcomingAmount;
 
   // Paid list for transaction log display
   const paid = transactions.filter(t => t.bankTxId !== null);

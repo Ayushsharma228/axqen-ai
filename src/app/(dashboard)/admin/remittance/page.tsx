@@ -250,10 +250,11 @@ export default function AdminRemittancePage() {
     setSavingPaid(null);
   }
 
-  // Split history into upcoming and completed
-  const upcomingHistory = history.filter((e) => e.transaction.bankTxId === null && e.transaction.remittanceDate !== null);
-  const completedHistory = history.filter((e) => e.transaction.bankTxId !== null);
-  const otherHistory = history.filter((e) => e.transaction.bankTxId === null && e.transaction.remittanceDate === null);
+  // Split history into upcoming and completed — exclude ₹0 ghost entries
+  const nonZeroHistory = history.filter((e) => e.transaction.amount > 0);
+  const upcomingHistory = nonZeroHistory.filter((e) => e.transaction.bankTxId === null && e.transaction.remittanceDate !== null);
+  const completedHistory = nonZeroHistory.filter((e) => e.transaction.bankTxId !== null);
+  const otherHistory = nonZeroHistory.filter((e) => e.transaction.bankTxId === null && e.transaction.remittanceDate === null);
 
   function HistoryCard({ entry, showMarkPaid }: { entry: HistoryEntry; showMarkPaid: boolean }) {
     const isOpen = expanded === entry.transaction.id;

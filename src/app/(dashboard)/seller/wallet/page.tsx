@@ -32,7 +32,7 @@ function maskAccount(acc: string | null) {
   return "••••" + acc.slice(-4);
 }
 
-const TABS = ["All", "Upcoming", "Paid", "Deductions"];
+const TABS = ["All", "Upcoming", "Paid", "Deductions", "Payouts"];
 
 export default function SellerWalletPage() {
   const [data,     setData]     = useState<WalletData | null>(null);
@@ -80,8 +80,9 @@ export default function SellerWalletPage() {
   const allTx      = (data?.transactions ?? []).filter(t => t.amount > 0);
   const upcoming   = (data?.upcoming ?? []).filter(t => t.amount > 0);
   const paid       = (data?.paid ?? []).filter(t => t.bankTxId !== null && t.amount > 0);
-  const deductions = allTx.filter(t => t.type === "DEBIT");
-  const displayed  = tab === "All" ? allTx : tab === "Upcoming" ? upcoming : tab === "Paid" ? paid : deductions;
+  const deductions = allTx.filter(t => t.type === "DEBIT" && !t.note?.startsWith("Payout withdrawal"));
+  const payouts    = allTx.filter(t => t.type === "DEBIT" && t.note?.startsWith("Payout withdrawal"));
+  const displayed  = tab === "All" ? allTx : tab === "Upcoming" ? upcoming : tab === "Paid" ? paid : tab === "Payouts" ? payouts : deductions;
 
   const available = data?.balance ?? 0;
   const bank      = data?.bankDetails;

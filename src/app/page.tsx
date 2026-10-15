@@ -48,7 +48,7 @@ const JSON_LD = {
       logo: "https://axqen.app/logo.png", // TODO: add real logo URL
       contactPoint: {
         "@type": "ContactPoint",
-        telephone: "+91-85339-49379",
+        telephone: "+91-86799-93305",
         contactType: "customer service",
         availableLanguage: ["English", "Hindi"],
       },

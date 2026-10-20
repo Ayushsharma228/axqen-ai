@@ -1,7 +1,7 @@
 
 import type { MetadataRoute } from "next";
 
-const baseUrl = "https://www.axqen.app";
+const baseUrl = "https://axqen.app";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const publicRoutes = [
@@ -14,6 +14,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
 
   return publicRoutes.map((route) => ({
     url: `${baseUrl}${route}`,
+    lastModified: new Date(),
     changeFrequency: "weekly",
     priority: route === "" ? 1 : 0.7,
   }));

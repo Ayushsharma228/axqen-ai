@@ -6,38 +6,36 @@ import LandingPage from "@/components/landing/LandingPage";
 
 
 export const metadata: Metadata = {
-  title: "COD & Prepaid Dropshipping Platform India | AXQEN",
+  title: "AXQEN AI | AI Commerce Operating System for Ecommerce",
 
   description:
-    "Start COD and prepaid dropshipping in India with AXQEN. Connect Shopify, discover verified suppliers, and manage fulfilment, tracking, RTOs and payouts. Built to help sellers streamline operations and improve profitability.",
+    "AXQEN AI helps ecommerce sellers, brands, and agencies streamline product listings, inventory, supplier coordination, order processing, fulfilment, and dropshipping operations through one platform.",
 
   keywords: [
-    "COD dropshipping platform India",
-    "prepaid dropshipping India",
-    "COD and prepaid dropshipping",
+    "AXQEN AI",
+    "AI Commerce Operating System",
+    "ecommerce automation platform",
+    "ecommerce operations software",
     "dropshipping platform India",
     "Shopify dropshipping India",
-    "best dropshipping platform India",
-    "verified dropshipping suppliers India",
-    "dropshipping business India",
-    "profitable dropshipping business",
+    "supplier and order management",
   ],
 
   openGraph: {
-    title: "COD & Prepaid Dropshipping Platform India | AXQEN",
+    title: "AXQEN AI | AI Commerce Operating System for Ecommerce",
     description:
-      "Run your COD and prepaid dropshipping business with Shopify integration, verified suppliers, fulfilment support, tracking, RTO management and payouts.",
+      "Streamline ecommerce operations with AXQEN AI, including listings, inventory, suppliers, orders, fulfilment, and dropshipping workflows.",
     url: "https://axqen.app/",
-    siteName: "AXQEN",
+    siteName: "AXQEN AI",
     locale: "en_IN",
     type: "website",
   },
 
   twitter: {
     card: "summary_large_image",
-    title: "COD & Prepaid Dropshipping Platform India | AXQEN",
+    title: "AXQEN AI | AI Commerce Operating System for Ecommerce",
     description:
-      "Discover products, connect your Shopify store and manage COD and prepaid dropshipping operations with AXQEN.",
+      "One platform to streamline ecommerce operations, from product listings and inventory to supplier coordination and fulfilment.",
   },
 
   robots: {

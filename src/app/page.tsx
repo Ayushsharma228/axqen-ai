@@ -4,38 +4,52 @@ import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import LandingPage from "@/components/landing/LandingPage";
 
+
 export const metadata: Metadata = {
-  title: "AXQEN – Done-For-You COD Dropshipping Platform India | Start Without Inventory",
+  title: "COD & Prepaid Dropshipping Platform India | AXQEN",
+
   description:
-    "AXQEN automates your Shopify COD dropshipping business in India. Verified suppliers, Delhivery fulfilment, weekly payouts, and a dedicated account manager — all in one platform.",
+    "Start COD and prepaid dropshipping in India with AXQEN. Connect Shopify, discover verified suppliers, and manage fulfilment, tracking, RTOs and payouts. Built to help sellers streamline operations and improve profitability.",
+
   keywords: [
-    "COD dropshipping India",
+    "COD dropshipping platform India",
+    "prepaid dropshipping India",
+    "COD and prepaid dropshipping",
     "dropshipping platform India",
     "Shopify dropshipping India",
-    "done for you dropshipping",
-    "cash on delivery dropshipping",
-    "Indian dropshipping suppliers",
-    "weekly payout dropshipping",
+    "best dropshipping platform India",
+    "verified dropshipping suppliers India",
+    "dropshipping business India",
+    "profitable dropshipping business",
   ],
+
   openGraph: {
-    title: "AXQEN – Done-For-You COD Dropshipping Platform India",
+    title: "COD & Prepaid Dropshipping Platform India | AXQEN",
     description:
-      "Connect your Shopify store, pick verified products, and let our team handle fulfilment, tracking, RTOs, and weekly payouts. You focus on ads.",
-    url: "https://axqen.app",
+      "Run your COD and prepaid dropshipping business with Shopify integration, verified suppliers, fulfilment support, tracking, RTO management and payouts.",
+    url: "https://axqen.app/",
     siteName: "AXQEN",
     locale: "en_IN",
     type: "website",
-    // TODO: add real OG image — 1200×630px
-    // images: [{ url: "https://axqen.app/og-image.png", width: 1200, height: 630 }],
   },
+
   twitter: {
     card: "summary_large_image",
-    title: "AXQEN – Done-For-You COD Dropshipping Platform India",
-    description: "Automate your Shopify COD dropshipping. Verified suppliers, weekly payouts, live tracking — with a human on WhatsApp when you need one.",
+    title: "COD & Prepaid Dropshipping Platform India | AXQEN",
+    description:
+      "Discover products, connect your Shopify store and manage COD and prepaid dropshipping operations with AXQEN.",
   },
-  robots: { index: true, follow: true },
-  alternates: { canonical: "https://axqen.app" },
+
+  robots: {
+    index: true,
+    follow: true,
+  },
+
+  alternates: {
+    canonical: "https://axqen.app/",
+  },
 };
+
 
 const JSON_LD = {
   "@context": "https://schema.org",

@@ -43,9 +43,9 @@ export const metadata: Metadata = {
     follow: true,
   },
 
-  alternates: {
-    canonical: "https://axqen.app/",
-  },
+ alternates: {
+  canonical: "https://www.axqen.app/",
+},
 };
 
 

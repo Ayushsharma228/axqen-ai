@@ -24,16 +24,17 @@ const spaceGrotesk = Space_Grotesk({
   weight: ["400", "500", "600", "700"],
 });
 
+
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.axqen.app"),
 
   title: {
-    default: "AXQEN AI – AI-Powered COD Dropshipping Platform",
+    default: "AXQEN AI | AI Commerce Operating System",
     template: "%s | AXQEN AI",
   },
 
   description:
-    "AXQEN AI helps Indian Shopify sellers launch and manage COD dropshipping with product sourcing, order fulfilment, shipping coordination, and AI-powered e-commerce operations.",
+    "AXQEN AI is an AI Commerce Operating System that helps ecommerce brands, sellers, and agencies streamline product listings, inventory, supplier coordination, order processing, and fulfilment through one platform.",
 
   applicationName: "AXQEN AI",
 
@@ -41,9 +42,9 @@ export const metadata: Metadata = {
     type: "website",
     url: "https://www.axqen.app/",
     siteName: "AXQEN AI",
-    title: "AXQEN AI – AI-Powered COD Dropshipping Platform",
+    title: "AXQEN AI | AI Commerce Operating System",
     description:
-      "Launch and manage your COD dropshipping business with AXQEN AI.",
+      "Streamline ecommerce operations with AXQEN AI, from product listings and inventory to supplier coordination and order fulfilment.",
   },
 
   icons: {

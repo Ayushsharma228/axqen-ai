@@ -172,9 +172,9 @@ export const RESULTS = {
     },
     {
       name: "TheZolfKart",
-      period: "Jul 10–23, 2026",
-      image: "/testimonials/shopify-thezolfcart.png.png",
-      stats: [{ label: "Total sales", val: "₹90.4K" }, { label: "Orders", val: "121" }, { label: "Sessions", val: "1,748" }],
+      period: null, // TODO(product owner): add the date range this screenshot covers
+      image: "/results/thezolfkart-shopify.png",
+      stats: [{ label: "Total sales", val: "₹2.1L" }, { label: "Orders", val: "292" }, { label: "Sessions", val: "3,848" }],
     },
     {
       name: "Hyperloop Global",

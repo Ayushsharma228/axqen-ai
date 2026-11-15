@@ -1,63 +1,64 @@
 "use client";
 import { useState } from "react";
+import { Plus } from "lucide-react";
 import { C, WA_LINK } from "./constants";
-import { useInView } from "./useInView";
 import { FAQS } from "./content";
 
 export function FAQ() {
   const [open, setOpen] = useState<number | null>(0);
-  const { ref, inView } = useInView();
 
   return (
-    <section id="faqs" className="py-24 px-6" style={{ background: C.card }} ref={ref}>
-      <div
-        className="max-w-[1200px] mx-auto transition-all duration-700"
-        style={{ opacity: inView ? 1 : 0.001, transform: inView ? "none" : "translateY(24px)" }}
-      >
+    <section id="faqs" className="py-20 md:py-28 px-5 md:px-6" style={{ background: C.navy }}>
+      <div className="max-w-[1200px] mx-auto">
         <div className="flex flex-col lg:flex-row gap-10 lg:gap-20 items-start">
-          <div className="lg:w-72 flex-shrink-0">
-            <p className="text-xs font-bold tracking-widest uppercase mb-4" style={{ color: C.indigo }}>FAQ</p>
-            <h2 className="text-3xl md:text-4xl font-black mb-4 leading-tight" style={{ color: C.heading, letterSpacing: "-0.025em" }}>
+          <div className="lg:w-80 flex-shrink-0 lg:sticky lg:top-28">
+            <p className="axq-eyebrow mb-4">FAQ</p>
+            <h2 className="text-3xl md:text-[44px] mb-5 leading-tight" style={{ color: C.heading }}>
               Questions, answered.
             </h2>
-            <p className="text-sm" style={{ color: C.body }}>
+            <p className="text-base" style={{ color: C.body }}>
               Still unsure?{" "}
-              <a href={WA_LINK} target="_blank" rel="noopener noreferrer" style={{ color: C.indigo, fontWeight: 600 }}>
+              <a href={WA_LINK} target="_blank" rel="noopener noreferrer" className="underline underline-offset-4 decoration-2" style={{ color: C.action, fontWeight: 600, textDecorationColor: C.lilac }}>
                 Book a demo
               </a>{" "}
               and we will walk you through it.
             </p>
           </div>
 
-          <div className="flex-1 w-full space-y-2">
+          <div className="flex-1 w-full flex flex-col gap-3">
             {FAQS.map((f, i) => {
               const isOpen = open === i;
               return (
                 <div
                   key={f.q}
-                  className="rounded-xl overflow-hidden"
-                  style={{ background: C.navy, border: `1px solid ${isOpen ? C.indigoBorder : C.border}` }}
+                  className="rounded-2xl transition-[border-color,box-shadow] duration-300"
+                  style={{
+                    background: "#fff",
+                    border: `1px solid ${isOpen ? C.lilac : C.border}`,
+                    boxShadow: isOpen ? C.shadowLift : C.shadow,
+                  }}
                 >
                   <button
                     id={`faq-${i}`}
                     aria-expanded={isOpen}
-                    className="w-full flex items-center justify-between px-6 py-4 text-left focus-visible:outline-2 focus-visible:outline-offset-[-2px]"
+                    aria-controls={`faq-panel-${i}`}
+                    className="w-full flex items-center justify-between gap-4 px-6 min-h-[64px] py-4 text-left"
                     onClick={() => setOpen(isOpen ? null : i)}
                   >
-                    <span className="text-sm font-semibold pr-4" style={{ color: isOpen ? C.deep : C.heading }}>{f.q}</span>
+                    <span className="text-base font-semibold" style={{ color: isOpen ? C.action : C.heading }}>{f.q}</span>
                     <span
                       aria-hidden
-                      className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-lg font-light transition-transform duration-300"
-                      style={{ color: C.indigo, background: C.indigoDim, transform: isOpen ? "rotate(45deg)" : "none" }}
+                      className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-[transform,background-color] duration-300"
+                      style={{ background: isOpen ? C.action : C.paleLilac, transform: isOpen ? "rotate(45deg)" : "none" }}
                     >
-                      +
+                      <Plus size={16} strokeWidth={2.5} color={isOpen ? "#fff" : C.action} />
                     </span>
                   </button>
-                  {isOpen && (
-                    <div className="px-6 pb-5 pt-1 text-sm leading-relaxed" style={{ color: C.body }}>
-                      {f.a}
+                  <div id={`faq-panel-${i}`} role="region" aria-labelledby={`faq-${i}`} className="axq-acc" data-open={isOpen} inert={!isOpen}>
+                    <div>
+                      <p className="px-6 pb-6 text-[15px] leading-relaxed" style={{ color: C.body }}>{f.a}</p>
                     </div>
-                  )}
+                  </div>
                 </div>
               );
             })}

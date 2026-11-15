@@ -1,75 +1,65 @@
-"use client";
+import { Check, Receipt, RotateCcw } from "lucide-react";
 import { C } from "./constants";
-import { useInView } from "./useInView";
 import { PRICING } from "./content";
 
 export function Plans() {
-  const { ref, inView } = useInView();
-
   return (
-    <section id="plans" className="py-24 px-6" style={{ background: C.navy }} ref={ref}>
-      <div
-        className="max-w-[1200px] mx-auto transition-all duration-700"
-        style={{ opacity: inView ? 1 : 0.001, transform: inView ? "none" : "translateY(24px)" }}
-      >
+    <section id="plans" className="py-20 md:py-28 px-5 md:px-6" style={{ background: C.card }}>
+      <div className="max-w-[1200px] mx-auto">
         <div className="text-center mb-14">
-          <p className="text-xs font-bold tracking-widest uppercase mb-4" style={{ color: C.indigo }}>Pricing</p>
-          <h2 className="text-3xl md:text-4xl font-black mb-4" style={{ color: C.heading, letterSpacing: "-0.025em", textWrap: "balance" }}>
+          <p className="axq-eyebrow mb-4">Pricing</p>
+          <h2 className="text-3xl md:text-[44px] leading-tight mb-5" style={{ color: C.heading, textWrap: "balance" }}>
             {PRICING.heading}
           </h2>
-          <p className="text-base max-w-2xl mx-auto" style={{ color: C.body }}>{PRICING.sub}</p>
+          <p className="text-base md:text-lg max-w-2xl mx-auto" style={{ color: C.body }}>{PRICING.sub}</p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12 items-start">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10 items-start">
           {PRICING.plans.map((plan) => {
             const hi = plan.popular;
+            const ink = hi ? "rgba(255,255,255,0.92)" : C.body;
             return (
               <div
                 key={plan.id}
-                className="rounded-2xl p-7 flex flex-col relative"
-                style={{
-                  background: hi ? C.indigo : C.navy,
-                  border: hi ? "none" : `1px solid ${C.border}`,
-                  boxShadow: hi ? "0 12px 40px rgba(21,94,239,0.28)" : "none",
-                }}
+                className={`relative p-7 md:p-8 flex flex-col rounded-2xl ${hi ? "md:-mt-4" : "axq-card axq-card-hover"}`}
+                style={hi ? {
+                  background: `radial-gradient(90% 60% at 100% 0%, rgba(198,165,255,0.45) 0%, transparent 60%), linear-gradient(160deg, ${C.action} 0%, ${C.deep} 100%)`,
+                  boxShadow: "0 30px 60px -24px rgba(83,24,235,0.6)",
+                } : undefined}
               >
                 {hi && (
-                  <span
-                    className="absolute -top-3 left-7 px-3 py-1 rounded-full text-[11px] font-bold"
-                    style={{ background: C.deep, color: "#fff" }}
-                  >
+                  <span className="absolute -top-3 left-8 px-3 py-1 rounded-full text-[11px] font-bold" style={{ background: C.lime, color: C.deep }}>
                     Most popular
                   </span>
                 )}
-                <p className="text-xs font-black tracking-widest uppercase mb-3" style={{ color: hi ? "rgba(255,255,255,0.8)" : C.body }}>
+                <p className="text-xs font-bold tracking-[0.16em] uppercase mb-4" style={{ color: hi ? C.lime : C.action }}>
                   {plan.name}
                 </p>
                 <div className="flex items-baseline gap-2 flex-wrap mb-1">
-                  <span className="text-4xl font-black" style={{ color: hi ? "#fff" : C.heading, letterSpacing: "-0.03em", fontVariantNumeric: "tabular-nums" }}>
+                  <span className="axq-display text-[44px] leading-none" style={{ color: hi ? "#fff" : C.heading, fontVariantNumeric: "tabular-nums" }}>
                     {plan.price}
                   </span>
-                  <span className="text-sm" style={{ color: hi ? "rgba(255,255,255,0.75)" : C.muted }}>one-time</span>
+                  <span className="text-[15px]" style={{ color: ink }}>one-time</span>
                 </div>
-                <p className="text-xs mb-6" style={{ color: hi ? "rgba(255,255,255,0.75)" : C.muted }}>+ 18% GST</p>
+                <p className="text-sm mb-7" style={{ color: ink }}>+ 18% GST</p>
 
                 <a
                   href={`/signup?plan=${plan.id}`}
-                  className="block text-center py-3 rounded-lg text-sm font-bold transition-all hover:opacity-90 active:scale-95 mb-6"
-                  style={hi
-                    ? { background: "#fff", color: C.deep }
-                    : { background: C.indigoDim, color: C.deep, border: `1px solid ${C.indigoBorder}` }}
+                  className={`axq-btn w-full mb-7 ${hi ? "axq-btn-lime" : "axq-btn-violet"}`}
                 >
                   Get {plan.name}
                 </a>
 
-                <div style={{ borderTop: `1px solid ${hi ? "rgba(255,255,255,0.2)" : C.border}` }} className="pt-5">
+                <div className="pt-6" style={{ borderTop: `1px solid ${hi ? "rgba(255,255,255,0.2)" : C.border}` }}>
                   {plan.lead && (
-                    <p className="text-sm font-bold mb-3" style={{ color: hi ? "#fff" : C.heading }}>{plan.lead}</p>
+                    <p className="text-[15px] font-bold mb-4" style={{ color: hi ? "#fff" : C.heading }}>{plan.lead}</p>
                   )}
-                  <ul className="space-y-2.5">
+                  <ul className="flex flex-col gap-3">
                     {plan.features.map((f) => (
-                      <li key={f} className="flex items-start gap-2 text-sm" style={{ color: hi ? "rgba(255,255,255,0.92)" : C.heading }}>
-                        <span aria-hidden style={{ color: hi ? "#fff" : C.indigo, flexShrink: 0 }}>✓</span>
+                      <li key={f} className="flex items-start gap-2.5 text-[15px] leading-snug" style={{ color: hi ? "#fff" : C.heading }}>
+                        <span className="w-5 h-5 mt-px rounded-full flex items-center justify-center flex-shrink-0" style={{ background: hi ? C.lime : C.paleLilac }}>
+                          <Check size={12} strokeWidth={3} color={hi ? C.deep : C.action} aria-hidden />
+                        </span>
                         {f}
                       </li>
                     ))}
@@ -81,24 +71,34 @@ export function Plans() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="rounded-2xl p-7" style={{ background: C.card, border: `1px solid ${C.border}` }}>
-            <h3 className="text-base font-black mb-4" style={{ color: C.heading }}>Common commercial terms</h3>
-            <ul className="space-y-2.5">
+          <div className="axq-card p-7 md:p-8">
+            <h3 className="flex items-center gap-3 text-lg mb-5" style={{ color: C.heading }}>
+              <span className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: C.paleLilac }}>
+                <Receipt size={20} color={C.action} aria-hidden />
+              </span>
+              Common commercial terms
+            </h3>
+            <ul className="flex flex-col gap-3">
               {PRICING.terms.map((t) => (
-                <li key={t} className="flex items-start gap-2 text-sm" style={{ color: C.body }}>
-                  <span aria-hidden className="w-1.5 h-1.5 rounded-full mt-2 flex-shrink-0" style={{ background: C.indigo }} />
+                <li key={t} className="flex items-start gap-3 text-[15px]" style={{ color: C.body }}>
+                  <span aria-hidden className="w-1.5 h-1.5 rounded-full mt-2.5 flex-shrink-0" style={{ background: C.action }} />
                   {t}
                 </li>
               ))}
             </ul>
           </div>
-          <div className="rounded-2xl p-7" style={{ background: C.card, border: `1px solid ${C.border}` }}>
-            <h3 className="text-base font-black mb-4" style={{ color: C.heading }}>RTO benefits</h3>
-            <div className="space-y-4">
+          <div className="axq-card p-7 md:p-8">
+            <h3 className="flex items-center gap-3 text-lg mb-5" style={{ color: C.heading }}>
+              <span className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "rgba(196,238,135,0.55)" }}>
+                <RotateCcw size={20} color={C.limeInk} aria-hidden />
+              </span>
+              RTO benefits
+            </h3>
+            <div className="flex flex-col gap-5">
               {PRICING.rtoBenefits.map((b) => (
                 <div key={b.plan}>
-                  <p className="text-xs font-black uppercase tracking-widest mb-1" style={{ color: C.indigo }}>{b.plan}</p>
-                  <p className="text-sm leading-relaxed" style={{ color: C.body }}>{b.text}</p>
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] mb-1.5" style={{ color: C.action }}>{b.plan}</p>
+                  <p className="text-[15px] leading-relaxed" style={{ color: C.body }}>{b.text}</p>
                 </div>
               ))}
             </div>

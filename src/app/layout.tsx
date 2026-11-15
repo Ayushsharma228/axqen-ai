@@ -16,12 +16,14 @@ const playfair = Playfair_Display({
   subsets: ["latin"],
   weight: ["400", "700", "800"],
   style: ["normal", "italic"],
+  preload: false,
 });
 
 const spaceGrotesk = Space_Grotesk({
   variable: "--font-space",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
+  preload: false,
 });
 
 
@@ -79,15 +81,21 @@ export default function RootLayout({
           }}
         />
 
+        {/* Pixel calls queue immediately; the heavy fbevents.js loads on first interaction or after 6s so it doesn't block page load. */}
         <Script id="meta-pixel" strategy="afterInteractive">
           {`
             !function(f,b,e,v,n,t,s)
             {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
             n.callMethod.apply(n,arguments):n.queue.push(arguments)};
             if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-            n.queue=[];t=b.createElement(e);t.async=!0;
-            t.src=v;s=b.getElementsByTagName(e)[0];
-            s.parentNode.insertBefore(t,s)}(window, document,'script',
+            n.queue=[];
+            var done=false,evs=['scroll','pointerdown','keydown','touchstart'];
+            function load(){if(done)return;done=true;
+              evs.forEach(function(x){f.removeEventListener(x,load)});
+              t=b.createElement(e);t.async=!0;t.src=v;
+              s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}
+            evs.forEach(function(x){f.addEventListener(x,load,{once:true,passive:true})});
+            setTimeout(load,6000)}(window, document,'script',
             'https://connect.facebook.net/en_US/fbevents.js');
             fbq('init', '1376373393780720');
             fbq('track', 'PageView');

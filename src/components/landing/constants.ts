@@ -1,24 +1,41 @@
+// AXQEN violet / lilac / lime identity. Legacy keys (gold, indigo, navy…) kept so every existing component re-themes.
 export const C = {
-  navy:         "#ffffff",
-  card:         "#F5F8FF",
-  cardHover:    "#EAF2FF",
-  gold:         "#155EEF",
-  goldDim:      "#EAF2FF",
-  goldBorder:   "rgba(21,94,239,0.2)",
-  indigo:       "#155EEF",
-  deep:         "#0B3DCE",
-  indigoDim:    "#EAF2FF",
-  indigoBorder: "rgba(21,94,239,0.22)",
-  heading:      "#101828",
-  body:         "#475467",
-  muted:        "#667085",
-  green:        "#1D9E75",
-  greenDim:     "rgba(29,158,117,0.12)",
-  red:          "#E24B4A",
-  redDim:       "rgba(226,75,74,0.12)",
-  amber:        "#EF9F27",
-  border:       "#E4E7EC",
-  borderStrong: "#D0D5DD",
+  // surfaces
+  navy:         "#FFFFFF",
+  card:         "#FAF8FF",
+  cardHover:    "#F3EEFF",
+  // brand
+  violet:       "#774FCF",
+  deep:         "#270F60",
+  action:       "#5318EB",
+  lilac:        "#C6A5FF",
+  paleLilac:    "#EBE3FE",
+  lime:         "#C4EE87",
+  limeInk:      "#2E4A0A",
+  night:        "#14072F",
+  // legacy aliases → violet system
+  gold:         "#5318EB",
+  goldDim:      "#EBE3FE",
+  goldBorder:   "#DCCDFB",
+  indigo:       "#5318EB",
+  indigoDim:    "#EBE3FE",
+  indigoBorder: "#DCCDFB",
+  // text
+  heading:      "#0C021C",
+  body:         "#665C78",
+  muted:        "#665C78",
+  // semantic
+  green:        "#3F6B12",
+  greenDim:     "rgba(196,238,135,0.45)",
+  red:          "#C2304F",
+  redDim:       "rgba(194,48,79,0.1)",
+  amber:        "#9A5B00",
+  // lines
+  border:       "#E9E1F7",
+  borderStrong: "#D9CCF2",
+  // elevation
+  shadow:       "0 1px 2px rgba(39,15,96,0.05), 0 10px 30px -12px rgba(83,24,235,0.18)",
+  shadowLift:   "0 2px 4px rgba(39,15,96,0.06), 0 22px 44px -16px rgba(83,24,235,0.32)",
 } as const;
 
 export const WA_LINK = "https://wa.me/918679993305";

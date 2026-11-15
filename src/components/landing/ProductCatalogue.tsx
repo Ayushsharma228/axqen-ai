@@ -3,14 +3,16 @@ import { useEffect, useRef, useState } from "react";
 import { C } from "./constants";
 import { FEATURES, INTEGRATIONS } from "./content";
 
-const pill = (color: string) => ({ color, background: `${color}14` });
+const SUCCESS = "success";
+const pill = (color: string) =>
+  color === SUCCESS ? { color: C.limeInk, background: "rgba(196,238,135,0.6)" } : { color, background: `${color}14` };
 
 function DemoCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-xl p-4 mt-6" style={{ background: C.navy, border: `1px solid ${C.border}` }}>
+    <div className="rounded-2xl p-4 md:p-5 mt-6" style={{ background: C.navy, border: `1px solid ${C.border}`, boxShadow: C.shadow }}>
       <div className="flex justify-between items-center mb-4">
         <span className="text-sm font-bold" style={{ color: C.heading }}>{title}</span>
-        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: "#FEF0C7", color: "#93370D" }}>
+        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: C.paleLilac, color: C.deep }}>
           Demo data
         </span>
       </div>
@@ -31,7 +33,7 @@ function Stat({ label, val, color }: { label: string; val: string; color?: strin
   return (
     <div className="rounded-lg p-3" style={{ background: C.card }}>
       <div className="text-[11px]" style={{ color: C.muted }}>{label}</div>
-      <div className="text-lg font-black" style={{ color: color ?? C.heading, fontVariantNumeric: "tabular-nums" }}>{val}</div>
+      <div className="text-lg font-bold" style={{ color: color ?? C.heading, fontVariantNumeric: "tabular-nums" }}>{val}</div>
     </div>
   );
 }
@@ -44,9 +46,9 @@ const PREVIEWS: Record<string, () => React.ReactNode> = {
       </div>
       {[
         { id: "#AX-10482", ch: "Shopify · 2 items", s: "Processing", c: C.indigo },
-        { id: "#AX-10481", ch: "Amazon · 1 item",   s: "Shipped",    c: "#1D9E75" },
-        { id: "#AX-10480", ch: "Shopify · 3 items", s: "Delivered",  c: "#475467" },
-        { id: "#AX-10479", ch: "Shopify · 1 item",  s: "NDR raised", c: "#B54708" },
+        { id: "#AX-10481", ch: "Amazon · 1 item",   s: "Shipped",    c: SUCCESS },
+        { id: "#AX-10480", ch: "Shopify · 3 items", s: "Delivered",  c: SUCCESS },
+        { id: "#AX-10479", ch: "Shopify · 1 item",  s: "NDR raised", c: C.amber },
       ].map((o) => (
         <Row key={o.id}>
           <span className="font-bold" style={{ color: C.heading }}>{o.id}</span>
@@ -65,8 +67,8 @@ const PREVIEWS: Record<string, () => React.ReactNode> = {
             {i.name}
           </span>
           {i.status === "live"
-            ? <span className="font-semibold px-2 py-0.5 rounded-full" style={pill("#1D9E75")}>Connected</span>
-            : <span className="font-semibold px-2 py-0.5 rounded-full" style={pill("#667085")}>Coming soon</span>}
+            ? <span className="font-semibold px-2 py-0.5 rounded-full" style={pill(SUCCESS)}>Connected</span>
+            : <span className="font-semibold px-2 py-0.5 rounded-full" style={pill(C.body)}>Coming soon</span>}
         </Row>
       ))}
     </DemoCard>
@@ -74,9 +76,9 @@ const PREVIEWS: Record<string, () => React.ReactNode> = {
   products: () => (
     <DemoCard title="Catalogue">
       {[
-        { n: "Steel water bottle 1L", sup: "Supplier A", cost: "₹212", stock: "In stock", c: "#1D9E75" },
-        { n: "Cotton bedsheet set",   sup: "Supplier B", cost: "₹489", stock: "Low stock", c: "#B54708" },
-        { n: "LED desk lamp",         sup: "Supplier A", cost: "₹356", stock: "In stock", c: "#1D9E75" },
+        { n: "Steel water bottle 1L", sup: "Supplier A", cost: "₹212", stock: "In stock", c: SUCCESS },
+        { n: "Cotton bedsheet set",   sup: "Supplier B", cost: "₹489", stock: "Low stock", c: C.amber },
+        { n: "LED desk lamp",         sup: "Supplier A", cost: "₹356", stock: "In stock", c: SUCCESS },
       ].map((p) => (
         <Row key={p.n}>
           <span className="font-semibold" style={{ color: C.heading }}>{p.n}</span>
@@ -106,8 +108,8 @@ const PREVIEWS: Record<string, () => React.ReactNode> = {
     <DemoCard title="Delivery exceptions">
       {[
         { id: "#AX-10479", r: "Customer unavailable", a: "Re-attempt", c: C.indigo },
-        { id: "#AX-10466", r: "Address incomplete",   a: "Follow up",  c: "#B54708" },
-        { id: "#AX-10451", r: "Refused at door",      a: "RTO",        c: "#E24B4A" },
+        { id: "#AX-10466", r: "Address incomplete",   a: "Follow up",  c: C.amber },
+        { id: "#AX-10451", r: "Refused at door",      a: "RTO",        c: C.red },
       ].map((n) => (
         <Row key={n.id}>
           <span className="font-bold" style={{ color: C.heading }}>{n.id}</span>
@@ -120,8 +122,8 @@ const PREVIEWS: Record<string, () => React.ReactNode> = {
   wallet: () => (
     <DemoCard title="Wallet">
       <div className="grid grid-cols-2 gap-2">
-        <Stat label="Earned" val="₹48,620" color="#1D9E75" />
-        <Stat label="RTO deductions" val="−₹3,140" color="#E24B4A" />
+        <Stat label="Earned" val="₹48,620" color={C.limeInk} />
+        <Stat label="RTO deductions" val="−₹3,140" color={C.red} />
         <Stat label="Settled to bank" val="₹38,900" color={C.indigo} />
         <Stat label="Wallet balance" val="₹6,580" />
       </div>
@@ -134,7 +136,7 @@ const PREVIEWS: Record<string, () => React.ReactNode> = {
       </div>
       <div className="flex items-end gap-1.5 h-20">
         {[38, 52, 45, 66, 58, 74, 49, 63, 82, 70, 79, 64, 90, 76].map((h, i) => (
-          <div key={i} className="flex-1 rounded-t-sm" style={{ height: `${h}%`, background: i === 12 ? C.indigo : "#C7DAFE" }} />
+          <div key={i} className="flex-1 rounded-t-sm" style={{ height: `${h}%`, background: i === 12 ? C.indigo : "#D9C8FF" }} />
         ))}
       </div>
     </DemoCard>
@@ -164,13 +166,11 @@ export function ProductCatalogue() {
   };
 
   return (
-    <section id="platform-features" className="py-24 px-6" style={{ background: C.navy }}>
+    <section id="platform-features" className="py-20 md:py-28 px-5 md:px-6" style={{ background: C.navy }}>
       <div className="max-w-[1200px] mx-auto">
-        <div className="mb-12">
-          <p className="text-xs font-bold tracking-widest uppercase mb-4" style={{ color: C.indigo }}>
-            Platform features
-          </p>
-          <h2 className="text-3xl md:text-4xl font-black" style={{ color: C.heading, letterSpacing: "-0.025em", textWrap: "balance" }}>
+        <div className="mb-12 md:mb-14">
+          <p className="axq-eyebrow mb-4">Platform features</p>
+          <h2 className="text-3xl md:text-[44px] leading-tight max-w-2xl" style={{ color: C.heading, textWrap: "balance" }}>
             Every part of the order journey, in one place.
           </h2>
         </div>
@@ -178,21 +178,21 @@ export function ProductCatalogue() {
         <div className="flex flex-col lg:flex-row gap-8 lg:gap-12">
           {/* Fixed while the right column scrolls past */}
           <nav className="hidden lg:block lg:w-72 flex-shrink-0" aria-label="Platform features">
-            <div className="sticky top-24 flex flex-col gap-1">
+            <div className="sticky top-28 flex flex-col gap-1 p-2 rounded-2xl" style={{ background: C.card, border: `1px solid ${C.border}` }}>
               {FEATURES.map((f, i) => (
                 <button
                   key={f.id}
                   id={`feature-nav-${f.id}`}
                   onClick={() => jumpTo(i)}
                   aria-current={active === i ? "true" : undefined}
-                  className="relative px-4 py-3 rounded-lg text-left text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2"
+                  className="relative flex items-center gap-3 px-4 min-h-[46px] rounded-xl text-left text-[15px] transition-colors"
                   style={{
-                    background: active === i ? C.indigoDim : "transparent",
-                    border: `1px solid ${active === i ? C.indigoBorder : "transparent"}`,
-                    color: active === i ? C.deep : C.body,
+                    background: active === i ? C.action : "transparent",
+                    color: active === i ? "#fff" : C.body,
                     fontWeight: active === i ? 600 : 500,
                   }}
                 >
+                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 transition-colors" style={{ background: active === i ? C.lime : C.borderStrong }} />
                   {f.title}
                 </button>
               ))}
@@ -206,13 +206,14 @@ export function ProductCatalogue() {
                 id={`feature-${f.id}`}
                 data-index={i}
                 ref={(el) => { panels.current[i] = el; }}
-                className="rounded-2xl p-6 md:p-8 scroll-mt-24 transition-colors duration-300"
+                className="rounded-2xl p-6 md:p-8 scroll-mt-28 transition-[border-color,box-shadow] duration-300"
                 style={{
                   background: C.card,
-                  border: `1px solid ${active === i ? C.indigoBorder : C.border}`,
+                  border: `1px solid ${active === i ? C.lilac : C.border}`,
+                  boxShadow: active === i ? C.shadowLift : "none",
                 }}
               >
-                <h3 className="text-xl md:text-2xl font-black mb-3" style={{ color: C.heading, letterSpacing: "-0.02em" }}>
+                <h3 className="text-xl md:text-2xl mb-3" style={{ color: C.heading, letterSpacing: "-0.02em" }}>
                   {f.title}
                 </h3>
                 <p className="text-base leading-relaxed max-w-xl" style={{ color: C.body }}>{f.desc}</p>

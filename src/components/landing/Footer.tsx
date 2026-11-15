@@ -20,26 +20,26 @@ const SUPPORT = [
 function Col({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <p className="text-xs font-black uppercase tracking-widest text-white mb-4">{title}</p>
-      <ul className="space-y-2.5">{children}</ul>
+      <p className="text-xs font-bold uppercase tracking-[0.16em] text-white mb-3">{title}</p>
+      <ul className="flex flex-col">{children}</ul>
     </div>
   );
 }
 
-const linkCls = "text-xs transition-colors hover:text-white";
-const linkStyle = { color: "rgba(255,255,255,0.6)" };
+const linkCls = "inline-block py-2 text-sm transition-colors hover:text-white";
+const linkStyle = { color: C.lilac };
 
 export function Footer() {
   return (
-    <footer style={{ background: C.heading }}>
-      <div className="max-w-[1200px] mx-auto px-6 py-16">
+    <footer style={{ background: `radial-gradient(70% 50% at 100% 0%, rgba(119,79,207,0.28) 0%, transparent 60%), ${C.night}` }}>
+      <div className="max-w-[1200px] mx-auto px-5 md:px-6 py-16 md:py-20">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-10 mb-12">
           <div className="col-span-2 md:col-span-1">
             <div className="flex items-center gap-2 mb-4">
-              <img src="/axqen-icon.png" alt="" width={28} height={28} className="w-7 h-7 rounded-lg" />
-              <span className="font-black text-sm text-white">AXQEN AI</span>
+              <img src="/axqen-icon.png" alt="" width={34} height={34} className="w-[34px] h-[34px] rounded-[9px]" style={{ boxShadow: "0 0 0 1.5px rgba(255,255,255,0.4)" }} />
+              <span className="axq-display text-[17px] text-white">AXQEN <span style={{ color: C.lime }}>AI</span></span>
             </div>
-            <p className="text-xs leading-relaxed mb-5" style={{ color: "rgba(255,255,255,0.6)" }}>
+            <p className="text-sm leading-relaxed mb-5" style={{ color: "rgba(235,227,254,0.85)" }}>
               The AI Commerce Operating System for running e-commerce operations from one connected platform.
             </p>
             <div className="flex flex-col gap-1.5 mb-5">
@@ -54,8 +54,8 @@ export function Footer() {
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label={`AXQEN AI on ${s.name}`}
-                  className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors hover:bg-white/15"
-                  style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)" }}
+                  className="w-11 h-11 rounded-full flex items-center justify-center transition-colors hover:bg-white/15"
+                  style={{ background: "rgba(198,165,255,0.12)", border: "1px solid rgba(198,165,255,0.3)" }}
                 >
                   <img src={s.icon} alt="" width={16} height={16} className="w-4 h-4" />
                 </a>
@@ -92,7 +92,7 @@ export function Footer() {
         </div>
 
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-8 text-xs"
-          style={{ borderTop: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.45)" }}>
+          style={{ borderTop: "1px solid rgba(198,165,255,0.2)", color: "rgba(235,227,254,0.75)" }}>
           <p>
             © {new Date().getFullYear()} AXQEN AI · A product of{" "}
             <a href="/company" className="hover:text-white transition-colors">Vrinandya Ventures Pvt. Ltd.</a>

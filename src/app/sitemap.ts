@@ -8,6 +8,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     "/about",
     "/blog",
     "/case-studies",
+    "/dropshipping",
     "/catalogue",
     "/company",
     "/legal/privacy",
@@ -18,6 +19,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
     url: `${baseUrl}${route}`,
     lastModified: new Date(),
     changeFrequency: "weekly",
-    priority: route === "" ? 1 : route.startsWith("/legal") ? 0.3 : 0.7,
+    priority: route === "" ? 1 : route === "/dropshipping" ? 0.9 : route.startsWith("/legal") ? 0.3 : 0.7,
   }));
 }

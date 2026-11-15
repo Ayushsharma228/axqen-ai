@@ -69,6 +69,7 @@ export function Footer() {
             ))}
           </Col>
           <Col title="Solutions">
+            <li><a href="/dropshipping" className={linkCls} style={linkStyle}>Dropshipping provider</a></li>
             {AUDIENCES.map((a) => (
               <li key={a.title}><a href="/#audience" className={linkCls} style={linkStyle}>{a.title}</a></li>
             ))}

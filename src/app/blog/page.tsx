@@ -5,7 +5,7 @@ import { C } from "@/components/landing/constants";
 import { SOCIALS } from "@/components/landing/content";
 
 export const metadata: Metadata = {
-  title: "Blog | AXQEN AI",
+  title: "Blog",
   description: "Guides and updates on running e-commerce operations with AXQEN AI.",
   alternates: { canonical: "https://www.axqen.app/blog" },
 };

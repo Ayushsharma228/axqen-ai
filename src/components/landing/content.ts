@@ -121,6 +121,43 @@ export const FAQS = [
   { q: "Can I upgrade my plan?", a: "Contact the AXQEN team to review available upgrade options and applicable commercial terms." },
 ];
 
+export const DROPSHIPPING = {
+  seo: {
+    title: "Dropshipping Provider in India | Shopify Dropshipping Setup",
+    description: "AXQEN AI is a dropshipping provider in India: Shopify store setup, supplier integration, order processing, shipping, NDR and RTO handling, and wallet remittance in one platform. One-time plans from ₹9,999.",
+    keywords: [
+      "dropshipping provider", "dropshipping provider India", "dropshipping service India",
+      "Shopify dropshipping India", "done for you dropshipping", "dropshipping suppliers India",
+      "COD dropshipping India", "start dropshipping business India",
+    ],
+  },
+  eyebrow: "Dropshipping provider · India",
+  h1: "Start and run your dropshipping business with AXQEN AI.",
+  sub: "AXQEN sets up your Shopify store, connects it to suppliers and runs the order operations behind it: processing, shipping, NDR follow-ups, RTO handling and remittance. You don't hold inventory; products are procured from suppliers as orders come in.",
+  whatWeHandle: [
+    { title: "Shopify store setup",          desc: "Professional Shopify store setup with domain, payment gateway assistance and product imports." },
+    { title: "Product research and suppliers", desc: "Product research and selection, with supplier integration so each product is linked to who fulfils it." },
+    { title: "Order processing",             desc: "Order confirmation and processing in a structured workflow from confirmation through dispatch." },
+    { title: "Shipping and tracking",        desc: "Shipping and tracking management so you can follow every order through fulfilment." },
+    { title: "NDR and RTO handling",         desc: "Delivery exceptions tracked and followed up; return-to-origin cases recorded with their cost." },
+    { title: "Wallet and remittance",        desc: "Delivered-order earnings, deductions and settlements visible in your AXQEN wallet." },
+  ],
+  steps: [
+    { n: "01", title: "Onboard", desc: "Share your business details, choose a plan and complete KYC and the agreement." },
+    { n: "02", title: "Set up",  desc: "We set up your Shopify store, import products and connect suppliers." },
+    { n: "03", title: "Launch",  desc: "Run your ads; orders flow into AXQEN for confirmation, processing and dispatch." },
+    { n: "04", title: "Grow",    desc: "Track deliveries, RTO and remittance, and review your numbers as you scale." },
+  ],
+  faqs: [
+    { q: "What does a dropshipping provider do?", a: "A dropshipping provider handles the operations behind your store: sourcing products from suppliers, processing orders, shipping them to your customers and handling returns. With AXQEN, these workflows run through one platform so you can focus on marketing and sales." },
+    { q: "Do I need to buy or store inventory?", a: "No. You don't hold stock. Products are procured from suppliers as orders are placed, at supplier product cost plus applicable GST plus ₹10." },
+    { q: "How much does it cost to start dropshipping with AXQEN?", a: "Setup plans are one-time: Starter ₹9,999, Growth ₹19,999 and Scale ₹39,999, each plus 18% GST. Per delivered order there is a ₹20 + 18% GST platform and operations fee, forward shipping at actual courier cost + ₹10, and your Meta Ads budget is funded separately. Cancelled orders carry a ₹0 platform fee and there is no monthly subscription." },
+    { q: "Do you set up the Shopify store for me?", a: "Yes. Every plan includes professional Shopify store setup, a 1-year domain, payment gateway integration assistance and product imports (up to 100 on Starter, unlimited on Scale)." },
+    { q: "What happens when an order is returned (RTO)?", a: "RTO orders are tracked in AXQEN and their costs appear as deductions in your wallet. On Growth, AXQEN charges no RTO management fee for 12 months and absorbs applicable forward and reverse shipping on RTO orders; on Scale this benefit is lifetime." },
+    { q: "Can I sell on Amazon too?", a: "AXQEN can connect an Amazon seller account to bring Amazon orders into the platform alongside your Shopify orders. Talk to the AXQEN team about what's available for your business." },
+  ],
+};
+
 export const CONTACT = {
   phone: "+91 86799 93305",
   phoneHref: "tel:+918679993305",

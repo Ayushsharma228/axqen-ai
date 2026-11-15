@@ -20,9 +20,12 @@ export function Testimonials() {
             <h2 className="text-3xl md:text-4xl font-black mb-4 leading-tight" style={{ color: C.heading, letterSpacing: "-0.025em", textWrap: "balance" }}>
               Built for wherever you are in the journey.
             </h2>
-            <p className="text-sm leading-relaxed" style={{ color: C.body }}>
+            <p className="text-sm leading-relaxed mb-5" style={{ color: C.body }}>
               From your first product to a multi-channel brand, the same operating system grows with you.
             </p>
+            <a href="/dropshipping" className="text-sm font-semibold" style={{ color: C.indigo }}>
+              Starting with dropshipping? See AXQEN as your dropshipping provider →
+            </a>
           </div>
 
           <ul className="flex-1 w-full rounded-2xl overflow-hidden" style={{ background: C.navy, border: `1px solid ${C.border}` }}>

@@ -3,26 +3,15 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import LandingPage from "@/components/landing/LandingPage";
+import { SEO, FAQS } from "@/components/landing/content";
 
 export const metadata: Metadata = {
-  title: "AXQEN AI | AI Commerce Operating System for Ecommerce",
-  description:
-    "AXQEN AI is an AI Commerce Operating System. Launch stores, manage products, automate operations, connect suppliers and track profit — all in one intelligent platform.",
-  keywords: [
-    "AXQEN AI",
-    "AI Commerce Operating System",
-    "ecommerce automation platform",
-    "ecommerce operations software",
-    "dropshipping platform India",
-    "Shopify order management",
-    "multi-channel ecommerce",
-    "NDR RTO management",
-    "ecommerce analytics India",
-  ],
+  title: SEO.title,
+  description: SEO.description,
+  keywords: SEO.keywords,
   openGraph: {
-    title: "AXQEN AI | AI Commerce Operating System for Ecommerce",
-    description:
-      "One intelligent commerce platform to launch stores, manage products, automate operations, connect suppliers and track business performance.",
+    title: SEO.title,
+    description: SEO.description,
     url: "https://axqen.app/",
     siteName: "AXQEN AI",
     locale: "en_IN",
@@ -30,8 +19,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "AXQEN AI | AI Commerce Operating System for Ecommerce",
-    description: "Run, automate and grow your e-commerce business with AXQEN AI. Store setup, orders, shipping, RTO, wallet and analytics in one platform.",
+    title: SEO.title,
+    description: SEO.description,
   },
   robots: {
     index: true,
@@ -61,32 +50,11 @@ const JSON_LD = {
     },
     {
       "@type": "FAQPage",
-      mainEntity: [
-        {
-          "@type": "Question",
-          name: "What is AXQEN AI?",
-          acceptedAnswer: {
-            "@type": "Answer",
-            text: "AXQEN AI is an AI Commerce Operating System. It brings store setup, products and suppliers, order processing, shipping, NDR and RTO handling, wallet and analytics into one platform.",
-          },
-        },
-        {
-          "@type": "Question",
-          name: "Which platforms does AXQEN AI support?",
-          acceptedAnswer: {
-            "@type": "Answer",
-            text: "AXQEN AI connects with Shopify, Amazon, Flipkart, Meesho, Shiprocket, and Easebuzz.",
-          },
-        },
-        {
-          "@type": "Question",
-          name: "How does pricing work?",
-          acceptedAnswer: {
-            "@type": "Answer",
-            text: "AXQEN AI uses one-time pricing — pay once and use the platform. Plans start at ₹9,999. No monthly subscription fees on base plans.",
-          },
-        },
-      ],
+      mainEntity: FAQS.map((f) => ({
+        "@type": "Question",
+        name: f.q,
+        acceptedAnswer: { "@type": "Answer", text: f.a },
+      })),
     },
   ],
 };

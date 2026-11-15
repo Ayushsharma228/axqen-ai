@@ -1,6 +1,6 @@
 "use client";
-import Link from "next/link";
-import { C } from "./constants";
+import { C, WA_LINK } from "./constants";
+import { HERO } from "./content";
 
 function DashboardMockup() {
   const NAV_ITEMS = ["Dashboard", "Orders", "Products", "Suppliers", "Shipping", "NDR", "RTO", "Wallet", "Analytics"];
@@ -12,10 +12,9 @@ function DashboardMockup() {
   ];
   const BARS = [30, 45, 40, 65, 55, 78, 50, 62, 88, 72, 82, 68, 92, 78];
   const CHANNELS = [
-    { name: "Shopify",  val: 590, pct: 100, color: C.indigo },
-    { name: "Amazon",   val: 308, pct: 52,  color: "#1D9E75" },
-    { name: "Flipkart", val: 231, pct: 39,  color: "#7C3AED" },
-    { name: "Meesho",   val: 155, pct: 26,  color: "#F59E0B" },
+    { name: "Shopify",       val: 742, pct: 100, color: C.indigo },
+    { name: "Amazon",        val: 386, pct: 52,  color: "#1D9E75" },
+    { name: "Manual orders", val: 156, pct: 21,  color: "#F59E0B" },
   ];
 
   return (
@@ -32,7 +31,7 @@ function DashboardMockup() {
       <div
         style={{
           width: 190,
-          background: "linear-gradient(180deg, #1a3480 0%, #1e40af 100%)",
+          background: `linear-gradient(180deg, ${C.deep} 0%, ${C.indigo} 100%)`,
           padding: "16px 0",
           display: "flex",
           flexDirection: "column",
@@ -153,54 +152,45 @@ export function Hero() {
             }}
           >
             <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.indigo, display: "inline-block" }} />
-            AI Commerce Operating System
+            {HERO.eyebrow}
           </span>
 
-          {/* H1 */}
           <h1
-            className="text-5xl md:text-[62px] font-black leading-tight mb-6 max-w-3xl mx-auto"
-            style={{
-              color: C.heading,
-              letterSpacing: "-0.03em",
-              lineHeight: 1.08,
-            }}
+            className="text-4xl sm:text-5xl md:text-[60px] font-black mb-6 max-w-3xl mx-auto"
+            style={{ color: C.heading, letterSpacing: "-0.03em", lineHeight: 1.08, textWrap: "balance" }}
           >
-            Run, Automate &amp; Grow<br className="hidden md:block" />
-            Your E-commerce<br className="hidden md:block" />
-            Business with{" "}
-            <span style={{ color: C.indigo }}>AXQEN AI.</span>
+            {HERO.headlineLead}{" "}
+            <span style={{ color: C.indigo }}>{HERO.headlineBrand}</span>
           </h1>
 
-          {/* Sub */}
           <p
-            className="text-base md:text-lg leading-relaxed mb-10 max-w-2xl mx-auto"
-            style={{ color: C.body, lineHeight: 1.75 }}
+            className="text-base md:text-lg mb-10 max-w-2xl mx-auto"
+            style={{ color: C.body, lineHeight: 1.7 }}
           >
-            One intelligent commerce platform to launch stores, manage products,
-            automate operations, connect suppliers and track business performance.
+            {HERO.sub}
           </p>
 
-          {/* CTAs */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-7">
             <a
               href="/signup"
               className="w-full sm:w-auto px-7 py-3.5 text-sm font-bold rounded-lg transition-all hover:opacity-90 active:scale-95 text-white"
               style={{ background: C.indigo, borderRadius: 8 }}
             >
-              Start Your Business →
+              {HERO.primaryCta} →
             </a>
             <a
-              href="#how-it-works"
-              className="w-full sm:w-auto px-7 py-3.5 text-sm font-semibold rounded-lg border transition-all hover:border-opacity-80"
+              href={WA_LINK}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full sm:w-auto px-7 py-3.5 text-sm font-semibold rounded-lg border transition-all"
               style={{ borderColor: C.borderStrong, color: C.heading, borderRadius: 8 }}
             >
-              Book a Demo
+              {HERO.secondaryCta}
             </a>
           </div>
 
-          {/* Trust checks */}
-          <div className="flex flex-wrap items-center justify-center gap-6 text-sm" style={{ color: C.body }}>
-            {["Launch Your Store", "End-to-End Operations", "AI-Powered Growth"].map((item) => (
+          <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm" style={{ color: C.body }}>
+            {HERO.points.map((item) => (
               <span key={item} className="flex items-center gap-1.5">
                 <span style={{ color: C.indigo, fontSize: 15 }}>✓</span>
                 {item}
@@ -218,8 +208,15 @@ export function Hero() {
               border: `1px solid ${C.indigoBorder}`,
             }}
           >
-            <DashboardMockup />
+            <div className="overflow-x-auto">
+              <div style={{ minWidth: 680 }}>
+                <DashboardMockup />
+              </div>
+            </div>
           </div>
+          <p className="text-center text-xs mt-3" style={{ color: C.muted }}>
+            Illustrative demo data
+          </p>
         </div>
       </div>
     </section>

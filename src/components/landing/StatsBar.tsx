@@ -1,13 +1,5 @@
 import { C } from "./constants";
-
-const PLATFORMS = [
-  { short: "S",  name: "Shopify",    color: "#96BF48" },
-  { short: "A",  name: "Amazon",     color: "#FF9900" },
-  { short: "F",  name: "Flipkart",   color: "#2874F0" },
-  { short: "M",  name: "Meesho",     color: "#FF0059" },
-  { short: "SR", name: "Shiprocket", color: "#E84B2C" },
-  { short: "E",  name: "Easebuzz",   color: "#1E9BD7" },
-];
+import { INTEGRATIONS, INTEGRATIONS_HEADING } from "./content";
 
 export function StatsBar() {
   return (
@@ -15,34 +7,34 @@ export function StatsBar() {
       id="integrations"
       style={{ background: C.card, borderTop: `1px solid ${C.border}`, borderBottom: `1px solid ${C.border}` }}
     >
-      <div className="max-w-[1200px] mx-auto px-6 py-10">
-        <p
-          className="text-center text-xs font-bold tracking-widest uppercase mb-8"
-          style={{ color: C.muted }}
-        >
-          Connects with the platforms you already sell and ship on
-        </p>
-        <div className="flex flex-wrap items-center justify-center gap-4">
-          {PLATFORMS.map((p) => (
-            <div
-              key={p.name}
-              className="flex items-center gap-2.5 px-5 py-3 rounded-xl"
-              style={{
-                background: C.navy,
-                border: `1px solid ${C.border}`,
-              }}
-            >
+      <div className="max-w-[1200px] mx-auto px-6 py-12">
+        <h2 className="text-center text-lg md:text-xl font-bold mb-8" style={{ color: C.heading }}>
+          {INTEGRATIONS_HEADING}
+        </h2>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          {INTEGRATIONS.map((p) => {
+            const planned = p.status === "planned";
+            return (
               <div
-                className="w-6 h-6 rounded-md flex items-center justify-center text-white font-black"
-                style={{ background: p.color, fontSize: 9 }}
+                key={p.name}
+                className="flex items-center gap-2.5 px-4 py-3 rounded-xl"
+                style={{ background: C.navy, border: `1px solid ${C.border}`, opacity: planned ? 0.75 : 1 }}
               >
-                {p.short}
+                <div
+                  className="w-7 h-7 rounded-md flex items-center justify-center text-white font-black flex-shrink-0"
+                  style={{ background: planned ? C.muted : p.color, fontSize: 10 }}
+                >
+                  {p.short}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold leading-tight" style={{ color: C.heading }}>{p.name}</p>
+                  {planned && (
+                    <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: C.muted }}>Coming soon</p>
+                  )}
+                </div>
               </div>
-              <span className="text-sm font-semibold" style={{ color: C.heading }}>
-                {p.name}
-              </span>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </section>

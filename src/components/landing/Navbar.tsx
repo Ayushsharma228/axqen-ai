@@ -2,14 +2,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { C } from "./constants";
-
-const NAV_LINKS = [
-  { label: "Platform",     href: "#features" },
-  { label: "Solutions",    href: "#audience" },
-  { label: "Integrations", href: "#integrations" },
-  { label: "Pricing",      href: "#plans" },
-  { label: "Resources",    href: "#faqs" },
-];
+import { NAV as NAV_LINKS } from "./content";
 
 export function Navbar() {
   const [scrolled, setScrolled] = useState(false);

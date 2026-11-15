@@ -3,37 +3,38 @@ import { C } from "./constants";
 export function FinalCTA() {
   return (
     <section
-      className="py-24 px-6 text-center relative overflow-hidden"
-      style={{ background: C.card }}
+      className="py-24 px-6 relative overflow-hidden"
+      style={{ background: C.navy }}
     >
-      {/* Subtle radial */}
       <div
-        className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] pointer-events-none"
-        style={{ background: "radial-gradient(ellipse at 50% 0%, rgba(212,175,55,0.07) 0%, transparent 70%)" }}
-      />
+        className="max-w-[1200px] mx-auto rounded-3xl px-10 py-16 text-center relative overflow-hidden"
+        style={{
+          background: `linear-gradient(135deg, ${C.indigo} 0%, #1e3a8a 100%)`,
+        }}
+      >
+        {/* Decorative circles */}
+        <div className="absolute -top-16 -right-16 w-64 h-64 rounded-full pointer-events-none" style={{ background: "rgba(255,255,255,0.05)" }} />
+        <div className="absolute -bottom-10 -left-10 w-48 h-48 rounded-full pointer-events-none" style={{ background: "rgba(255,255,255,0.05)" }} />
 
-      <div className="relative max-w-2xl mx-auto">
-        <h2
-          className="text-4xl md:text-5xl font-black mb-5"
-          style={{ color: C.heading, letterSpacing: "-0.025em", lineHeight: 1.1, fontFamily: "var(--font-space)" }}
-        >
-          Your competitors are<br />already automated.<br />
-          <span style={{ color: C.gold }}>Are you?</span>
-        </h2>
-        <p className="text-base mb-10 leading-relaxed" style={{ color: C.body }}>
-          Join the sellers running their COD business on AXQEN — automation doing the work,
-          a real team watching their back. Limited onboarding slots each week.
-        </p>
-        <a
-          href="#apply"
-          className="inline-block px-10 py-4 rounded-lg text-base font-black transition-all hover:opacity-90 active:scale-95"
-          style={{ background: C.gold, color: C.navy, borderRadius: 8 }}
-        >
-          Apply to Get Started →
-        </a>
-        <p className="mt-4 text-xs" style={{ color: C.muted }}>
-          Application takes 60 seconds · WhatsApp reply within 24 hrs
-        </p>
+        <div className="relative">
+          <h2
+            className="text-3xl md:text-4xl font-black mb-4 text-white leading-tight"
+            style={{ letterSpacing: "-0.025em" }}
+          >
+            Your Commerce Business Deserves<br className="hidden md:block" />
+            a Better Operating System.
+          </h2>
+          <p className="text-base mb-10 text-white/80">
+            Build smarter. Operate faster. Scale with AXQEN AI.
+          </p>
+          <a
+            href="/signup"
+            className="inline-flex items-center gap-2 px-8 py-4 rounded-xl text-sm font-bold transition-all hover:opacity-90 active:scale-95"
+            style={{ background: "#fff", color: C.indigo }}
+          >
+            Get Started Today →
+          </a>
+        </div>
       </div>
     </section>
   );

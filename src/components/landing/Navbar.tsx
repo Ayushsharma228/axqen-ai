@@ -4,12 +4,11 @@ import Link from "next/link";
 import { C } from "./constants";
 
 const NAV_LINKS = [
-  { label: "Products",     href: "#products" },
-  { label: "How It Works", href: "#how-it-works" },
-  { label: "Case Studies", href: "/case-studies" },
-  { label: "Plans",        href: "#plans" },
-  { label: "FAQs",         href: "#faqs" },
-  { label: "About",        href: "/about" },
+  { label: "Platform",     href: "#features" },
+  { label: "Solutions",    href: "#audience" },
+  { label: "Integrations", href: "#integrations" },
+  { label: "Pricing",      href: "#plans" },
+  { label: "Resources",    href: "#faqs" },
 ];
 
 export function Navbar() {
@@ -26,22 +25,27 @@ export function Navbar() {
     <nav
       className="transition-all duration-300"
       style={{
-        background:    scrolled ? `${C.navy}f2` : "transparent",
+        background:    scrolled ? "rgba(255,255,255,0.96)" : "#fff",
         backdropFilter: scrolled ? "blur(20px)" : "none",
-        borderBottom:  scrolled ? `1px solid ${C.border}` : "none",
+        borderBottom:  `1px solid ${C.border}`,
       }}
     >
       <div className="max-w-[1200px] mx-auto px-6 h-16 flex items-center justify-between">
         {/* Logo */}
         <a href="/" className="flex items-center gap-2.5">
-          <img src="/axqen-icon.png" alt="AXQEN" className="w-7 h-7 rounded-lg object-cover" />
-          <span className="font-black text-base tracking-tight" style={{ color: C.heading, fontFamily: "var(--font-space)" }}>
-            AXQEN
+          <div
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-black text-white"
+            style={{ background: C.indigo }}
+          >
+            A
+          </div>
+          <span className="font-black text-sm tracking-tight" style={{ color: C.heading }}>
+            AXQEN <span style={{ color: C.indigo }}>AI</span>
           </span>
         </a>
 
         {/* Desktop links */}
-        <div className="hidden md:flex items-center gap-8">
+        <div className="hidden md:flex items-center gap-7">
           {NAV_LINKS.map((l) => (
             <a
               key={l.label}
@@ -65,14 +69,14 @@ export function Navbar() {
             onMouseEnter={(e) => (e.currentTarget.style.color = C.heading)}
             onMouseLeave={(e) => (e.currentTarget.style.color = C.body)}
           >
-            Log in
+            Login
           </Link>
           <a
-            href="#apply"
-            className="text-sm font-black px-5 py-2.5 rounded-lg transition-all hover:opacity-90 active:scale-95"
-            style={{ background: C.gold, color: C.navy, borderRadius: 8 }}
+            href="/signup"
+            className="text-sm font-bold px-5 py-2.5 rounded-lg transition-all hover:opacity-90 active:scale-95 text-white"
+            style={{ background: C.indigo, borderRadius: 8 }}
           >
-            Apply Now
+            Get Started
           </a>
         </div>
 
@@ -85,7 +89,7 @@ export function Navbar() {
           <div className="flex flex-col gap-1.5">
             <span className="block w-5 h-0.5 transition-all" style={{ background: C.heading, transform: open ? "rotate(45deg) translate(4px,4px)" : "none" }} />
             <span className="block w-5 h-0.5 transition-all" style={{ background: C.heading, opacity: open ? 0 : 1 }} />
-            <span className="block w-3.5 h-0.5 transition-all" style={{ background: C.heading, transform: open ? "rotate(-45deg) translate(3px,-3px)" : "none", width: open ? 20 : 14 }} />
+            <span className="block h-0.5 transition-all" style={{ background: C.heading, transform: open ? "rotate(-45deg) translate(3px,-3px)" : "none", width: open ? 20 : 14 }} />
           </div>
         </button>
       </div>
@@ -94,7 +98,7 @@ export function Navbar() {
       {open && (
         <div
           className="md:hidden px-6 pb-6 pt-2 space-y-2"
-          style={{ background: `${C.card}fa`, borderTop: `1px solid ${C.border}` }}
+          style={{ background: "#fff", borderTop: `1px solid ${C.border}` }}
         >
           {NAV_LINKS.map((l) => (
             <a
@@ -111,12 +115,12 @@ export function Navbar() {
             <Link href="/login" onClick={() => setOpen(false)}
               className="block text-center text-sm font-semibold py-3 rounded-lg border"
               style={{ borderColor: C.borderStrong, color: C.heading }}>
-              Log in
+              Login
             </Link>
-            <a href="#apply" onClick={() => setOpen(false)}
-              className="block text-center text-sm font-black py-3 rounded-lg"
-              style={{ background: C.gold, color: C.navy, borderRadius: 8 }}>
-              Apply Now
+            <a href="/signup" onClick={() => setOpen(false)}
+              className="block text-center text-sm font-bold py-3 rounded-lg text-white"
+              style={{ background: C.indigo, borderRadius: 8 }}>
+              Get Started
             </a>
           </div>
         </div>

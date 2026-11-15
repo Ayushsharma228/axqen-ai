@@ -4,50 +4,43 @@ import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import LandingPage from "@/components/landing/LandingPage";
 
-
 export const metadata: Metadata = {
   title: "AXQEN AI | AI Commerce Operating System for Ecommerce",
-
   description:
-    "AXQEN AI helps ecommerce sellers, brands, and agencies streamline product listings, inventory, supplier coordination, order processing, fulfilment, and dropshipping operations through one platform.",
-
+    "AXQEN AI is an AI Commerce Operating System. Launch stores, manage products, automate operations, connect suppliers and track profit — all in one intelligent platform.",
   keywords: [
     "AXQEN AI",
     "AI Commerce Operating System",
     "ecommerce automation platform",
     "ecommerce operations software",
     "dropshipping platform India",
-    "Shopify dropshipping India",
-    "supplier and order management",
+    "Shopify order management",
+    "multi-channel ecommerce",
+    "NDR RTO management",
+    "ecommerce analytics India",
   ],
-
   openGraph: {
     title: "AXQEN AI | AI Commerce Operating System for Ecommerce",
     description:
-      "Streamline ecommerce operations with AXQEN AI, including listings, inventory, suppliers, orders, fulfilment, and dropshipping workflows.",
-    url: "https://axqen.app/",
+      "One intelligent commerce platform to launch stores, manage products, automate operations, connect suppliers and track business performance.",
+    url: "https://axqen.app",
     siteName: "AXQEN AI",
     locale: "en_IN",
     type: "website",
   },
-
   twitter: {
     card: "summary_large_image",
     title: "AXQEN AI | AI Commerce Operating System for Ecommerce",
-    description:
-      "One platform to streamline ecommerce operations, from product listings and inventory to supplier coordination and fulfilment.",
+    description: "Run, automate and grow your e-commerce business with AXQEN AI. Store setup, orders, shipping, RTO, wallet and analytics in one platform.",
   },
-
   robots: {
     index: true,
     follow: true,
   },
-
- alternates: {
-  canonical: "https://www.axqen.app/",
-},
+  alternates: {
+    canonical: "https://axqen.app",
+  },
 };
-
 
 const JSON_LD = {
   "@context": "https://schema.org",
@@ -55,58 +48,42 @@ const JSON_LD = {
     {
       "@type": "Organization",
       "@id": "https://axqen.app/#organization",
-      name: "AXQEN",
+      name: "AXQEN AI",
       url: "https://axqen.app",
-      logo: "https://axqen.app/logo.png", // TODO: add real logo URL
+      logo: "https://axqen.app/logo.png",
       contactPoint: {
         "@type": "ContactPoint",
         telephone: "+91-86799-93305",
         contactType: "customer service",
         availableLanguage: ["English", "Hindi"],
       },
-      sameAs: [], // TODO: add social profile URLs
+      sameAs: [],
     },
     {
       "@type": "FAQPage",
       mainEntity: [
         {
           "@type": "Question",
-          name: "What is COD dropshipping?",
+          name: "What is AXQEN AI?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "COD dropshipping means you sell products online without holding inventory. When a customer orders and pays cash on delivery, the supplier ships directly to them. Your profit is the difference between your selling price and the supplier cost. AXQEN automates the entire chain.",
+            text: "AXQEN AI is an AI Commerce Operating System. It brings store setup, products and suppliers, order processing, shipping, NDR and RTO handling, wallet and analytics into one platform.",
           },
         },
         {
           "@type": "Question",
-          name: "How is AXQEN different from other dropshipping platforms?",
+          name: "Which platforms does AXQEN AI support?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "AXQEN is done-for-you: our team sets up your Shopify store, connects the app, and lists your first products. We also provide a dedicated account manager on WhatsApp and fully transparent payout remittances — every rupee itemised.",
+            text: "AXQEN AI connects with Shopify, Amazon, Flipkart, Meesho, Shiprocket, and Easebuzz.",
           },
         },
         {
           "@type": "Question",
-          name: "Do I need inventory or GST to start dropshipping with AXQEN?",
+          name: "How does pricing work?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "No inventory required — suppliers ship directly to your customers. GST is required for payouts; our team guides you through registration if you don't have one.",
-          },
-        },
-        {
-          "@type": "Question",
-          name: "How and when do I get paid?",
-          acceptedAnswer: {
-            "@type": "Answer",
-            text: "Your margin is credited to your AXQEN wallet after each successful delivery. Every Monday, earnings are transferred to your registered bank account with a full line-by-line payout breakdown.",
-          },
-        },
-        {
-          "@type": "Question",
-          name: "Can I connect my existing Shopify store to AXQEN?",
-          acceptedAnswer: {
-            "@type": "Answer",
-            text: "Yes. Connecting your existing Shopify store takes under 5 minutes on your onboarding call. Your existing products and orders are untouched.",
+            text: "AXQEN AI uses one-time pricing — pay once and use the platform. Plans start at ₹9,999. No monthly subscription fees on base plans.",
           },
         },
       ],

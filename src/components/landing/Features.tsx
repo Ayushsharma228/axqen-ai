@@ -2,42 +2,36 @@
 import { C } from "./constants";
 import { useInView } from "./useInView";
 
-const FEATURES = [
+const CAPABILITIES = [
   {
-    emoji: "🛒",
-    title: "Auto-fulfilment, zero touch",
-    desc: "Every Shopify order flows to the supplier automatically — no CSVs, no WhatsApp forwarding, no missed orders at 2 AM.",
-    highlight: false,
+    icon: "🏪",
+    title: "Store Setup & Management",
+    desc: "Get your store set up and keep it running from the same place you manage everything else.",
   },
   {
-    emoji: "📦",
-    title: "Live tracking, dispatch to doorstep",
-    desc: "Every shipment tracked in real time. Delivered, in-transit, or RTO — you always know exactly where your money is.",
-    highlight: false,
+    icon: "📦",
+    title: "Product & Supplier Management",
+    desc: "One catalogue for products and the suppliers who fulfil them, across every channel you sell on.",
   },
   {
-    emoji: "💰",
-    title: "Monday payouts, like clockwork",
-    desc: "Your margin hits your bank account every Monday. No chasing, no \"processing\", no excuses.",
-    highlight: false,
+    icon: "🛒",
+    title: "Order Processing",
+    desc: "Every order in a single queue, moving from confirmation to dispatch with fewer manual steps.",
   },
   {
-    emoji: "🧾",
-    title: "Remittances you can actually read",
-    desc: "Gross amount, supplier cost, fees, RTO deductions — every rupee itemised. If you can't explain your payout, we've failed.",
-    highlight: false,
+    icon: "🚚",
+    title: "Shipping & NDR Management",
+    desc: "Ship, track and act on failed deliveries before they turn into returns.",
   },
   {
-    emoji: "✅",
-    title: "Verified suppliers only",
-    desc: "Every supplier is vetted for dispatch speed, product quality, and pricing before they touch a single order of yours.",
-    highlight: false,
+    icon: "↩️",
+    title: "RTO Management",
+    desc: "Follow every return to origin and see exactly what it costs your business.",
   },
   {
-    emoji: "🤝",
-    title: "A human on WhatsApp",
-    desc: "Stuck order? RTO dispute? Weird payout? Message your account manager and get an answer in hours, not tickets that die in a queue.",
-    highlight: true, // differentiator — gets indigo border
+    icon: "📊",
+    title: "Profit & Analytics",
+    desc: "Know your real profit after product cost, shipping and RTO, not just your sales.",
   },
 ];
 
@@ -55,42 +49,38 @@ export function Features() {
         className="max-w-[1200px] mx-auto transition-all duration-700"
         style={{ opacity: inView ? 1 : 0, transform: inView ? "none" : "translateY(24px)" }}
       >
-        <div className="text-center mb-16">
-          <h2
-            className="text-4xl md:text-5xl font-black mb-4"
-            style={{ color: C.heading, letterSpacing: "-0.025em", fontFamily: "var(--font-space)" }}
+        <div className="mb-14">
+          <p
+            className="text-xs font-bold tracking-widest uppercase mb-4"
+            style={{ color: C.indigo }}
           >
-            Automation does the work.<br className="hidden md:block" /> Our team watches it.
+            Platform Capabilities
+          </p>
+          <h2
+            className="text-3xl md:text-4xl font-black mb-4 max-w-xl"
+            style={{ color: C.heading, letterSpacing: "-0.025em" }}
+          >
+            Not a tool. The operating system behind your commerce business.
           </h2>
-          <p className="text-base max-w-xl mx-auto" style={{ color: C.body }}>
-            Most platforms give you a dashboard and disappear. AXQEN gives you the dashboard{" "}
-            <em style={{ color: C.heading }}>and</em> the people behind it.
+          <p className="text-base max-w-lg" style={{ color: C.body }}>
+            Store, catalogue, orders, shipping, returns and profit live in one connected system instead of six disconnected tabs.
           </p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
-          {FEATURES.map((f) => (
+          {CAPABILITIES.map((f) => (
             <div
               key={f.title}
-              className="rounded-2xl p-7 transition-all duration-300 hover:translate-y-[-2px]"
+              className="rounded-xl p-7 transition-all duration-300 hover:translate-y-[-2px]"
               style={{
-                background: C.card,
-                border: f.highlight ? `1px solid ${C.indigoBorder}` : `1px solid ${C.border}`,
-                boxShadow: f.highlight ? `0 0 24px rgba(124,111,240,0.08)` : "none",
+                background: C.navy,
+                border: `1px solid ${C.border}`,
               }}
             >
-              {f.highlight && (
-                <span
-                  className="inline-block text-xs font-black px-2.5 py-1 rounded-full mb-4"
-                  style={{ background: C.indigoDim, color: C.indigo }}
-                >
-                  ★ Our differentiator
-                </span>
-              )}
-              <div className="text-3xl mb-5">{f.emoji}</div>
+              <div className="text-2xl mb-4">{f.icon}</div>
               <h3
-                className="font-black text-base mb-3"
-                style={{ color: f.highlight ? C.indigo : C.heading, fontFamily: "var(--font-space)" }}
+                className="font-bold text-base mb-2.5 leading-snug"
+                style={{ color: C.heading }}
               >
                 {f.title}
               </h3>

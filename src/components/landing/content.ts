@@ -1,11 +1,11 @@
 // Approved copy source: AXQEN_AI_Website_Copywriting_Brief.pdf — preserve wording unless a change is requested.
 
 export const NAV = [
-  { label: "Platform",     href: "#features" },
-  { label: "Solutions",    href: "#audience" },
-  { label: "Integrations", href: "#integrations" },
-  { label: "Pricing",      href: "#plans" },
-  { label: "Resources",    href: "#faqs" },
+  { label: "Platform",     href: "/#features" },
+  { label: "Solutions",    href: "/#audience" },
+  { label: "Integrations", href: "/#integrations" },
+  { label: "Pricing",      href: "/#plans" },
+  { label: "Resources",    href: "/#faqs" },
 ];
 
 export const HERO = {
@@ -19,13 +19,12 @@ export const HERO = {
 };
 
 // TODO(product owner): confirm live + tested status for each integration before flipping to "live".
-export const INTEGRATIONS: { short: string; name: string; color: string; status: "live" | "planned" }[] = [
-  { short: "S",  name: "Shopify",    color: "#5E8E3E", status: "live" },
-  { short: "A",  name: "Amazon",     color: "#FF9900", status: "live" },
-  { short: "SR", name: "Shiprocket", color: "#7B3FE4", status: "live" },
-  { short: "F",  name: "Flipkart",   color: "#2874F0", status: "planned" },
-  { short: "M",  name: "Meesho",     color: "#F43397", status: "planned" },
-  { short: "E",  name: "Easebuzz",   color: "#1E9BD7", status: "planned" },
+export const INTEGRATIONS: { name: string; logo: string; status: "live" | "planned" }[] = [
+  { name: "Shopify",  logo: "/integrations/shopify.svg",  status: "live" },
+  { name: "Amazon",   logo: "/integrations/amazon.svg",   status: "live" },
+  { name: "Flipkart", logo: "/integrations/flipkart.svg", status: "planned" },
+  { name: "Meesho",   logo: "/integrations/meesho.png",   status: "planned" },
+  { name: "Easebuzz", logo: "/integrations/easebuzz.png", status: "planned" },
 ];
 export const INTEGRATIONS_HEADING = "Connect the platforms you already use.";
 
@@ -120,6 +119,18 @@ export const FAQS = [
   { q: "Do I need technical knowledge?", a: "The service is designed to help clients with setup and operational workflows. Client involvement depends on the selected plan and tasks being completed." },
   { q: "How does pricing work?", a: "AXQEN offers one-time setup plans. A per-delivered-order platform and operations fee, shipping charges and product procurement costs may also apply as described on the pricing page." },
   { q: "Can I upgrade my plan?", a: "Contact the AXQEN team to review available upgrade options and applicable commercial terms." },
+];
+
+export const CONTACT = {
+  phone: "+91 86799 93305",
+  phoneHref: "tel:+918679993305",
+  email: "connect@vrinandyaventures.in",
+};
+
+export const SOCIALS = [
+  { name: "Instagram", href: "https://www.instagram.com/axqenai/",                     icon: "/social/instagram.svg" },
+  { name: "Facebook",  href: "https://www.facebook.com/profile.php?id=61593437956453", icon: "/social/facebook.svg" },
+  { name: "LinkedIn",  href: "https://www.linkedin.com/company/axqenai/",              icon: "/social/linkedin.svg" },
 ];
 
 export const FINAL_CTA = {

@@ -11,23 +11,25 @@ export function StatsBar() {
         <h2 className="text-center text-lg md:text-xl font-bold mb-8" style={{ color: C.heading }}>
           {INTEGRATIONS_HEADING}
         </h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="flex flex-wrap justify-center gap-3">
           {INTEGRATIONS.map((p) => {
             const planned = p.status === "planned";
             return (
               <div
                 key={p.name}
-                className="flex items-center gap-2.5 px-4 py-3 rounded-xl"
-                style={{ background: C.navy, border: `1px solid ${C.border}`, opacity: planned ? 0.75 : 1 }}
+                className="flex items-center gap-3 px-5 py-3 rounded-xl w-[calc(50%-6px)] sm:w-[200px]"
+                style={{ background: C.navy, border: `1px solid ${C.border}` }}
               >
-                <div
-                  className="w-7 h-7 rounded-md flex items-center justify-center text-white font-black flex-shrink-0"
-                  style={{ background: planned ? C.muted : p.color, fontSize: 10 }}
-                >
-                  {p.short}
-                </div>
+                <img
+                  src={p.logo}
+                  alt=""
+                  width={28}
+                  height={28}
+                  className="w-7 h-7 object-contain flex-shrink-0 rounded-md"
+                  style={{ opacity: planned ? 0.7 : 1 }}
+                />
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold leading-tight" style={{ color: C.heading }}>{p.name}</p>
+                  <p className="text-sm font-semibold leading-tight" style={{ color: planned ? C.body : C.heading }}>{p.name}</p>
                   {planned && (
                     <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: C.muted }}>Coming soon</p>
                   )}

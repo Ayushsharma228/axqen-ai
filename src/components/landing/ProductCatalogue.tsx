@@ -1,57 +1,171 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { C } from "./constants";
-import { useInView } from "./useInView";
-import { FEATURES } from "./content";
+import { FEATURES, INTEGRATIONS } from "./content";
 
-const DEMO_ORDERS = [
-  { id: "#AX-10482", channel: "Shopify", items: 2, status: "Processing", color: C.indigo },
-  { id: "#AX-10481", channel: "Amazon",  items: 1, status: "Shipped",    color: "#1D9E75" },
-  { id: "#AX-10480", channel: "Shopify", items: 3, status: "Delivered",  color: "#475467" },
-  { id: "#AX-10479", channel: "Shopify", items: 1, status: "NDR raised", color: "#B54708" },
-];
+const pill = (color: string) => ({ color, background: `${color}14` });
 
-function OrdersPreview() {
+function DemoCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="rounded-xl p-4 mt-6" style={{ background: C.navy, border: `1px solid ${C.border}` }}>
       <div className="flex justify-between items-center mb-4">
-        <span className="text-sm font-bold" style={{ color: C.heading }}>All orders</span>
+        <span className="text-sm font-bold" style={{ color: C.heading }}>{title}</span>
         <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: "#FEF0C7", color: "#93370D" }}>
           Demo data
         </span>
       </div>
-      <div className="grid grid-cols-3 gap-2 mb-4">
-        {[{ label: "New today", val: "48" }, { label: "To process", val: "17" }, { label: "In transit", val: "176" }].map((s) => (
-          <div key={s.label} className="rounded-lg p-3" style={{ background: C.card }}>
-            <div className="text-[11px]" style={{ color: C.muted }}>{s.label}</div>
-            <div className="text-xl font-black" style={{ color: C.heading, fontVariantNumeric: "tabular-nums" }}>{s.val}</div>
-          </div>
-        ))}
-      </div>
-      <div className="flex flex-col">
-        {DEMO_ORDERS.map((o) => (
-          <div key={o.id} className="flex items-center justify-between gap-3 py-2.5 text-xs" style={{ borderTop: `1px solid ${C.border}` }}>
-            <span className="font-bold" style={{ color: C.heading, fontVariantNumeric: "tabular-nums" }}>{o.id}</span>
-            <span className="hidden sm:inline" style={{ color: C.muted }}>{o.channel} · {o.items} item{o.items > 1 ? "s" : ""}</span>
-            <span className="font-semibold px-2 py-0.5 rounded-full" style={{ color: o.color, background: `${o.color}14` }}>{o.status}</span>
-          </div>
-        ))}
-      </div>
+      {children}
     </div>
   );
 }
 
+function Row({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3 py-2.5 text-xs" style={{ borderTop: `1px solid ${C.border}` }}>
+      {children}
+    </div>
+  );
+}
+
+function Stat({ label, val, color }: { label: string; val: string; color?: string }) {
+  return (
+    <div className="rounded-lg p-3" style={{ background: C.card }}>
+      <div className="text-[11px]" style={{ color: C.muted }}>{label}</div>
+      <div className="text-lg font-black" style={{ color: color ?? C.heading, fontVariantNumeric: "tabular-nums" }}>{val}</div>
+    </div>
+  );
+}
+
+const PREVIEWS: Record<string, () => React.ReactNode> = {
+  orders: () => (
+    <DemoCard title="All orders">
+      <div className="grid grid-cols-3 gap-2 mb-4">
+        <Stat label="New today" val="48" /><Stat label="To process" val="17" /><Stat label="In transit" val="176" />
+      </div>
+      {[
+        { id: "#AX-10482", ch: "Shopify · 2 items", s: "Processing", c: C.indigo },
+        { id: "#AX-10481", ch: "Amazon · 1 item",   s: "Shipped",    c: "#1D9E75" },
+        { id: "#AX-10480", ch: "Shopify · 3 items", s: "Delivered",  c: "#475467" },
+        { id: "#AX-10479", ch: "Shopify · 1 item",  s: "NDR raised", c: "#B54708" },
+      ].map((o) => (
+        <Row key={o.id}>
+          <span className="font-bold" style={{ color: C.heading }}>{o.id}</span>
+          <span className="hidden sm:inline" style={{ color: C.muted }}>{o.ch}</span>
+          <span className="font-semibold px-2 py-0.5 rounded-full" style={pill(o.c)}>{o.s}</span>
+        </Row>
+      ))}
+    </DemoCard>
+  ),
+  channels: () => (
+    <DemoCard title="Sales channels">
+      {INTEGRATIONS.filter((i) => i.name !== "Easebuzz").map((i) => (
+        <Row key={i.name}>
+          <span className="flex items-center gap-2.5 font-semibold" style={{ color: C.heading }}>
+            <img src={i.logo} alt="" width={20} height={20} className="w-5 h-5 object-contain rounded" />
+            {i.name}
+          </span>
+          {i.status === "live"
+            ? <span className="font-semibold px-2 py-0.5 rounded-full" style={pill("#1D9E75")}>Connected</span>
+            : <span className="font-semibold px-2 py-0.5 rounded-full" style={pill("#667085")}>Coming soon</span>}
+        </Row>
+      ))}
+    </DemoCard>
+  ),
+  products: () => (
+    <DemoCard title="Catalogue">
+      {[
+        { n: "Steel water bottle 1L", sup: "Supplier A", cost: "₹212", stock: "In stock", c: "#1D9E75" },
+        { n: "Cotton bedsheet set",   sup: "Supplier B", cost: "₹489", stock: "Low stock", c: "#B54708" },
+        { n: "LED desk lamp",         sup: "Supplier A", cost: "₹356", stock: "In stock", c: "#1D9E75" },
+      ].map((p) => (
+        <Row key={p.n}>
+          <span className="font-semibold" style={{ color: C.heading }}>{p.n}</span>
+          <span className="hidden sm:inline" style={{ color: C.muted }}>{p.sup} · {p.cost}</span>
+          <span className="font-semibold px-2 py-0.5 rounded-full" style={pill(p.c)}>{p.stock}</span>
+        </Row>
+      ))}
+    </DemoCard>
+  ),
+  shipping: () => (
+    <DemoCard title="#AX-10481 · Tracking">
+      <ol className="flex flex-col gap-3">
+        {["Order confirmed", "Packed", "Shipped", "In transit", "Out for delivery"].map((s, i) => {
+          const done = i <= 3;
+          return (
+            <li key={s} className="flex items-center gap-3 text-xs">
+              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: done ? C.indigo : C.border }} />
+              <span style={{ color: done ? C.heading : C.muted, fontWeight: i === 3 ? 700 : 500 }}>{s}</span>
+              {i === 3 && <span className="ml-auto font-semibold px-2 py-0.5 rounded-full" style={pill(C.indigo)}>Current</span>}
+            </li>
+          );
+        })}
+      </ol>
+    </DemoCard>
+  ),
+  ndr: () => (
+    <DemoCard title="Delivery exceptions">
+      {[
+        { id: "#AX-10479", r: "Customer unavailable", a: "Re-attempt", c: C.indigo },
+        { id: "#AX-10466", r: "Address incomplete",   a: "Follow up",  c: "#B54708" },
+        { id: "#AX-10451", r: "Refused at door",      a: "RTO",        c: "#E24B4A" },
+      ].map((n) => (
+        <Row key={n.id}>
+          <span className="font-bold" style={{ color: C.heading }}>{n.id}</span>
+          <span className="hidden sm:inline" style={{ color: C.muted }}>{n.r}</span>
+          <span className="font-semibold px-2 py-0.5 rounded-full" style={pill(n.c)}>{n.a}</span>
+        </Row>
+      ))}
+    </DemoCard>
+  ),
+  wallet: () => (
+    <DemoCard title="Wallet">
+      <div className="grid grid-cols-2 gap-2">
+        <Stat label="Earned" val="₹48,620" color="#1D9E75" />
+        <Stat label="RTO deductions" val="−₹3,140" color="#E24B4A" />
+        <Stat label="Settled to bank" val="₹38,900" color={C.indigo} />
+        <Stat label="Wallet balance" val="₹6,580" />
+      </div>
+    </DemoCard>
+  ),
+  analytics: () => (
+    <DemoCard title="Last 14 days">
+      <div className="grid grid-cols-3 gap-2 mb-4">
+        <Stat label="Orders" val="612" /><Stat label="Delivered" val="78%" /><Stat label="RTO" val="8%" />
+      </div>
+      <div className="flex items-end gap-1.5 h-20">
+        {[38, 52, 45, 66, 58, 74, 49, 63, 82, 70, 79, 64, 90, 76].map((h, i) => (
+          <div key={i} className="flex-1 rounded-t-sm" style={{ height: `${h}%`, background: i === 12 ? C.indigo : "#C7DAFE" }} />
+        ))}
+      </div>
+    </DemoCard>
+  ),
+};
+
 export function ProductCatalogue() {
   const [active, setActive] = useState(0);
-  const { ref, inView } = useInView();
-  const current = FEATURES[active];
+  const panels = useRef<(HTMLDivElement | null)[]>([]);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) setActive(Number((e.target as HTMLElement).dataset.index));
+        });
+      },
+      { rootMargin: "-45% 0px -50% 0px" }
+    );
+    panels.current.forEach((el) => el && observer.observe(el));
+    return () => observer.disconnect();
+  }, []);
+
+  const jumpTo = (i: number) => {
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    panels.current[i]?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
+  };
 
   return (
-    <section id="platform-features" className="py-24 px-6" style={{ background: C.navy }} ref={ref}>
-      <div
-        className="max-w-[1200px] mx-auto transition-all duration-700"
-        style={{ opacity: inView ? 1 : 0.001, transform: inView ? "none" : "translateY(24px)" }}
-      >
+    <section id="platform-features" className="py-24 px-6" style={{ background: C.navy }}>
+      <div className="max-w-[1200px] mx-auto">
         <div className="mb-12">
           <p className="text-xs font-bold tracking-widest uppercase mb-4" style={{ color: C.indigo }}>
             Platform features
@@ -61,34 +175,50 @@ export function ProductCatalogue() {
           </h2>
         </div>
 
-        <div className="flex flex-col lg:flex-row gap-6">
-          <div className="lg:w-72 flex-shrink-0 flex lg:flex-col gap-1 overflow-x-auto pb-1" role="tablist">
+        <div className="flex flex-col lg:flex-row gap-8 lg:gap-12">
+          {/* Fixed while the right column scrolls past */}
+          <nav className="hidden lg:block lg:w-72 flex-shrink-0" aria-label="Platform features">
+            <div className="sticky top-24 flex flex-col gap-1">
+              {FEATURES.map((f, i) => (
+                <button
+                  key={f.id}
+                  id={`feature-nav-${f.id}`}
+                  onClick={() => jumpTo(i)}
+                  aria-current={active === i ? "true" : undefined}
+                  className="relative px-4 py-3 rounded-lg text-left text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2"
+                  style={{
+                    background: active === i ? C.indigoDim : "transparent",
+                    border: `1px solid ${active === i ? C.indigoBorder : "transparent"}`,
+                    color: active === i ? C.deep : C.body,
+                    fontWeight: active === i ? 600 : 500,
+                  }}
+                >
+                  {f.title}
+                </button>
+              ))}
+            </div>
+          </nav>
+
+          <div className="flex-1 min-w-0 flex flex-col gap-6">
             {FEATURES.map((f, i) => (
-              <button
+              <div
                 key={f.id}
-                id={`feature-tab-${f.id}`}
-                role="tab"
-                aria-selected={active === i}
-                onClick={() => setActive(i)}
-                className="px-4 py-3 rounded-lg text-left text-sm whitespace-nowrap lg:whitespace-normal transition-colors focus-visible:outline-2 focus-visible:outline-offset-2"
+                id={`feature-${f.id}`}
+                data-index={i}
+                ref={(el) => { panels.current[i] = el; }}
+                className="rounded-2xl p-6 md:p-8 scroll-mt-24 transition-colors duration-300"
                 style={{
-                  background: active === i ? C.indigoDim : "transparent",
-                  border: `1px solid ${active === i ? C.indigoBorder : "transparent"}`,
-                  color: active === i ? C.deep : C.body,
-                  fontWeight: active === i ? 600 : 500,
+                  background: C.card,
+                  border: `1px solid ${active === i ? C.indigoBorder : C.border}`,
                 }}
               >
-                {f.title}
-              </button>
+                <h3 className="text-xl md:text-2xl font-black mb-3" style={{ color: C.heading, letterSpacing: "-0.02em" }}>
+                  {f.title}
+                </h3>
+                <p className="text-base leading-relaxed max-w-xl" style={{ color: C.body }}>{f.desc}</p>
+                {PREVIEWS[f.id]?.()}
+              </div>
             ))}
-          </div>
-
-          <div className="flex-1 min-w-0 rounded-2xl p-6 md:p-8" role="tabpanel" style={{ background: C.card, border: `1px solid ${C.border}` }}>
-            <h3 className="text-xl md:text-2xl font-black mb-3" style={{ color: C.heading, letterSpacing: "-0.02em" }}>
-              {current.title}
-            </h3>
-            <p className="text-base leading-relaxed max-w-xl" style={{ color: C.body }}>{current.desc}</p>
-            {current.id === "orders" && <OrdersPreview />}
           </div>
         </div>
       </div>

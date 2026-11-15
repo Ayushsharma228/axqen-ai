@@ -39,7 +39,7 @@ function DashboardMockup() {
         }}
       >
         <div style={{ padding: "0 14px 16px", display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ width: 22, height: 22, borderRadius: 5, background: "rgba(255,255,255,0.25)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 900, color: "white" }}>A</div>
+          <img src="/axqen-icon.png" alt="" width={22} height={22} style={{ width: 22, height: 22, borderRadius: 5, boxShadow: "0 0 0 1px rgba(255,255,255,0.35)" }} />
           <span style={{ color: "white", fontSize: 12, fontWeight: 900 }}>AXQEN</span>
         </div>
         {NAV_ITEMS.map((item, i) => (

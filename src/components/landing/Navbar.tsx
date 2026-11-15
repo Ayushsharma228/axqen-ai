@@ -26,12 +26,7 @@ export function Navbar() {
       <div className="max-w-[1200px] mx-auto px-6 h-16 flex items-center justify-between">
         {/* Logo */}
         <a href="/" className="flex items-center gap-2.5">
-          <div
-            className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-black text-white"
-            style={{ background: C.indigo }}
-          >
-            A
-          </div>
+          <img src="/axqen-icon.png" alt="" width={30} height={30} className="w-[30px] h-[30px] rounded-lg" />
           <span className="font-black text-sm tracking-tight" style={{ color: C.heading }}>
             AXQEN <span style={{ color: C.indigo }}>AI</span>
           </span>

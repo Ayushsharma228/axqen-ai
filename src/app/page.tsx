@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import LandingPage from "@/components/landing/LandingPage";
-import { SEO, FAQS } from "@/components/landing/content";
+import { SEO, FAQS, CONTACT, SOCIALS } from "@/components/landing/content";
 
 export const metadata: Metadata = {
   title: SEO.title,
@@ -43,10 +43,11 @@ const JSON_LD = {
       contactPoint: {
         "@type": "ContactPoint",
         telephone: "+91-86799-93305",
+        email: CONTACT.email,
         contactType: "customer service",
         availableLanguage: ["English", "Hindi"],
       },
-      sameAs: [],
+      sameAs: SOCIALS.map((s) => s.href),
     },
     {
       "@type": "FAQPage",

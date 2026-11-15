@@ -1,5 +1,5 @@
 import { C, WA_LINK } from "./constants";
-import { CAPABILITIES, AUDIENCES } from "./content";
+import { CAPABILITIES, AUDIENCES, CONTACT, SOCIALS } from "./content";
 
 const COMPANY = [
   { label: "About",          href: "/about" },
@@ -9,12 +9,13 @@ const COMPANY = [
 ];
 
 const SUPPORT = [
-  { label: "FAQ",         href: "#faqs" },
+  { label: "FAQ",         href: "/#faqs" },
+  { label: "Blog",        href: "/blog" },
   { label: "Book a Demo", href: WA_LINK, external: true },
-  { label: "Pricing",     href: "#plans" },
+  { label: "Pricing",     href: "/#plans" },
 ];
 
-// TODO(product owner): add social profile URLs, registered company address and legal footer details.
+// TODO(product owner): add registered company address and legal footer details.
 
 function Col({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -35,22 +36,41 @@ export function Footer() {
         <div className="grid grid-cols-2 md:grid-cols-5 gap-10 mb-12">
           <div className="col-span-2 md:col-span-1">
             <div className="flex items-center gap-2 mb-4">
-              <div className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-black text-white" style={{ background: C.indigo }}>A</div>
+              <img src="/axqen-icon.png" alt="" width={28} height={28} className="w-7 h-7 rounded-lg" />
               <span className="font-black text-sm text-white">AXQEN AI</span>
             </div>
-            <p className="text-xs leading-relaxed" style={{ color: "rgba(255,255,255,0.6)" }}>
+            <p className="text-xs leading-relaxed mb-5" style={{ color: "rgba(255,255,255,0.6)" }}>
               The AI Commerce Operating System for running e-commerce operations from one connected platform.
             </p>
+            <div className="flex flex-col gap-1.5 mb-5">
+              <a href={CONTACT.phoneHref} className={linkCls} style={linkStyle}>{CONTACT.phone}</a>
+              <a href={`mailto:${CONTACT.email}`} className={`${linkCls} break-all`} style={linkStyle}>{CONTACT.email}</a>
+            </div>
+            <div className="flex gap-2">
+              {SOCIALS.map((s) => (
+                <a
+                  key={s.name}
+                  href={s.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={`AXQEN AI on ${s.name}`}
+                  className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors hover:bg-white/15"
+                  style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)" }}
+                >
+                  <img src={s.icon} alt="" width={16} height={16} className="w-4 h-4" />
+                </a>
+              ))}
+            </div>
           </div>
 
           <Col title="Platform">
             {CAPABILITIES.map((c) => (
-              <li key={c.title}><a href="#features" className={linkCls} style={linkStyle}>{c.title}</a></li>
+              <li key={c.title}><a href="/#features" className={linkCls} style={linkStyle}>{c.title}</a></li>
             ))}
           </Col>
           <Col title="Solutions">
             {AUDIENCES.map((a) => (
-              <li key={a.title}><a href="#audience" className={linkCls} style={linkStyle}>{a.title}</a></li>
+              <li key={a.title}><a href="/#audience" className={linkCls} style={linkStyle}>{a.title}</a></li>
             ))}
           </Col>
           <Col title="Company">

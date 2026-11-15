@@ -158,6 +158,33 @@ export const DROPSHIPPING = {
   ],
 };
 
+// Figures are copied from each store's Shopify admin screenshot — never edit numbers without a new screenshot.
+export const RESULTS = {
+  heading: "Real stores, real Shopify dashboards.",
+  sub: "Screenshots from the Shopify admin of stores running on AXQEN.",
+  disclaimer: "Individual store results shown as captured in Shopify admin. Results depend on product, pricing, ad spend and execution, and are not a guarantee of future performance.",
+  stores: [
+    {
+      name: "Dailyyvibe",
+      period: null as string | null, // TODO(product owner): add the date range this screenshot covers
+      image: "/results/dailyyvibe-shopify.png",
+      stats: [{ label: "Total sales", val: "₹91.7K" }, { label: "Orders", val: "187" }, { label: "Conversion rate", val: "5.12%" }],
+    },
+    {
+      name: "TheZolfKart",
+      period: "Jul 10–23, 2026",
+      image: "/testimonials/shopify-thezolfcart.png.png",
+      stats: [{ label: "Total sales", val: "₹90.4K" }, { label: "Orders", val: "121" }, { label: "Sessions", val: "1,748" }],
+    },
+    {
+      name: "Hyperloop Global",
+      period: "Jun 25–Jul 23, 2026",
+      image: "/testimonials/Shopify-hyperloopglobal.png",
+      stats: [{ label: "Total sales", val: "₹60.3K" }, { label: "Orders", val: "121" }, { label: "Sessions", val: "2,273" }],
+    },
+  ],
+};
+
 export const CONTACT = {
   phone: "+91 86799 93305",
   phoneHref: "tel:+918679993305",

@@ -7,6 +7,7 @@ import { Features }         from "./Features";
 import { HowItWorks }       from "./HowItWorks";
 import { ProductCatalogue } from "./ProductCatalogue";
 import { Testimonials }     from "./Testimonials";
+import { Results }          from "./Results";
 import { Plans }            from "./Plans";
 import { FAQ }              from "./FAQ";
 import { FinalCTA }         from "./FinalCTA";
@@ -25,6 +26,7 @@ export default function LandingPage() {
         <HowItWorks />
         <ProductCatalogue />
         <Testimonials />
+        <Results />
         <Plans />
         <FAQ />
         <FinalCTA />

@@ -133,7 +133,7 @@ const CASES = [
       { label: "Net Profit",            value: "₹21,550",  positive: true, bold: true },
     ],
     images: [
-      { src: "/testimonials/shopify-hyperloopglobal.png", alt: "Hyperloop Global Shopify Dashboard", caption: "Shopify Sales Dashboard — Jun–Jul 2026" },
+      { src: "/testimonials/Shopify-hyperloopglobal.png", alt: "Hyperloop Global Shopify Dashboard", caption: "Shopify Sales Dashboard — Jun–Jul 2026" },
       { src: "/testimonials/meta-hyperloopglobal.png",    alt: "Hyperloop Global Meta Ads",          caption: "Meta Ads Manager — Campaign Results" },
     ],
   },

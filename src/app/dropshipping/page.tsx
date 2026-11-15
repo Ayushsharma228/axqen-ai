@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Navbar } from "@/components/landing/Navbar";
 import { Footer } from "@/components/landing/Footer";
 import { Plans } from "@/components/landing/Plans";
+import { Results } from "@/components/landing/Results";
 import { C, WA_LINK } from "@/components/landing/constants";
 import { DROPSHIPPING as D, PRICING } from "@/components/landing/content";
 
@@ -114,6 +115,7 @@ export default function DropshippingPage() {
           </div>
         </section>
 
+        <Results />
         <Plans />
 
         {/* FAQ */}

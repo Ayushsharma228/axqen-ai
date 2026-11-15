@@ -97,7 +97,6 @@ export function Footer() {
             © {new Date().getFullYear()} AXQEN AI · A product of{" "}
             <a href="/company" className="hover:text-white transition-colors">Vrinandya Ventures Pvt. Ltd.</a>
           </p>
-          <p>Dashboard figures shown on this page are illustrative demo data.</p>
         </div>
       </div>
     </footer>

@@ -158,29 +158,46 @@ export const DROPSHIPPING = {
   ],
 };
 
-// Figures are copied from each store's Shopify admin screenshot — never edit numbers without a new screenshot.
+// Figures are copied from each seller's dashboard screenshot — never edit numbers without a new screenshot.
 export const RESULTS = {
-  heading: "Real stores, real Shopify dashboards.",
-  sub: "Screenshots from the Shopify admin of stores running on AXQEN.",
-  disclaimer: "Individual store results shown as captured in Shopify admin. Results depend on product, pricing, ad spend and execution, and are not a guarantee of future performance.",
+  heading: "Real sellers, real dashboards.",
+  sub: "Screenshots from the Shopify admin and Amazon Seller Central of sellers running on AXQEN.",
+  disclaimer: "Individual seller results shown as captured in Shopify admin or Amazon Seller Central. Results depend on product, pricing, ad spend and execution, and are not a guarantee of future performance.",
   stores: [
     {
       name: "Dailyyvibe",
+      platform: "Shopify" as "Shopify" | "Amazon",
       period: null as string | null, // TODO(product owner): add the date range this screenshot covers
       image: "/results/dailyyvibe-shopify.png",
       stats: [{ label: "Total sales", val: "₹91.7K" }, { label: "Orders", val: "187" }, { label: "Conversion rate", val: "5.12%" }],
     },
     {
       name: "TheZolfKart",
+      platform: "Shopify",
       period: null, // TODO(product owner): add the date range this screenshot covers
       image: "/results/thezolfkart-shopify.png",
       stats: [{ label: "Total sales", val: "₹2.1L" }, { label: "Orders", val: "292" }, { label: "Sessions", val: "3,848" }],
     },
     {
       name: "Hyperloop Global",
+      platform: "Shopify",
       period: "Jun 25–Jul 23, 2026",
       image: "/testimonials/Shopify-hyperloopglobal.png",
       stats: [{ label: "Total sales", val: "₹60.3K" }, { label: "Orders", val: "121" }, { label: "Sessions", val: "2,273" }],
+    },
+    {
+      name: "KGN Enterprises",
+      platform: "Amazon",
+      period: "Oct 1–31, 2026",
+      image: "/results/kgn-enterprises-amazon.png",
+      stats: [{ label: "Product sales", val: "₹51,287" }, { label: "Units ordered", val: "64" }, { label: "Conversion rate", val: "1.2%" }],
+    },
+    {
+      name: "Sutvakka",
+      platform: "Amazon",
+      period: "Oct 1–31, 2026",
+      image: "/results/sutvakka-amazon.png",
+      stats: [{ label: "Product sales", val: "₹1,09,762" }, { label: "Units ordered", val: "139" }, { label: "Conversion rate", val: "0.9%" }],
     },
   ],
 };

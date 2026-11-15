@@ -23,7 +23,7 @@ export const metadata: Metadata = {
     title: "AXQEN AI | AI Commerce Operating System for Ecommerce",
     description:
       "One intelligent commerce platform to launch stores, manage products, automate operations, connect suppliers and track business performance.",
-    url: "https://axqen.app",
+    url: "https://axqen.app/",
     siteName: "AXQEN AI",
     locale: "en_IN",
     type: "website",
@@ -38,7 +38,7 @@ export const metadata: Metadata = {
     follow: true,
   },
   alternates: {
-    canonical: "https://axqen.app",
+    canonical: "https://www.axqen.app/",
   },
 };
 

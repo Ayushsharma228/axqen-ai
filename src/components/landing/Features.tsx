@@ -15,7 +15,7 @@ export function Features() {
             className="rounded-2xl p-7 flex flex-col justify-end min-h-[220px] relative overflow-hidden"
             style={{ background: `linear-gradient(150deg, ${C.violet} 0%, ${C.deep} 100%)` }}
           >
-            <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full pointer-events-none" style={{ background: "rgba(198,165,255,0.35)", filter: "blur(30px)" }} />
+            <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full pointer-events-none" style={{ background: "rgba(158,194,255,0.35)", filter: "blur(30px)" }} />
             <p className="axq-eyebrow mb-3 relative" style={{ color: C.lime }}>Platform capabilities</p>
             <h2 className="text-[26px] leading-[1.12] text-white relative" style={{ textWrap: "balance" }}>
               {CAPABILITIES_HEADING}

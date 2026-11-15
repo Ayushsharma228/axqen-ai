@@ -1,7 +1,7 @@
 /* Scoped to marketing pages (.axq) so the dashboard theme in globals.css is untouched. */
 .axq {
   font-family: var(--font-figtree), "Figtree", system-ui, sans-serif;
-  color: #0C021C;
+  color: #0B1220;
   background: #FFFFFF;
   font-size: 16px;
   line-height: 1.6;
@@ -12,7 +12,7 @@
   letter-spacing: -0.03em;
 }
 .axq :focus-visible {
-  outline: 2px solid #5318EB;
+  outline: 2px solid #155EEF;
   outline-offset: 3px;
   border-radius: 6px;
 }
@@ -26,42 +26,42 @@
   white-space: nowrap;
 }
 .axq-btn:active { transform: translateY(1px) scale(.99); }
-.axq-btn-lime  { background: #C4EE87; color: #0C021C; border-radius: 4px; }
-.axq-btn-lime:hover  { background: #B5E46F; box-shadow: 0 10px 28px -10px rgba(196,238,135,.9); }
-.axq-btn-violet { background: #5318EB; color: #FFFFFF; border-radius: 4px; }
-.axq-btn-violet:hover { background: #4612CC; box-shadow: 0 10px 28px -10px rgba(83,24,235,.7); }
-.axq-btn-pill  { background: #FFFFFF; color: #270F60; border-radius: 999px; }
-.axq-btn-pill:hover  { background: #EBE3FE; }
-.axq-btn-lilac { background: #EBE3FE; color: #270F60; border-radius: 999px; }
-.axq-btn-lilac:hover { background: #DCCDFB; }
+.axq-btn-lime  { background: #CFE3FF; color: #0B1220; border-radius: 4px; }
+.axq-btn-lime:hover  { background: #B8D4FF; box-shadow: 0 10px 28px -10px rgba(207,227,255,.9); }
+.axq-btn-violet { background: #155EEF; color: #FFFFFF; border-radius: 4px; }
+.axq-btn-violet:hover { background: #0B3DCE; box-shadow: 0 10px 28px -10px rgba(21,94,239,.7); }
+.axq-btn-pill  { background: #FFFFFF; color: #0B2A80; border-radius: 999px; }
+.axq-btn-pill:hover  { background: #EAF2FF; }
+.axq-btn-lilac { background: #EAF2FF; color: #0B2A80; border-radius: 999px; }
+.axq-btn-lilac:hover { background: #CFDDFB; }
 .axq-btn-ghost { background: rgba(255,255,255,.1); color: #FFFFFF; border: 1px solid rgba(255,255,255,.4); border-radius: 999px; }
 .axq-btn-ghost:hover { background: rgba(255,255,255,.18); }
 
 /* ── Cards ───────────────────────────────────────────── */
 .axq-card {
   background: #FFFFFF;
-  border: 1px solid #E9E1F7;
+  border: 1px solid #E1E9F7;
   border-radius: 16px;
-  box-shadow: 0 1px 2px rgba(39,15,96,0.05), 0 10px 30px -12px rgba(83,24,235,0.18);
+  box-shadow: 0 1px 2px rgba(11,42,128,0.05), 0 10px 30px -12px rgba(21,94,239,0.18);
   transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease;
 }
 .axq-card-hover:hover {
   transform: translateY(-4px);
-  border-color: #C6A5FF;
-  box-shadow: 0 2px 4px rgba(39,15,96,0.06), 0 22px 44px -16px rgba(83,24,235,0.32);
+  border-color: #9EC2FF;
+  box-shadow: 0 2px 4px rgba(11,42,128,0.06), 0 22px 44px -16px rgba(21,94,239,0.32);
 }
 
 .axq-eyebrow {
-  font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: #5318EB;
+  font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: #155EEF;
 }
 
 /* ── Hero ────────────────────────────────────────────── */
 .axq-hero {
   background:
-    radial-gradient(60% 50% at 20% 30%, rgba(198,165,255,.35) 0%, transparent 60%),
-    radial-gradient(50% 45% at 85% 20%, rgba(150,110,240,.45) 0%, transparent 60%),
-    radial-gradient(70% 60% at 50% 100%, rgba(83,24,235,.45) 0%, transparent 70%),
-    radial-gradient(120% 90% at 50% 40%, #774FCF 0%, #5A34B4 55%, #270F60 100%);
+    radial-gradient(60% 50% at 20% 30%, rgba(158,194,255,.35) 0%, transparent 60%),
+    radial-gradient(50% 45% at 85% 20%, rgba(80,140,255,.45) 0%, transparent 60%),
+    radial-gradient(70% 60% at 50% 100%, rgba(21,94,239,.45) 0%, transparent 70%),
+    radial-gradient(120% 90% at 50% 40%, #155EEF 0%, #0E47C9 55%, #0B2A80 100%);
 }
 .axq-word {
   display: inline-block;
@@ -77,7 +77,7 @@
   border-radius: 12px;
   overflow: hidden;
   border: 1px solid rgba(255,255,255,.25);
-  box-shadow: 0 30px 60px -20px rgba(20,7,47,.6);
+  box-shadow: 0 30px 60px -20px rgba(6,26,74,.6);
   filter: blur(2.5px) saturate(.85);
   transition: filter .4s ease, opacity .4s ease;
   animation: axq-drift var(--d, 18s) ease-in-out infinite alternate;

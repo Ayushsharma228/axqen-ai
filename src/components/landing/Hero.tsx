@@ -14,15 +14,15 @@ function DashboardMockup() {
   const CHANNELS = [
     { name: "Shopify",       val: 742, pct: 100, color: C.action },
     { name: "Amazon",        val: 386, pct: 52,  color: C.lilac },
-    { name: "Manual orders", val: 156, pct: 21,  color: "#9BCB55" },
+    { name: "Manual orders", val: 156, pct: 21,  color: "#7FB0FF" },
   ];
 
   return (
     <div
       className="rounded-2xl overflow-hidden select-none"
-      style={{ display: "flex", height: 380, background: "#fff", boxShadow: "0 40px 90px -30px rgba(20,7,47,0.75), 0 0 0 1px rgba(255,255,255,0.4)" }}
+      style={{ display: "flex", height: 380, background: "#fff", boxShadow: "0 40px 90px -30px rgba(6,26,74,0.75), 0 0 0 1px rgba(255,255,255,0.4)" }}
     >
-      <div style={{ width: 190, background: `linear-gradient(180deg, ${C.deep} 0%, #3B1A8C 100%)`, padding: "16px 0", display: "flex", flexDirection: "column", flexShrink: 0 }}>
+      <div style={{ width: 190, background: `linear-gradient(180deg, ${C.deep} 0%, #123FB0 100%)`, padding: "16px 0", display: "flex", flexDirection: "column", flexShrink: 0 }}>
         <div style={{ padding: "0 14px 16px", display: "flex", alignItems: "center", gap: 8 }}>
           <img src="/axqen-icon.png" alt="" width={22} height={22} style={{ width: 22, height: 22, borderRadius: 5, boxShadow: "0 0 0 1px rgba(255,255,255,0.35)" }} />
           <span style={{ color: "white", fontSize: 12, fontWeight: 800 }}>AXQEN</span>
@@ -36,7 +36,7 @@ function DashboardMockup() {
               background: i === 0 ? C.lime : "transparent", display: "flex", alignItems: "center", gap: 8,
             }}
           >
-            <div style={{ width: 12, height: 12, borderRadius: 3, background: i === 0 ? "rgba(39,15,96,0.3)" : "rgba(255,255,255,0.25)", flexShrink: 0 }} />
+            <div style={{ width: 12, height: 12, borderRadius: 3, background: i === 0 ? "rgba(11,42,128,0.3)" : "rgba(255,255,255,0.25)", flexShrink: 0 }} />
             {item}
           </div>
         ))}
@@ -57,7 +57,7 @@ function DashboardMockup() {
               <div style={{ fontSize: 9, color: C.body, marginBottom: 3 }}>{s.label}</div>
               <div style={{ fontSize: 14, fontWeight: 800, color: C.heading, letterSpacing: "-0.03em" }}>{s.val}</div>
               <div style={{ fontSize: 9, marginTop: 4, display: "inline-flex", alignItems: "center", gap: 4, color: s.good ? C.limeInk : C.body }}>
-                {s.good && <span style={{ width: 6, height: 6, borderRadius: 9, background: "#9BCB55" }} />}
+                {s.good && <span style={{ width: 6, height: 6, borderRadius: 9, background: "#7FB0FF" }} />}
                 {s.sub}
               </div>
             </div>
@@ -70,7 +70,7 @@ function DashboardMockup() {
             <div style={{ fontSize: 9, color: C.body, marginBottom: 8 }}>Daily sales, ₹</div>
             <div style={{ display: "flex", alignItems: "flex-end", gap: 2.5, flex: 1, minHeight: 0 }}>
               {BARS.map((h, i) => (
-                <div key={i} style={{ flex: 1, height: `${h}%`, background: i === BARS.length - 2 ? C.action : "#D9C8FF", borderRadius: "3px 3px 0 0", minWidth: 3 }} />
+                <div key={i} style={{ flex: 1, height: `${h}%`, background: i === BARS.length - 2 ? C.action : "#C7DAFF", borderRadius: "3px 3px 0 0", minWidth: 3 }} />
               ))}
             </div>
           </div>

@@ -4,7 +4,7 @@ import { FINAL_CTA } from "./content";
 export function FinalCTA() {
   return (
     <section className="axq-hero relative overflow-hidden px-5 md:px-6 py-20 md:py-28 text-center">
-      <div aria-hidden className="absolute -top-24 left-1/2 -translate-x-1/2 w-[640px] h-[320px] rounded-full pointer-events-none" style={{ background: "rgba(198,165,255,0.35)", filter: "blur(80px)" }} />
+      <div aria-hidden className="absolute -top-24 left-1/2 -translate-x-1/2 w-[640px] h-[320px] rounded-full pointer-events-none" style={{ background: "rgba(158,194,255,0.35)", filter: "blur(80px)" }} />
       <div className="relative max-w-3xl mx-auto">
         <h2 className="text-white mb-5" style={{ fontSize: "clamp(2rem, 1.2rem + 3vw, 3.5rem)", lineHeight: 1.06, textWrap: "balance" }}>
           {FINAL_CTA.heading}

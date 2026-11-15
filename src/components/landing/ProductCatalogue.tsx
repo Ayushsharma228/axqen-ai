@@ -5,7 +5,7 @@ import { FEATURES, INTEGRATIONS } from "./content";
 
 const SUCCESS = "success";
 const pill = (color: string) =>
-  color === SUCCESS ? { color: C.limeInk, background: "rgba(196,238,135,0.6)" } : { color, background: `${color}14` };
+  color === SUCCESS ? { color: C.limeInk, background: "rgba(207,227,255,0.6)" } : { color, background: `${color}14` };
 
 function DemoCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -136,7 +136,7 @@ const PREVIEWS: Record<string, () => React.ReactNode> = {
       </div>
       <div className="flex items-end gap-1.5 h-20">
         {[38, 52, 45, 66, 58, 74, 49, 63, 82, 70, 79, 64, 90, 76].map((h, i) => (
-          <div key={i} className="flex-1 rounded-t-sm" style={{ height: `${h}%`, background: i === 12 ? C.indigo : "#D9C8FF" }} />
+          <div key={i} className="flex-1 rounded-t-sm" style={{ height: `${h}%`, background: i === 12 ? C.indigo : "#C7DAFF" }} />
         ))}
       </div>
     </DemoCard>

@@ -28,7 +28,7 @@ export function HowItWorks() {
                   style={{
                     background: last ? C.lime : C.action,
                     color: last ? C.deep : "#fff",
-                    boxShadow: `0 0 0 6px ${last ? "rgba(196,238,135,0.35)" : C.paleLilac}`,
+                    boxShadow: `0 0 0 6px ${last ? "rgba(207,227,255,0.35)" : C.paleLilac}`,
                     fontVariantNumeric: "tabular-nums",
                   }}
                 >

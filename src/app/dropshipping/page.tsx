@@ -116,7 +116,7 @@ export default function DropshippingPage() {
                   <li key={s.n} className="axq-card axq-card-hover p-7">
                     <span
                       className="axq-display w-12 h-12 rounded-full flex items-center justify-center text-base mb-6"
-                      style={{ background: last ? C.lime : C.action, color: last ? C.deep : "#fff", boxShadow: `0 0 0 6px ${last ? "rgba(196,238,135,0.35)" : C.paleLilac}` }}
+                      style={{ background: last ? C.lime : C.action, color: last ? C.deep : "#fff", boxShadow: `0 0 0 6px ${last ? "rgba(207,227,255,0.35)" : C.paleLilac}` }}
                     >
                       {s.n}
                     </span>
@@ -138,8 +138,8 @@ export default function DropshippingPage() {
             <h2 className="text-3xl md:text-[44px] leading-tight mb-10" style={{ color: C.heading }}>Dropshipping with AXQEN, answered.</h2>
             <div className="flex flex-col gap-3">
               {D.faqs.map((f, i) => (
-                <details key={f.q} className="group axq-card open:!border-[#C6A5FF]" open={i === 0}>
-                  <summary className="flex items-center justify-between gap-4 px-6 min-h-[64px] py-4 cursor-pointer list-none text-base font-semibold group-open:text-[#5318EB]" style={{ color: C.heading }}>
+                <details key={f.q} className="group axq-card open:!border-[#9EC2FF]" open={i === 0}>
+                  <summary className="flex items-center justify-between gap-4 px-6 min-h-[64px] py-4 cursor-pointer list-none text-base font-semibold group-open:text-[#155EEF]" style={{ color: C.heading }}>
                     {f.q}
                     <span aria-hidden className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-transform duration-300 group-open:rotate-45" style={{ background: C.paleLilac }}>
                       <Plus size={16} strokeWidth={2.5} color={C.action} />

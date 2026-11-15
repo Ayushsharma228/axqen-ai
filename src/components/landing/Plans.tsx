@@ -23,8 +23,8 @@ export function Plans() {
                 key={plan.id}
                 className={`relative p-7 md:p-8 flex flex-col rounded-2xl ${hi ? "md:-mt-4" : "axq-card axq-card-hover"}`}
                 style={hi ? {
-                  background: `radial-gradient(90% 60% at 100% 0%, rgba(198,165,255,0.45) 0%, transparent 60%), linear-gradient(160deg, ${C.action} 0%, ${C.deep} 100%)`,
-                  boxShadow: "0 30px 60px -24px rgba(83,24,235,0.6)",
+                  background: `radial-gradient(90% 60% at 100% 0%, rgba(158,194,255,0.45) 0%, transparent 60%), linear-gradient(160deg, ${C.action} 0%, ${C.deep} 100%)`,
+                  boxShadow: "0 30px 60px -24px rgba(21,94,239,0.6)",
                 } : undefined}
               >
                 {hi && (
@@ -89,7 +89,7 @@ export function Plans() {
           </div>
           <div className="axq-card p-7 md:p-8">
             <h3 className="flex items-center gap-3 text-lg mb-5" style={{ color: C.heading }}>
-              <span className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "rgba(196,238,135,0.55)" }}>
+              <span className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "rgba(207,227,255,0.55)" }}>
                 <RotateCcw size={20} color={C.limeInk} aria-hidden />
               </span>
               RTO benefits

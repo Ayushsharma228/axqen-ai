@@ -25,7 +25,7 @@ export function Navbar() {
         background: solid ? "rgba(255,255,255,0.94)" : "transparent",
         backdropFilter: solid ? "saturate(1.4) blur(18px)" : "none",
         borderBottom: `1px solid ${solid ? C.border : "transparent"}`,
-        boxShadow: solid ? "0 8px 30px -18px rgba(39,15,96,0.35)" : "none",
+        boxShadow: solid ? "0 8px 30px -18px rgba(11,42,128,0.35)" : "none",
       }}
     >
       <div className="max-w-[1200px] mx-auto px-5 md:px-6 h-[72px] flex items-center justify-between gap-6">

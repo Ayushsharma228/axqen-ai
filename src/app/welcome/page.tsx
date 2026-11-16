@@ -42,7 +42,7 @@ export default async function WelcomePage() {
     select: { name: true, email: true, phone: true, plan: true, planTier: true, paymentReference: true, paymentConfirmed: true },
   });
   if (!user) redirect("/login");
-  if (!user.paymentConfirmed) redirect("/signup");
+  if (!user.paymentConfirmed) redirect("/onboarding");
 
   const isMarketplace = user.plan === "MARKETPLACE";
   const tierId = (user.planTier ?? "STARTER").toLowerCase();

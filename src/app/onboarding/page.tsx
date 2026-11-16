@@ -61,6 +61,7 @@ export default function OnboardingPage() {
   const [sellerName, setSellerName] = useState("");
   const [plan,       setPlan]       = useState("");
   const [planTier,   setPlanTier]   = useState("");
+  const [paid,       setPaid]       = useState(false);
 
   // Step 1 – Personal Info
   const [personal, setPersonal] = useState({ address: "", city: "", state: "", pincode: "", phone: "" });
@@ -86,6 +87,7 @@ export default function OnboardingPage() {
         setSellerName(d.name ?? "");
         setPlan(d.plan ?? "");
         setPlanTier(d.planTier ?? "");
+        setPaid(Boolean(d.paymentConfirmed));
         if (d.businessAddress) setPersonal((p) => ({ ...p, address: d.businessAddress }));
         if (d.city)            setPersonal((p) => ({ ...p, city: d.city }));
         if (d.state)           setPersonal((p) => ({ ...p, state: d.state }));
@@ -317,7 +319,7 @@ export default function OnboardingPage() {
                 You&apos;re just a few steps away from launching your {plan === "MARKETPLACE" ? "Amazon store" : "dropshipping business"}.
               </p>
             </div>
-            {planTier && (
+            {paid && planTier && (
               <div className="rounded-xl px-4 py-3 flex items-center justify-between gap-3" style={{ background: "rgba(22,163,74,0.06)", border: "1px solid rgba(22,163,74,0.25)" }}>
                 <div className="flex items-center gap-2.5 text-sm" style={{ color: "#14532D" }}>
                   <CheckCircle2 className="w-4 h-4 flex-shrink-0" style={{ color: "#16A34A" }} />

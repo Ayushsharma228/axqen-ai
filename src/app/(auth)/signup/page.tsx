@@ -258,10 +258,10 @@ export default function SignupPage() {
       <div className="w-full max-w-lg">
         {/* Logo */}
         <div className="text-center mb-6">
-          <div className="inline-flex items-center gap-2 mb-2">
-            <img src="/axqen-icon.png" alt="AXQEN" className="w-8 h-8 rounded-lg object-cover" />
+          <a href="/" aria-label="AXQEN home" className="inline-flex items-center gap-2 mb-2 transition-opacity hover:opacity-80">
+            <img src="/axqen-icon.png" alt="" className="w-8 h-8 rounded-lg object-cover" />
             <span className="font-black text-lg" style={{ color: "#0A0E1A" }}>AXQEN</span>
-          </div>
+          </a>
           <p className="text-sm" style={{ color: "#6B7280" }}>Create your seller account</p>
         </div>
 

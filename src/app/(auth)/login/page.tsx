@@ -87,10 +87,10 @@ function LoginContent() {
         </div>
 
         {/* Logo */}
-        <div className="relative flex items-center gap-3">
-          <img src="/axqen-icon.png" alt="AXQEN" className="w-9 h-9 rounded-xl object-cover flex-shrink-0" />
+        <a href="/" aria-label="AXQEN home" className="relative flex items-center gap-3 self-start transition-opacity hover:opacity-80">
+          <img src="/axqen-icon.png" alt="" className="w-9 h-9 rounded-xl object-cover flex-shrink-0" />
           <span className="text-white font-semibold text-lg">AXQEN</span>
-        </div>
+        </a>
 
         {/* Main copy */}
         <div className="relative space-y-6 max-w-sm">

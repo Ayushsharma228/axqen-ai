@@ -6,16 +6,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Eye, EyeOff, Check, ChevronRight, ChevronLeft, Store,
-  Zap, TrendingUp, Crown, Mail, Loader2, RefreshCw, CreditCard,
+  Zap, TrendingUp, Crown, Mail, Loader2, RefreshCw,
 } from "lucide-react";
 import { PLAN_PRICES_INR, TEST_TIER, TEST_PRICE_INR, TEST_PLAN_ENABLED, type Service, type Tier } from "@/lib/plan-pricing";
 import { PRICING, MARKETPLACE_PLAN } from "@/components/landing/content";
-
-declare global {
-  interface Window {
-    Razorpay: new (opts: Record<string, unknown>) => { open(): void };
-  }
-}
 
 const BLUE   = "#0048DF";
 const BLUEDIM = "rgba(0,72,223,0.08)";
@@ -47,7 +41,7 @@ const TEST_PLAN: PlanCard = {
   lead: "For testing the live payment flow only.", features: ["Full signup, payment and onboarding flow"], icon: Zap,
 };
 
-const STEPS = ["Plan", "Account", "Verify Email", "Payment"];
+const STEPS = ["Plan", "Account", "Verify Email", "Done"];
 
 const inputCls = "w-full px-4 py-2.5 rounded-xl text-sm outline-none border focus:ring-2 focus:border-blue-500 transition-all";
 const inputStyle = { background: "#fff", borderColor: "#e5e7eb", color: "#0A0E1A" };
@@ -108,7 +102,6 @@ export default function SignupPage() {
 
   const [service,    setService]    = useState<Service>("DROPSHIPPING");
   const [planTier,   setPlanTier]   = useState<PlanCard["tier"] | "">("");
-  const [rzpLoading, setRzpLoading] = useState(false);
   const [testMode,   setTestMode]   = useState(false);
 
   // Preselect the plan picked on the website pricing section (/signup?plan=growth).
@@ -197,54 +190,6 @@ export default function SignupPage() {
     if (!planTier) return;
     setError("");
     setStep(1);
-  }
-
-  async function handleRazorpay() {
-    setError(""); setRzpLoading(true);
-    if (!window.Razorpay) {
-      await new Promise<void>((resolve, reject) => {
-        const s = document.createElement("script");
-        s.src = "https://checkout.razorpay.com/v1/checkout.js";
-        s.onload  = () => resolve();
-        s.onerror = () => reject(new Error("Failed to load payment gateway"));
-        document.body.appendChild(s);
-      });
-    }
-    const res  = await fetch("/api/payments/create-order", { method: "POST" });
-    const data = await res.json();
-    if (!res.ok) { setError(data.error ?? "Could not create order"); setRzpLoading(false); return; }
-
-    const rzp = new window.Razorpay({
-      key:         data.key,
-      amount:      data.amount,
-      currency:    data.currency,
-      order_id:    data.orderId,
-      name:        "AXQEN",
-      description: `${data.tierLabel} Plan Setup Fee`,
-      image:       "/favicon.ico",
-      prefill:     { name: data.name, email: data.email, contact: data.phone },
-      theme:       { color: BLUE },
-      handler: async (response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
-        const verify = await fetch("/api/payments/verify", {
-          method:  "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            razorpay_order_id:   response.razorpay_order_id,
-            razorpay_payment_id: response.razorpay_payment_id,
-            razorpay_signature:  response.razorpay_signature,
-          }),
-        });
-        if (verify.ok) {
-          router.push("/welcome");
-        } else {
-          const d = await verify.json().catch(() => ({})) as { error?: string };
-          setError(d.error ?? "Payment verification failed. Contact support.");
-          setRzpLoading(false);
-        }
-      },
-      modal: { ondismiss: () => setRzpLoading(false) },
-    });
-    rzp.open();
   }
 
   const selectedPlan = visiblePlans(service).find((p) => p.tier === planTier) ?? null;
@@ -497,44 +442,35 @@ export default function SignupPage() {
             </div>
           )}
 
-          {/* ── Step 3: Payment ── */}
+          {/* ── Step 3: Done (payment is collected offline during onboarding) ── */}
           {step === 3 && (
             <div className="space-y-5">
-              <h2 className="text-xl font-bold mb-1" style={{ color: "#0A0E1A" }}>Complete payment</h2>
-              <p className="text-sm" style={{ color: "#6B7280" }}>
-                Pay securely via Razorpay — UPI, cards, net banking all accepted.
-              </p>
+              <div className="flex flex-col items-center text-center gap-3 py-2">
+                <div className="w-14 h-14 rounded-2xl flex items-center justify-center" style={{ background: BLUEDIM }}>
+                  <Check className="w-7 h-7" style={{ color: BLUE }} strokeWidth={3} />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold" style={{ color: "#0A0E1A" }}>Your account is ready</h2>
+                  <p className="text-sm mt-1" style={{ color: "#6B7280" }}>
+                    Our team will contact you to complete payment and set up your account.
+                  </p>
+                </div>
+              </div>
 
               <div className="rounded-xl p-5 text-center" style={{ background: BLUEDIM, border: `1px solid ${BLUEBORDER}` }}>
-                <p className="text-xs font-medium mb-1" style={{ color: "#6B7280" }}>Amount to pay</p>
-                <p className="text-4xl font-black mb-1" style={{ color: "#0A0E1A" }}>
-                  ₹{planAmount.toLocaleString("en-IN")}
+                <p className="text-xs font-medium mb-1" style={{ color: "#6B7280" }}>Selected plan</p>
+                <p className="text-lg font-bold" style={{ color: "#0A0E1A" }}>
+                  {selectedPlan?.label}{service === "DROPSHIPPING" ? " plan" : ""} · {service === "MARKETPLACE" ? "Marketplace" : "Dropshipping"}
                 </p>
-                <p className="text-sm font-semibold" style={{ color: BLUE }}>
-                  {selectedPlan?.label} Plan · {service === "MARKETPLACE" ? "Marketplace" : "Dropshipping"}
-                </p>
-                <p className="text-xs mt-1" style={{ color: "#9CA3AF" }}>{service === "MARKETPLACE" ? "3-month plan" : "One-time"} · + 18% GST</p>
+                <p className="text-2xl font-black mt-1" style={{ color: BLUE }}>₹{planAmount.toLocaleString("en-IN")}</p>
+                <p className="text-xs mt-1" style={{ color: "#6B7280" }}>{service === "MARKETPLACE" ? "3-month plan" : "One-time"} · + 18% GST</p>
               </div>
 
-              <div className="flex flex-wrap justify-center gap-2">
-                {["UPI", "Credit Card", "Debit Card", "Net Banking", "Wallets"].map((m) => (
-                  <span key={m} className="text-xs px-3 py-1 rounded-full"
-                    style={{ background: "#f3f4f6", color: "#6B7280" }}>{m}</span>
-                ))}
-              </div>
-
-              <button onClick={handleRazorpay} disabled={rzpLoading}
-                className="w-full py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-60 text-white transition-all hover:opacity-90"
+              <button onClick={() => router.push("/onboarding")}
+                className="w-full py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 text-white transition-all hover:opacity-90"
                 style={{ background: BLUE }}>
-                {rzpLoading
-                  ? <><Loader2 className="w-4 h-4 animate-spin" /> Opening payment…</>
-                  : <><CreditCard className="w-4 h-4" /> Pay ₹{planAmount.toLocaleString("en-IN")} Securely</>
-                }
+                Continue to onboarding <ChevronRight className="w-4 h-4" />
               </button>
-
-              <p className="text-center text-xs" style={{ color: "#9CA3AF" }}>
-                Secured by Razorpay · 256-bit SSL encryption
-              </p>
             </div>
           )}
 

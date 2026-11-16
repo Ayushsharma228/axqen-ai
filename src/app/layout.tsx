@@ -1,28 +1,33 @@
 
 import type { Metadata } from "next";
-import { Inter, Playfair_Display, Space_Grotesk } from "next/font/google";
+import localFont from "next/font/local";
 import Script from "next/script";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 
-const inter = Inter({
+// Fonts are self-hosted (src/fonts) so builds never depend on downloading from Google Fonts.
+const inter = localFont({
+  src: "../fonts/inter.woff2",
   variable: "--font-inter",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
+  weight: "100 900",
+  display: "swap",
 });
 
-const playfair = Playfair_Display({
+const playfair = localFont({
+  src: [
+    { path: "../fonts/playfair.woff2", weight: "400 900", style: "normal" },
+    { path: "../fonts/playfair-italic.woff2", weight: "400 900", style: "italic" },
+  ],
   variable: "--font-playfair",
-  subsets: ["latin"],
-  weight: ["400", "700", "800"],
-  style: ["normal", "italic"],
+  display: "swap",
   preload: false,
 });
 
-const spaceGrotesk = Space_Grotesk({
+const spaceGrotesk = localFont({
+  src: "../fonts/space-grotesk.woff2",
   variable: "--font-space",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: "300 700",
+  display: "swap",
   preload: false,
 });
 

@@ -4,7 +4,8 @@ export type Tier = "STARTER" | "GROWTH" | "SCALE";
 
 export const PLAN_PRICES_INR: Record<Service, Record<Tier, number>> = {
   DROPSHIPPING: { STARTER: 9999, GROWTH: 19999, SCALE: 39999 },
-  MARKETPLACE:  { STARTER: 5000, GROWTH: 10000, SCALE: 20000 },
+  // Marketplace is a single Amazon Management plan (₹8,999 for 3 months); every tier maps to it so older selections still price correctly.
+  MARKETPLACE:  { STARTER: 8999, GROWTH: 8999, SCALE: 8999 },
 };
 
 /** Amount in paise for Razorpay. Unknown service/tier falls back to Dropshipping Starter. */

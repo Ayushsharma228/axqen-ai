@@ -5,7 +5,7 @@ import { signIn } from "next-auth/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  Eye, EyeOff, Check, ChevronRight, ChevronLeft,
+  Eye, EyeOff, Check, ChevronRight, ChevronLeft, Store,
   Zap, TrendingUp, Crown, Mail, Loader2, RefreshCw, CreditCard,
 } from "lucide-react";
 import { PLAN_PRICES_INR, type Service, type Tier } from "@/lib/plan-pricing";
@@ -21,7 +21,7 @@ const BLUE   = "#0048DF";
 const BLUEDIM = "rgba(0,72,223,0.08)";
 const BLUEBORDER = "rgba(0,72,223,0.25)";
 
-type PlanCard = { tier: Tier; label: string; price: number; lead?: string | null; features: string[]; popular?: boolean; icon: typeof Zap };
+type PlanCard = { tier: Tier; label: string; price: number; billing: string; lead?: string | null; features: string[]; popular?: boolean; icon: typeof Zap };
 
 const TIER_ICON: Record<Tier, typeof Zap> = { STARTER: Zap, GROWTH: TrendingUp, SCALE: Crown };
 
@@ -29,23 +29,19 @@ const TIER_ICON: Record<Tier, typeof Zap> = { STARTER: Zap, GROWTH: TrendingUp, 
 const PLANS: Record<Service, PlanCard[]> = {
   DROPSHIPPING: PRICING.plans.map((p) => {
     const tier = p.id.toUpperCase() as Tier;
-    return { tier, label: p.name, price: PLAN_PRICES_INR.DROPSHIPPING[tier], lead: p.lead, features: p.features, popular: p.popular, icon: TIER_ICON[tier] };
+    return { tier, label: p.name, price: PLAN_PRICES_INR.DROPSHIPPING[tier], billing: "one-time", lead: p.lead, features: p.features, popular: p.popular, icon: TIER_ICON[tier] };
   }),
   MARKETPLACE: [
     {
-      tier: "STARTER", label: "Starter", price: PLAN_PRICES_INR.MARKETPLACE.STARTER,
-      features: ["Amazon Management", "Flipkart Management", "Meesho Management", "Product Listing (Up to 100)", "Inventory Updates", "Order Monitoring", "Basic Reports"],
-      icon: Zap,
-    },
-    {
-      tier: "GROWTH", label: "Growth", price: PLAN_PRICES_INR.MARKETPLACE.GROWTH, popular: true,
-      features: ["Catalog Optimization", "SEO Listings", "A+ Content Guidance", "Return Management", "NDR Management", "Priority Support", "Weekly Reports"],
-      icon: TrendingUp,
-    },
-    {
-      tier: "SCALE", label: "Scale", price: PLAN_PRICES_INR.MARKETPLACE.SCALE,
-      features: ["Dedicated Account Manager", "Unlimited Listings", "Brand Registry Support", "Performance Dashboard", "Competitor Analysis", "Buy Box Monitoring"],
-      icon: Crown,
+      tier: "STARTER", label: "Amazon Management", price: PLAN_PRICES_INR.MARKETPLACE.STARTER, billing: "for 3 months",
+      lead: "Everything covered for your Amazon store:",
+      features: [
+        "Amazon Account Management", "Unlimited Product Listings", "Catalog Optimization", "SEO Listings",
+        "A+ Content Guidance", "Inventory Updates", "Order Monitoring", "Return Management", "NDR Management",
+        "Brand Registry Support", "Buy Box Monitoring", "Competitor Analysis", "Performance Dashboard",
+        "Dedicated Account Manager", "Priority Support", "Weekly Reports",
+      ],
+      icon: Store,
     },
   ],
 };
@@ -284,7 +280,11 @@ export default function SignupPage() {
               <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
                 <div>
                   <h2 className="text-xl font-bold mb-1" style={{ color: "#0A0E1A" }}>Choose your plan</h2>
-                  <p className="text-sm" style={{ color: "#6B7280" }}>One-time setup fee · + 18% GST · No monthly subscription</p>
+                  <p className="text-sm" style={{ color: "#6B7280" }}>
+                    {service === "MARKETPLACE"
+                      ? "Amazon management · 3-month plan · + 18% GST"
+                      : "One-time setup fee · + 18% GST · No monthly subscription"}
+                  </p>
                 </div>
                 <div className="inline-flex p-1 rounded-xl self-start" style={{ background: "#f3f4f6" }} role="tablist" aria-label="Service">
                   {(["DROPSHIPPING", "MARKETPLACE"] as const).map((s) => (
@@ -292,7 +292,7 @@ export default function SignupPage() {
                       key={s}
                       role="tab"
                       aria-selected={service === s}
-                      onClick={() => { setService(s); setPlanTier(""); }}
+                      onClick={() => { setService(s); setPlanTier(PLANS[s].length === 1 ? PLANS[s][0].tier : ""); }}
                       className="px-4 py-2 rounded-lg text-sm font-semibold transition-all"
                       style={service === s ? { background: "#fff", color: BLUE, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" } : { color: "#6B7280" }}
                     >
@@ -302,7 +302,7 @@ export default function SignupPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              <div className={`grid gap-4 mb-6 ${PLANS[service].length === 1 ? "grid-cols-1 max-w-xl mx-auto w-full" : "grid-cols-1 md:grid-cols-3"}`}>
                 {PLANS[service].map((plan) => {
                   const Icon   = plan.icon;
                   const active = planTier === plan.tier;
@@ -335,10 +335,10 @@ export default function SignupPage() {
                       </div>
                       <p className="mb-4">
                         <span className="text-2xl font-black" style={{ color: "#0A0E1A" }}>₹{plan.price.toLocaleString("en-IN")}</span>
-                        <span className="text-xs ml-1.5" style={{ color: "#6B7280" }}>one-time + GST</span>
+                        <span className="text-xs ml-1.5" style={{ color: "#6B7280" }}>{plan.billing} + GST</span>
                       </p>
                       {plan.lead && <p className="text-xs font-semibold mb-2" style={{ color: "#374151" }}>{plan.lead}</p>}
-                      <ul className="space-y-1.5">
+                      <ul className={PLANS[service].length === 1 ? "grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5" : "space-y-1.5"}>
                         {plan.features.map((f) => (
                           <li key={f} className="flex items-start gap-2 text-[13px] leading-snug" style={{ color: "#374151" }}>
                             <Check className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: BLUE }} strokeWidth={3} />
@@ -508,7 +508,7 @@ export default function SignupPage() {
                 <p className="text-sm font-semibold" style={{ color: BLUE }}>
                   {selectedPlan?.label} Plan · {service === "MARKETPLACE" ? "Marketplace" : "Dropshipping"}
                 </p>
-                <p className="text-xs mt-1" style={{ color: "#9CA3AF" }}>One-time · + 18% GST</p>
+                <p className="text-xs mt-1" style={{ color: "#9CA3AF" }}>{service === "MARKETPLACE" ? "3-month plan" : "One-time"} · + 18% GST</p>
               </div>
 
               <div className="flex flex-wrap justify-center gap-2">

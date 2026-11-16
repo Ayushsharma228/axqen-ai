@@ -5,7 +5,7 @@ import Razorpay from "razorpay";
 import { CheckCircle2, Check, ChevronRight } from "lucide-react";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { planAmountPaise } from "@/lib/plan-pricing";
+import { planAmountPaise, TEST_TIER } from "@/lib/plan-pricing";
 import { PRICING, MARKETPLACE_PLAN, CONTACT } from "@/components/landing/content";
 import { PrintButton } from "./PrintButton";
 
@@ -47,11 +47,12 @@ export default async function WelcomePage() {
   const isMarketplace = user.plan === "MARKETPLACE";
   const tierId = (user.planTier ?? "STARTER").toLowerCase();
   const dsPlan = PRICING.plans.find((p) => p.id === tierId) ?? PRICING.plans[0];
-  const planName = isMarketplace ? MARKETPLACE_PLAN.name : `${dsPlan.name} plan`;
+  const isTest = tierId === TEST_TIER.toLowerCase();
+  const planName = isTest ? "Test plan (internal)" : isMarketplace ? MARKETPLACE_PLAN.name : `${dsPlan.name} plan`;
   const serviceName = isMarketplace ? "Marketplace" : "Dropshipping";
   const billing = isMarketplace ? "3-month plan" : "One-time setup fee";
-  const lead = isMarketplace ? MARKETPLACE_PLAN.lead : dsPlan.lead;
-  const features = isMarketplace ? MARKETPLACE_PLAN.features : dsPlan.features;
+  const lead = isTest ? "For testing the live payment flow only." : isMarketplace ? MARKETPLACE_PLAN.lead : dsPlan.lead;
+  const features = isTest ? ["Full signup, payment and onboarding flow"] : isMarketplace ? MARKETPLACE_PLAN.features : dsPlan.features;
 
   // Show what Razorpay actually captured; fall back to the plan price if the lookup fails.
   let amount = planAmountPaise(user.plan, user.planTier);

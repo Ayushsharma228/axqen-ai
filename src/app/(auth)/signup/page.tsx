@@ -8,7 +8,7 @@ import {
   Eye, EyeOff, Check, ChevronRight, ChevronLeft, Store,
   Zap, TrendingUp, Crown, Mail, Loader2, RefreshCw, CreditCard,
 } from "lucide-react";
-import { PLAN_PRICES_INR, type Service, type Tier } from "@/lib/plan-pricing";
+import { PLAN_PRICES_INR, TEST_TIER, TEST_PRICE_INR, type Service, type Tier } from "@/lib/plan-pricing";
 import { PRICING, MARKETPLACE_PLAN } from "@/components/landing/content";
 
 declare global {
@@ -21,7 +21,7 @@ const BLUE   = "#0048DF";
 const BLUEDIM = "rgba(0,72,223,0.08)";
 const BLUEBORDER = "rgba(0,72,223,0.25)";
 
-type PlanCard = { tier: Tier; label: string; price: number; billing: string; lead?: string | null; features: string[]; popular?: boolean; icon: typeof Zap };
+type PlanCard = { tier: Tier | typeof TEST_TIER; label: string; price: number; billing: string; lead?: string | null; features: string[]; popular?: boolean; icon: typeof Zap };
 
 const TIER_ICON: Record<Tier, typeof Zap> = { STARTER: Zap, GROWTH: TrendingUp, SCALE: Crown };
 
@@ -39,6 +39,12 @@ const PLANS: Record<Service, PlanCard[]> = {
       icon: Store,
     },
   ],
+};
+
+// TEMPORARY: internal ₹1 plan, only listed on /signup?plan=test; the server allows it for the test inbox only.
+const TEST_PLAN: PlanCard = {
+  tier: TEST_TIER, label: "Test plan (internal)", price: TEST_PRICE_INR, billing: "one-time",
+  lead: "For testing the live payment flow only.", features: ["Full signup, payment and onboarding flow"], icon: Zap,
 };
 
 const STEPS = ["Plan", "Account", "Verify Email", "Payment"];
@@ -101,14 +107,18 @@ export default function SignupPage() {
   const [emailVerified, setEmailVerified] = useState(false);
 
   const [service,    setService]    = useState<Service>("DROPSHIPPING");
-  const [planTier,   setPlanTier]   = useState<Tier | "">("");
+  const [planTier,   setPlanTier]   = useState<PlanCard["tier"] | "">("");
   const [rzpLoading, setRzpLoading] = useState(false);
+  const [testMode,   setTestMode]   = useState(false);
 
   // Preselect the plan picked on the website pricing section (/signup?plan=growth).
   useEffect(() => {
     const p = new URLSearchParams(window.location.search).get("plan")?.toUpperCase();
     if (p === "STARTER" || p === "GROWTH" || p === "SCALE") setPlanTier(p);
+    if (p === TEST_TIER) { setTestMode(true); setPlanTier(TEST_TIER); }
   }, []);
+
+  const visiblePlans = (s: Service) => (s === "DROPSHIPPING" && testMode ? [...PLANS[s], TEST_PLAN] : PLANS[s]);
 
   async function handleCreateAccount(e: React.FormEvent) {
     e.preventDefault();
@@ -237,7 +247,7 @@ export default function SignupPage() {
     rzp.open();
   }
 
-  const selectedPlan = PLANS[service].find((p) => p.tier === planTier) ?? null;
+  const selectedPlan = visiblePlans(service).find((p) => p.tier === planTier) ?? null;
   const planAmount   = selectedPlan?.price ?? 0;
 
   return (
@@ -298,7 +308,7 @@ export default function SignupPage() {
               </div>
 
               <div className={`grid gap-4 mb-6 ${PLANS[service].length === 1 ? "grid-cols-1 max-w-xl mx-auto w-full" : "grid-cols-1 md:grid-cols-3"}`}>
-                {PLANS[service].map((plan) => {
+                {visiblePlans(service).map((plan) => {
                   const Icon   = plan.icon;
                   const active = planTier === plan.tier;
                   return (

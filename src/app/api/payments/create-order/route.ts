@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import Razorpay from "razorpay";
-import { planAmountPaise, canUseTestPlan, TEST_TIER } from "@/lib/plan-pricing";
+import { planAmountPaise } from "@/lib/plan-pricing";
 
 export async function POST() {
   const session = await getServerSession(authOptions);
@@ -18,9 +18,6 @@ export async function POST() {
   if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
   if (user.paymentConfirmed) return NextResponse.json({ error: "Payment already completed" }, { status: 400 });
 
-  if ((user.planTier ?? "").toUpperCase() === TEST_TIER && !canUseTestPlan(user.email)) {
-    return NextResponse.json({ error: "This plan is not available for your account." }, { status: 403 });
-  }
   const amount = planAmountPaise(user.plan, user.planTier);
 
   if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {

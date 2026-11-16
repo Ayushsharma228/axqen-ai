@@ -11,11 +11,6 @@ export const PLAN_PRICES_INR: Record<Service, Record<Tier, number>> = {
 // TEMPORARY ₹1 plan for testing the live payment flow end to end. Remove TEST_TIER and its checks once testing is done.
 export const TEST_TIER = "TEST";
 export const TEST_PRICE_INR = 1;
-const TEST_EMAIL = /^axqenai(\+[^@]*)?@gmail\.com$/i;
-
-export function canUseTestPlan(email?: string | null) {
-  return !!email && TEST_EMAIL.test(email.trim());
-}
 
 /** Amount in paise for Razorpay. Unknown service/tier falls back to Dropshipping Starter. */
 export function planAmountPaise(service?: string | null, tier?: string | null): number {

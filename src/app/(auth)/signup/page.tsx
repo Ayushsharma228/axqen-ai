@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { signIn } from "next-auth/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  Eye, EyeOff, Check, ChevronRight, Store, Package,
+  Eye, EyeOff, Check, ChevronRight, ChevronLeft,
   Zap, TrendingUp, Crown, Mail, Loader2, RefreshCw, CreditCard,
 } from "lucide-react";
+import { PLAN_PRICES_INR, type Service, type Tier } from "@/lib/plan-pricing";
+import { PRICING } from "@/components/landing/content";
 
 declare global {
   interface Window {
@@ -19,52 +21,43 @@ const BLUE   = "#0048DF";
 const BLUEDIM = "rgba(0,72,223,0.08)";
 const BLUEBORDER = "rgba(0,72,223,0.25)";
 
-const PLANS = {
-  DROPSHIPPING: [
-    {
-      tier: "STARTER", label: "Starter", price: 10000,
-      features: ["Premium Shopify Store", "1-Year Domain", "Payment Gateway Setup", "Product Import (Up to 100)", "Winning Product Research", "Basic Training", "30 Days Support"],
-      icon: Zap,
-    },
-    {
-      tier: "GROWTH", label: "Growth", price: 25000, popular: true,
-      features: ["AI Dashboard", "Meta Pixel Setup", "Premium Theme", "Product Optimization", "Supplier Management", "NDR Management", "Free Shipping Setup", "Priority Support"],
-      icon: TrendingUp,
-    },
-    {
-      tier: "SCALE", label: "Scale", price: 50000,
-      features: ["Dedicated Account Manager", "Unlimited Product Import", "AI Commerce Dashboard", "Priority Operations", "Advanced Analytics", "Custom Branding", "Faster Turnaround"],
-      icon: Crown,
-    },
-  ],
+type PlanCard = { tier: Tier; label: string; price: number; lead?: string | null; features: string[]; popular?: boolean; icon: typeof Zap };
+
+const TIER_ICON: Record<Tier, typeof Zap> = { STARTER: Zap, GROWTH: TrendingUp, SCALE: Crown };
+
+// Dropshipping plans mirror the website pricing section; prices come from the shared price list.
+const PLANS: Record<Service, PlanCard[]> = {
+  DROPSHIPPING: PRICING.plans.map((p) => {
+    const tier = p.id.toUpperCase() as Tier;
+    return { tier, label: p.name, price: PLAN_PRICES_INR.DROPSHIPPING[tier], lead: p.lead, features: p.features, popular: p.popular, icon: TIER_ICON[tier] };
+  }),
   MARKETPLACE: [
     {
-      tier: "STARTER", label: "Starter", price: 5000,
+      tier: "STARTER", label: "Starter", price: PLAN_PRICES_INR.MARKETPLACE.STARTER,
       features: ["Amazon Management", "Flipkart Management", "Meesho Management", "Product Listing (Up to 100)", "Inventory Updates", "Order Monitoring", "Basic Reports"],
       icon: Zap,
     },
     {
-      tier: "GROWTH", label: "Growth", price: 10000, popular: true,
+      tier: "GROWTH", label: "Growth", price: PLAN_PRICES_INR.MARKETPLACE.GROWTH, popular: true,
       features: ["Catalog Optimization", "SEO Listings", "A+ Content Guidance", "Return Management", "NDR Management", "Priority Support", "Weekly Reports"],
       icon: TrendingUp,
     },
     {
-      tier: "SCALE", label: "Scale", price: 20000,
+      tier: "SCALE", label: "Scale", price: PLAN_PRICES_INR.MARKETPLACE.SCALE,
       features: ["Dedicated Account Manager", "Unlimited Listings", "Brand Registry Support", "Performance Dashboard", "Competitor Analysis", "Buy Box Monitoring"],
       icon: Crown,
     },
   ],
 };
 
-
-const STEPS = ["Account", "Verify Email", "Service", "Plan", "Payment"];
+const STEPS = ["Plan", "Account", "Verify Email", "Payment"];
 
 const inputCls = "w-full px-4 py-2.5 rounded-xl text-sm outline-none border focus:ring-2 focus:border-blue-500 transition-all";
 const inputStyle = { background: "#fff", borderColor: "#e5e7eb", color: "#0A0E1A" };
 
 function StepBar({ current }: { current: number }) {
   return (
-    <div className="flex items-center gap-0 mb-8">
+    <div className="flex items-center justify-center gap-0 mb-8">
       {STEPS.map((label, i) => {
         const done   = i < current;
         const active = i === current;
@@ -114,10 +107,17 @@ export default function SignupPage() {
   const [otpInput,    setOtpInput]    = useState("");
   const [otpLoading,  setOtpLoading]  = useState(false);
   const [resendTimer, setResendTimer] = useState(0);
+  const [emailVerified, setEmailVerified] = useState(false);
 
-  const [service,    setService]    = useState<"DROPSHIPPING" | "MARKETPLACE" | "">("");
-  const [planTier,   setPlanTier]   = useState("");
+  const [service,    setService]    = useState<Service>("DROPSHIPPING");
+  const [planTier,   setPlanTier]   = useState<Tier | "">("");
   const [rzpLoading, setRzpLoading] = useState(false);
+
+  // Preselect the plan picked on the website pricing section (/signup?plan=growth).
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search).get("plan")?.toUpperCase();
+    if (p === "STARTER" || p === "GROWTH" || p === "SCALE") setPlanTier(p);
+  }, []);
 
   async function handleCreateAccount(e: React.FormEvent) {
     e.preventDefault();
@@ -134,7 +134,7 @@ export default function SignupPage() {
     // Send email OTP and move to verification step
     await fetch("/api/auth/otp/send-email", { method: "POST" }).catch(() => {});
     startResendTimer();
-    setStep(1); setLoading(false);
+    setStep(2); setLoading(false);
   }
 
   function startResendTimer() {
@@ -161,14 +161,20 @@ export default function SignupPage() {
   async function handleVerifyEmail() {
     if (otpInput.trim().length !== 6) { setError("Enter the 6-digit code."); return; }
     setError(""); setOtpLoading(true);
-    const res = await fetch("/api/auth/otp/verify-email", {
-      method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ otp: otpInput.trim() }),
-    });
-    const d = await res.json().catch(() => ({})) as { error?: string };
-    if (!res.ok) { setError(d.error ?? "Verification failed."); setOtpLoading(false); return; }
-    setStep(2); setOtpLoading(false);
+    if (!emailVerified) {
+      const res = await fetch("/api/auth/otp/verify-email", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ otp: otpInput.trim() }),
+      });
+      const d = await res.json().catch(() => ({})) as { error?: string };
+      if (!res.ok) { setError(d.error ?? "Verification failed."); setOtpLoading(false); return; }
+      setEmailVerified(true);
+    }
+    // The plan was chosen before the account existed; save it now that there is a session.
+    const saved = (await saveStep({ step: "service", service })) && (await saveStep({ step: "plan", planTier }));
+    setOtpLoading(false);
+    if (saved) setStep(3);
   }
 
   async function saveStep(payload: Record<string, unknown>): Promise<boolean> {
@@ -186,18 +192,10 @@ export default function SignupPage() {
     }
   }
 
-  async function handleService() {
-    if (!service) return;
-    setError(""); setLoading(true);
-    const ok = await saveStep({ step: "service", service });
-    if (ok) { setStep(3); setLoading(false); }
-  }
-
-  async function handlePlan() {
+  function handlePlanContinue() {
     if (!planTier) return;
-    setError(""); setLoading(true);
-    const ok = await saveStep({ step: "plan", planTier });
-    if (ok) { setStep(4); setLoading(false); }
+    setError("");
+    setStep(1);
   }
 
   async function handleRazorpay() {
@@ -248,14 +246,14 @@ export default function SignupPage() {
     rzp.open();
   }
 
-  const selectedPlan = service ? PLANS[service].find((p) => p.tier === planTier) : null;
+  const selectedPlan = PLANS[service].find((p) => p.tier === planTier) ?? null;
   const planAmount   = selectedPlan?.price ?? 0;
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-12"
       style={{ background: "#f8f9fa" }}>
 
-      <div className="w-full max-w-lg">
+      <div className={`w-full ${step === 0 ? "max-w-5xl" : "max-w-lg"}`}>
         {/* Logo */}
         <div className="text-center mb-6">
           <a href="/" aria-label="AXQEN home" className="inline-flex items-center gap-2 mb-2 transition-opacity hover:opacity-80">
@@ -280,10 +278,109 @@ export default function SignupPage() {
             </div>
           )}
 
-          {/* ── Step 0: Account ── */}
+          {/* ── Step 0: Plan ── */}
           {step === 0 && (
+            <div>
+              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
+                <div>
+                  <h2 className="text-xl font-bold mb-1" style={{ color: "#0A0E1A" }}>Choose your plan</h2>
+                  <p className="text-sm" style={{ color: "#6B7280" }}>One-time setup fee · + 18% GST · No monthly subscription</p>
+                </div>
+                <div className="inline-flex p-1 rounded-xl self-start" style={{ background: "#f3f4f6" }} role="tablist" aria-label="Service">
+                  {(["DROPSHIPPING", "MARKETPLACE"] as const).map((s) => (
+                    <button
+                      key={s}
+                      role="tab"
+                      aria-selected={service === s}
+                      onClick={() => { setService(s); setPlanTier(""); }}
+                      className="px-4 py-2 rounded-lg text-sm font-semibold transition-all"
+                      style={service === s ? { background: "#fff", color: BLUE, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" } : { color: "#6B7280" }}
+                    >
+                      {s === "DROPSHIPPING" ? "Dropshipping" : "Marketplace"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                {PLANS[service].map((plan) => {
+                  const Icon   = plan.icon;
+                  const active = planTier === plan.tier;
+                  return (
+                    <button
+                      key={plan.tier}
+                      onClick={() => setPlanTier(plan.tier)}
+                      aria-pressed={active}
+                      className="relative flex flex-col p-5 rounded-2xl text-left transition-all hover:-translate-y-0.5"
+                      style={{ border: `2px solid ${active ? BLUE : "#e5e7eb"}`, background: active ? BLUEDIM : "#fff" }}
+                    >
+                      {plan.popular && (
+                        <span className="absolute -top-2.5 left-5 text-[11px] px-2.5 py-0.5 rounded-full font-semibold text-white" style={{ background: BLUE }}>
+                          Most popular
+                        </span>
+                      )}
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: active ? BLUE : "#f3f4f6" }}>
+                            <Icon className="w-4 h-4" style={{ color: active ? "white" : "#6B7280" }} />
+                          </div>
+                          <p className="font-bold" style={{ color: "#0A0E1A" }}>{plan.label}</p>
+                        </div>
+                        <span
+                          className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+                          style={{ border: `2px solid ${active ? BLUE : "#d1d5db"}`, background: active ? BLUE : "transparent" }}
+                        >
+                          {active && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
+                        </span>
+                      </div>
+                      <p className="mb-4">
+                        <span className="text-2xl font-black" style={{ color: "#0A0E1A" }}>₹{plan.price.toLocaleString("en-IN")}</span>
+                        <span className="text-xs ml-1.5" style={{ color: "#6B7280" }}>one-time + GST</span>
+                      </p>
+                      {plan.lead && <p className="text-xs font-semibold mb-2" style={{ color: "#374151" }}>{plan.lead}</p>}
+                      <ul className="space-y-1.5">
+                        {plan.features.map((f) => (
+                          <li key={f} className="flex items-start gap-2 text-[13px] leading-snug" style={{ color: "#374151" }}>
+                            <Check className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: BLUE }} strokeWidth={3} />
+                            {f}
+                          </li>
+                        ))}
+                      </ul>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                <p className="text-xs order-2 sm:order-1" style={{ color: "#6B7280" }}>
+                  Already have an account?{" "}
+                  <Link href="/login" style={{ color: BLUE }} className="font-semibold hover:opacity-80">Sign in</Link>
+                </p>
+                <button onClick={handlePlanContinue} disabled={!planTier}
+                  className="w-full sm:w-auto px-8 py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-40 text-white order-1 sm:order-2"
+                  style={{ background: BLUE }}>
+                  {selectedPlan ? <>Continue with {selectedPlan.label}<ChevronRight className="w-4 h-4" /></> : "Select a plan to continue"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Step 1: Account ── */}
+          {step === 1 && (
             <form onSubmit={handleCreateAccount} className="space-y-4">
-              <h2 className="text-xl font-bold mb-1" style={{ color: "#0A0E1A" }}>Create your account</h2>
+              <button type="button" onClick={() => setStep(0)}
+                className="flex items-center gap-1 text-xs font-semibold -mt-1 mb-2 hover:opacity-70" style={{ color: BLUE }}>
+                <ChevronLeft className="w-3.5 h-3.5" /> Change plan
+              </button>
+              {selectedPlan && (
+                <div className="flex items-center justify-between px-4 py-3 rounded-xl text-sm" style={{ background: BLUEDIM, border: `1px solid ${BLUEBORDER}` }}>
+                  <span style={{ color: "#374151" }}>
+                    <strong style={{ color: "#0A0E1A" }}>{selectedPlan.label}</strong> · {service === "MARKETPLACE" ? "Marketplace" : "Dropshipping"}
+                  </span>
+                  <span className="font-bold" style={{ color: BLUE }}>₹{selectedPlan.price.toLocaleString("en-IN")}</span>
+                </div>
+              )}
+              <h2 className="text-xl font-bold mb-1 pt-2" style={{ color: "#0A0E1A" }}>Create your account</h2>
               <p className="text-sm mb-5" style={{ color: "#6B7280" }}>Fill in your details to get started</p>
 
               <div>
@@ -336,15 +433,15 @@ export default function SignupPage() {
             </form>
           )}
 
-          {step > 0 && (
+          {step >= 2 && (
             <p className="text-center text-xs mt-5 pt-5" style={{ color: "#9CA3AF", borderTop: "1px solid #F3F4F6" }}>
               Already have an account?{" "}
               <Link href="/login" style={{ color: BLUE }} className="font-semibold hover:opacity-80">Sign in</Link>
             </p>
           )}
 
-          {/* ── Step 1: Verify Email ── */}
-          {step === 1 && (
+          {/* ── Step 2: Verify Email ── */}
+          {step === 2 && (
             <div className="space-y-5">
               <div className="flex flex-col items-center text-center gap-3 py-2">
                 <div className="w-14 h-14 rounded-2xl flex items-center justify-center"
@@ -395,128 +492,8 @@ export default function SignupPage() {
             </div>
           )}
 
-          {/* ── Step 2: Service ── */}
-          {step === 2 && (
-            <div>
-              <h2 className="text-xl font-bold mb-1" style={{ color: "#0A0E1A" }}>Choose your service</h2>
-              <p className="text-sm mb-6" style={{ color: "#6B7280" }}>Select how you want to sell your products</p>
-
-              <div className="space-y-4 mb-6">
-                {[
-                  {
-                    value: "DROPSHIPPING" as const,
-                    label: "Dropshipping",
-                    desc: "Push products to your Shopify store. We handle fulfilment end-to-end.",
-                    icon: Package,
-                    features: ["Shopify integration", "Auto order sync", "AWB generation & tracking"],
-                  },
-                  {
-                    value: "MARKETPLACE" as const,
-                    label: "Marketplace",
-                    desc: "List on Amazon, Flipkart, Meesho and more — our team manages listings.",
-                    icon: Store,
-                    features: ["Multi-platform listings", "Admin-managed listings", "Order sync from all platforms"],
-                  },
-                ].map((opt) => {
-                  const Icon   = opt.icon;
-                  const active = service === opt.value;
-                  return (
-                    <button key={opt.value} onClick={() => setService(opt.value)}
-                      className="w-full p-5 rounded-xl text-left transition-all"
-                      style={{
-                        border:     `2px solid ${active ? BLUE : "#e5e7eb"}`,
-                        background: active ? BLUEDIM : "#fafafa",
-                      }}>
-                      <div className="flex items-start gap-4">
-                        <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                          style={{ background: active ? BLUEDIM : "#f3f4f6" }}>
-                          <Icon className="w-5 h-5" style={{ color: active ? BLUE : "#9CA3AF" }} />
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <h3 className="font-semibold" style={{ color: "#0A0E1A" }}>{opt.label}</h3>
-                            {active && <Check className="w-4 h-4" style={{ color: BLUE }} />}
-                          </div>
-                          <p className="text-sm mt-0.5 mb-2" style={{ color: "#6B7280" }}>{opt.desc}</p>
-                          <div className="flex flex-wrap gap-2">
-                            {opt.features.map((f) => (
-                              <span key={f} className="text-xs px-2 py-0.5 rounded-full"
-                                style={{ background: "#f3f4f6", color: "#6B7280" }}>{f}</span>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-
-              <button onClick={handleService} disabled={!service || loading}
-                className="w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-40 text-white"
-                style={{ background: BLUE }}>
-                {loading ? "Saving..." : <><span>Continue</span><ChevronRight className="w-4 h-4" /></>}
-              </button>
-            </div>
-          )}
-
-          {/* ── Step 3: Plan ── */}
-          {step === 3 && service && (
-            <div>
-              <h2 className="text-xl font-bold mb-1" style={{ color: "#0A0E1A" }}>Select your plan</h2>
-              <p className="text-sm mb-6" style={{ color: "#6B7280" }}>
-                Choose a {service === "DROPSHIPPING" ? "Dropshipping" : "Marketplace"} plan
-              </p>
-
-              <div className="space-y-3 mb-6">
-                {PLANS[service].map((plan) => {
-                  const Icon   = plan.icon;
-                  const active = planTier === plan.tier;
-                  return (
-                    <button key={plan.tier} onClick={() => setPlanTier(plan.tier)}
-                      className="w-full p-4 rounded-xl text-left transition-all relative overflow-hidden"
-                      style={{
-                        border:     `2px solid ${active ? BLUE : "#e5e7eb"}`,
-                        background: active ? BLUEDIM : "#fafafa",
-                      }}>
-                      {"popular" in plan && plan.popular && (
-                        <span className="absolute top-3 right-3 text-xs px-2 py-0.5 rounded-full font-semibold text-white"
-                          style={{ background: BLUE }}>Popular</span>
-                      )}
-                      <div className="flex items-center gap-3 mb-2">
-                        <div className="w-8 h-8 rounded-lg flex items-center justify-center"
-                          style={{ background: active ? BLUE : "#f3f4f6" }}>
-                          <Icon className="w-4 h-4" style={{ color: active ? "white" : "#9CA3AF" }} />
-                        </div>
-                        <div>
-                          <p className="font-semibold text-sm" style={{ color: "#0A0E1A" }}>{plan.label}</p>
-                          <p className="font-bold" style={{ color: BLUE }}>
-                            ₹{plan.price.toLocaleString("en-IN")}
-                            <span className="text-xs font-normal ml-1" style={{ color: "#9CA3AF" }}>one-time</span>
-                          </p>
-                        </div>
-                        {active && <Check className="w-4 h-4 ml-auto flex-shrink-0" style={{ color: BLUE }} />}
-                      </div>
-                      <div className="flex flex-wrap gap-1.5 mt-2">
-                        {plan.features.map((f) => (
-                          <span key={f} className="text-xs px-2 py-0.5 rounded-full"
-                            style={{ background: "#f3f4f6", color: "#6B7280" }}>{f}</span>
-                        ))}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-
-              <button onClick={handlePlan} disabled={!planTier || loading}
-                className="w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-40 text-white"
-                style={{ background: BLUE }}>
-                {loading ? "Saving..." : <><span>Continue</span><ChevronRight className="w-4 h-4" /></>}
-              </button>
-            </div>
-          )}
-
-          {/* ── Step 4: Payment ── */}
-          {step === 4 && (
+          {/* ── Step 3: Payment ── */}
+          {step === 3 && (
             <div className="space-y-5">
               <h2 className="text-xl font-bold mb-1" style={{ color: "#0A0E1A" }}>Complete payment</h2>
               <p className="text-sm" style={{ color: "#6B7280" }}>

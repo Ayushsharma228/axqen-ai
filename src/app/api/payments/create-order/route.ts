@@ -3,12 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import Razorpay from "razorpay";
-
-// Paise = ₹ × 100
-const AMOUNTS: Record<string, Record<string, number>> = {
-  dropshipping: { starter: 1000000, growth: 2500000, scale: 5000000 },
-  marketplace:  { starter:  500000, growth: 1000000, scale: 2000000 },
-};
+import { planAmountPaise } from "@/lib/plan-pricing";
 
 export async function POST() {
   const session = await getServerSession(authOptions);
@@ -23,9 +18,7 @@ export async function POST() {
   if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
   if (user.paymentConfirmed) return NextResponse.json({ error: "Payment already completed" }, { status: 400 });
 
-  const service = (user.plan ?? "dropshipping").toLowerCase();
-  const tier    = (user.planTier ?? "starter").toLowerCase();
-  const amount  = AMOUNTS[service]?.[tier] ?? AMOUNTS.dropshipping.starter;
+  const amount = planAmountPaise(user.plan, user.planTier);
 
   if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
     return NextResponse.json({ error: "Razorpay keys not configured on server" }, { status: 503 });

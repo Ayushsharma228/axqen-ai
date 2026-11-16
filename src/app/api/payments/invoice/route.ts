@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import Razorpay from "razorpay";
+import { planAmountPaise } from "@/lib/plan-pricing";
 
 export async function POST() {
   const session = await getServerSession(authOptions);
@@ -22,15 +23,6 @@ export async function POST() {
   if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
   if (!user.paymentReference) return NextResponse.json({ error: "No payment on record" }, { status: 400 });
 
-  const PLAN_AMOUNTS: Record<string, Record<string, number>> = {
-    dropshipping: { starter: 1000000, growth: 2500000, scale: 5000000 },
-    marketplace:  { starter:  500000, growth: 1000000, scale: 2000000 },
-  };
-
-  const service = (user.plan ?? "dropshipping").toLowerCase();
-  const tier    = (user.planTier ?? "starter").toLowerCase();
-  const amount  = PLAN_AMOUNTS[service]?.[tier] ?? 1000000;
-
   if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
     return NextResponse.json({ error: "Razorpay not configured" }, { status: 503 });
   }
@@ -39,6 +31,16 @@ export async function POST() {
     key_id:     process.env.RAZORPAY_KEY_ID,
     key_secret: process.env.RAZORPAY_KEY_SECRET,
   });
+
+  // Invoice what the seller actually paid, so sellers who paid before a price change keep correct invoices.
+  let amount = planAmountPaise(user.plan, user.planTier);
+  try {
+    const payment = await razorpay.payments.fetch(user.paymentReference);
+    const paid = Number(payment.amount);
+    if (paid > 0) amount = paid;
+  } catch (err) {
+    console.error("Razorpay payment fetch failed, using plan price for invoice:", err);
+  }
 
   try {
     const invoice = await (razorpay as any).invoices.create({

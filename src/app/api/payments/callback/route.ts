@@ -57,5 +57,5 @@ export async function POST(req: NextRequest) {
     }).catch(() => {});
   }
 
-  return NextResponse.redirect(`${base}/onboarding?payment=success`);
+  return NextResponse.redirect(`${base}/welcome`);
 }

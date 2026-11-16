@@ -111,6 +111,19 @@ export const PRICING = {
   // TODO(product owner): legal/finance review of GST treatment, RTO benefit scope, exclusions, cancellation and refund terms.
 };
 
+// Single Marketplace plan shown on signup and on the post-payment confirmation.
+export const MARKETPLACE_PLAN = {
+  name: "Amazon Management",
+  billing: "for 3 months",
+  lead: "Everything covered for your Amazon store:",
+  features: [
+    "Amazon Account Management", "Unlimited Product Listings", "Catalog Optimization", "SEO Listings",
+    "A+ Content Guidance", "Inventory Updates", "Order Monitoring", "Return Management", "NDR Management",
+    "Brand Registry Support", "Buy Box Monitoring", "Competitor Analysis", "Performance Dashboard",
+    "Dedicated Account Manager", "Priority Support", "Weekly Reports",
+  ],
+};
+
 export const FAQS = [
   { q: "What is AXQEN AI?", a: "AXQEN AI is an AI Commerce Operating System designed to bring key e-commerce workflows such as store management, products, suppliers, orders, shipping, NDR/RTO and business visibility into one connected platform." },
   { q: "Who can use AXQEN AI?", a: "AXQEN is designed for people starting an e-commerce business, Shopify store owners, marketplace sellers, multi-channel sellers and growing D2C brands. Capabilities depend on the selected plan and supported integrations." },

@@ -9,7 +9,7 @@ import {
   Zap, TrendingUp, Crown, Mail, Loader2, RefreshCw, CreditCard,
 } from "lucide-react";
 import { PLAN_PRICES_INR, type Service, type Tier } from "@/lib/plan-pricing";
-import { PRICING } from "@/components/landing/content";
+import { PRICING, MARKETPLACE_PLAN } from "@/components/landing/content";
 
 declare global {
   interface Window {
@@ -33,14 +33,9 @@ const PLANS: Record<Service, PlanCard[]> = {
   }),
   MARKETPLACE: [
     {
-      tier: "STARTER", label: "Amazon Management", price: PLAN_PRICES_INR.MARKETPLACE.STARTER, billing: "for 3 months",
-      lead: "Everything covered for your Amazon store:",
-      features: [
-        "Amazon Account Management", "Unlimited Product Listings", "Catalog Optimization", "SEO Listings",
-        "A+ Content Guidance", "Inventory Updates", "Order Monitoring", "Return Management", "NDR Management",
-        "Brand Registry Support", "Buy Box Monitoring", "Competitor Analysis", "Performance Dashboard",
-        "Dedicated Account Manager", "Priority Support", "Weekly Reports",
-      ],
+      tier: "STARTER", label: MARKETPLACE_PLAN.name, price: PLAN_PRICES_INR.MARKETPLACE.STARTER, billing: MARKETPLACE_PLAN.billing,
+      lead: MARKETPLACE_PLAN.lead,
+      features: MARKETPLACE_PLAN.features,
       icon: Store,
     },
   ],
@@ -230,7 +225,7 @@ export default function SignupPage() {
           }),
         });
         if (verify.ok) {
-          router.push("/onboarding");
+          router.push("/welcome");
         } else {
           const d = await verify.json().catch(() => ({})) as { error?: string };
           setError(d.error ?? "Payment verification failed. Contact support.");

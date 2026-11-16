@@ -3,12 +3,18 @@
 import "dotenv/config";
 import { defineConfig } from "prisma/config";
 
+// Neon can take >5s (Prisma's default) to wake from idle, which failed builds with P1001; allow 15s unless already set.
+const rawUrl = process.env["DATABASE_URL"] ?? "";
+const url = rawUrl && !/[?&]connect_timeout=/.test(rawUrl)
+  ? `${rawUrl}${rawUrl.includes("?") ? "&" : "?"}connect_timeout=15`
+  : rawUrl;
+
 export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
     path: "prisma/migrations",
   },
   datasource: {
-    url: process.env["DATABASE_URL"] ?? "",
+    url,
   },
 });

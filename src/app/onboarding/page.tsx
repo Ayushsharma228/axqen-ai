@@ -311,18 +311,30 @@ export default function OnboardingPage() {
           <div className="space-y-5">
             <div>
               <h3 className="text-xl font-bold mb-1" style={{ color: "#0A0E1A" }}>
-                Welcome to AXQEN! 🎉
+                Welcome to AXQEN{sellerName ? `, ${sellerName.split(" ")[0]}` : ""}! 🎉
               </h3>
               <p className="text-sm" style={{ color: "#6B7280" }}>
-                You&apos;re just a few steps away from launching your dropshipping business.
+                You&apos;re just a few steps away from launching your {plan === "MARKETPLACE" ? "Amazon store" : "dropshipping business"}.
               </p>
             </div>
+            {planTier && (
+              <div className="rounded-xl px-4 py-3 flex items-center justify-between gap-3" style={{ background: "rgba(22,163,74,0.06)", border: "1px solid rgba(22,163,74,0.25)" }}>
+                <div className="flex items-center gap-2.5 text-sm" style={{ color: "#14532D" }}>
+                  <CheckCircle2 className="w-4 h-4 flex-shrink-0" style={{ color: "#16A34A" }} />
+                  <span>
+                    Payment confirmed ·{" "}
+                    <strong>{plan === "MARKETPLACE" ? "Amazon Management" : `${planTier.charAt(0)}${planTier.slice(1).toLowerCase()} plan`}</strong>
+                  </span>
+                </div>
+                <a href="/welcome" className="text-xs font-semibold underline underline-offset-2 flex-shrink-0" style={{ color: "#0048DF" }}>View receipt</a>
+              </div>
+            )}
             <div className="rounded-xl p-5 space-y-3" style={{ background: "#f8f9fa", border: "1px solid #e5e7eb" }}>
               <p className="text-xs font-bold uppercase tracking-wider" style={{ color: "#0048DF" }}>What you&apos;ll set up today</p>
               {[
                 "Your personal & business details",
                 "Identity verification (Aadhaar)",
-                "Platform agreement & payment",
+                "AXQEN Seller Agreement",
               ].map((item, i) => (
                 <div key={i} className="flex items-center gap-3 text-sm" style={{ color: "#374151" }}>
                   <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"

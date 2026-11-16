@@ -8,7 +8,7 @@ import {
   Eye, EyeOff, Check, ChevronRight, ChevronLeft, Store,
   Zap, TrendingUp, Crown, Mail, Loader2, RefreshCw, CreditCard,
 } from "lucide-react";
-import { PLAN_PRICES_INR, TEST_TIER, TEST_PRICE_INR, type Service, type Tier } from "@/lib/plan-pricing";
+import { PLAN_PRICES_INR, TEST_TIER, TEST_PRICE_INR, TEST_PLAN_ENABLED, type Service, type Tier } from "@/lib/plan-pricing";
 import { PRICING, MARKETPLACE_PLAN } from "@/components/landing/content";
 
 declare global {
@@ -115,7 +115,7 @@ export default function SignupPage() {
   useEffect(() => {
     const p = new URLSearchParams(window.location.search).get("plan")?.toUpperCase();
     if (p === "STARTER" || p === "GROWTH" || p === "SCALE") setPlanTier(p);
-    if (p === TEST_TIER) { setTestMode(true); setPlanTier(TEST_TIER); }
+    if (TEST_PLAN_ENABLED && p === TEST_TIER) { setTestMode(true); setPlanTier(TEST_TIER); }
   }, []);
 
   const visiblePlans = (s: Service) => (s === "DROPSHIPPING" && testMode ? [...PLANS[s], TEST_PLAN] : PLANS[s]);

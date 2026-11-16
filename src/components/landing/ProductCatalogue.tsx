@@ -177,25 +177,29 @@ export function ProductCatalogue() {
 
         <div className="flex flex-col lg:flex-row gap-8 lg:gap-12">
           {/* Fixed while the right column scrolls past */}
-          <nav className="hidden lg:block lg:w-72 flex-shrink-0" aria-label="Platform features">
+          <nav className="hidden lg:block lg:w-[300px] flex-shrink-0" aria-label="Platform features">
             <div className="sticky top-28 flex flex-col gap-1 p-2 rounded-2xl" style={{ background: C.card, border: `1px solid ${C.border}` }}>
-              {FEATURES.map((f, i) => (
-                <button
-                  key={f.id}
-                  id={`feature-nav-${f.id}`}
-                  onClick={() => jumpTo(i)}
-                  aria-current={active === i ? "true" : undefined}
-                  className="relative flex items-center gap-3 px-4 min-h-[46px] rounded-xl text-left text-[15px] transition-colors"
-                  style={{
-                    background: active === i ? C.action : "transparent",
-                    color: active === i ? "#fff" : C.body,
-                    fontWeight: active === i ? 600 : 500,
-                  }}
-                >
-                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 transition-colors" style={{ background: active === i ? C.lime : C.borderStrong }} />
-                  {f.title}
-                </button>
-              ))}
+              {FEATURES.map((f, i) => {
+                const on = active === i;
+                return (
+                  <button
+                    key={f.id}
+                    id={`feature-nav-${f.id}`}
+                    onClick={() => jumpTo(i)}
+                    aria-current={on ? "true" : undefined}
+                    className={`group flex items-center gap-3 w-full px-4 py-3 rounded-xl text-left text-[15px] leading-snug transition-[background-color,color,transform] duration-200 ${
+                      on
+                        ? "bg-[#155EEF] text-white font-semibold shadow-[0_8px_20px_-10px_rgba(21,94,239,0.7)]"
+                        : "text-[#55607A] font-medium hover:bg-white hover:text-[#155EEF] hover:translate-x-1"
+                    }`}
+                  >
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full flex-shrink-0 transition-colors ${on ? "bg-white" : "bg-[#C9D7F0] group-hover:bg-[#155EEF]"}`}
+                    />
+                    <span className="whitespace-nowrap">{f.title}</span>
+                  </button>
+                );
+              })}
             </div>
           </nav>
 

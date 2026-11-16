@@ -58,12 +58,19 @@ export function Navbar() {
           ))}
         </div>
 
-        <div className="hidden md:flex items-center gap-2.5">
-          <Link href="/login" className={`axq-btn ${solid ? "axq-btn-lilac" : "axq-btn-pill"} !min-h-[42px] !px-5 text-sm`}>
+        <div className="hidden md:flex items-center gap-6">
+          <Link
+            href="/login"
+            className={`py-2 text-[15px] font-medium transition-colors ${solid ? "text-[#55607A] hover:text-[#155EEF]" : "text-white/85 hover:text-white"}`}
+          >
             Login
           </Link>
-          <a href="/signup" className="axq-btn axq-btn-lime !min-h-[42px] !px-5 text-sm">
+          <a
+            href="/signup"
+            className={`group inline-flex items-center gap-1.5 py-2 text-[15px] font-semibold transition-colors ${solid ? "text-[#155EEF] hover:text-[#0B3DCE]" : "text-white hover:text-[#CFE3FF]"}`}
+          >
             Get Started
+            <span aria-hidden className="transition-transform duration-200 group-hover:translate-x-1">→</span>
           </a>
         </div>
 

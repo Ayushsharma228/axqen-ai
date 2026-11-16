@@ -1,5 +1,5 @@
 import { Check } from "lucide-react";
-import { C, WA_LINK } from "./constants";
+import { C } from "./constants";
 import { HERO } from "./content";
 
 function DashboardMockup() {
@@ -158,9 +158,6 @@ export function Hero() {
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-9">
             <a href="/signup" className="axq-btn axq-btn-lime w-full sm:w-auto !min-h-[52px] !px-8">
               {HERO.primaryCta} →
-            </a>
-            <a href={WA_LINK} target="_blank" rel="noopener noreferrer" className="axq-btn axq-btn-pill w-full sm:w-auto !min-h-[52px] !px-8">
-              {HERO.secondaryCta}
             </a>
           </div>
 

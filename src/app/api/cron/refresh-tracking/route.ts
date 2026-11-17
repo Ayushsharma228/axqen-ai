@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { recordCourierScans, scansFromDelhivery } from "@/lib/courier-scans";
+import { trackableWhere } from "@/lib/shipdaak-sync";
 
 const STATUS_RANK: Record<string, number> = {
   NEW: 0, PROCESSING: 1, SHIPPED: 2, IN_TRANSIT: 3,
@@ -48,10 +49,13 @@ export async function GET(req: NextRequest) {
   const orders = await prisma.order.findMany({
     where: {
       awbNumber: { not: null },
-      status: { notIn: ["DELIVERED", "CANCELLED", "RTO"] },
-      OR: [
-        { courier: null },
-        { courier: { contains: "delhivery", mode: "insensitive" } },
+      AND: [
+        // Active shipments + returns still on the way back (keeps the return journey's scans coming)
+        trackableWhere(),
+        { OR: [
+          { courier: null },
+          { courier: { contains: "delhivery", mode: "insensitive" } },
+        ] },
       ],
       // Shipdaak shipments (even with Delhivery as the courier) are tracked by /api/cron/track-shipdaak.
       NOT: { courier: { startsWith: "Shipdaak · " } },
@@ -84,6 +88,7 @@ export async function GET(req: NextRequest) {
       const returnedAt = (shipment as { ReturnedAt?: string | null }).ReturnedAt ?? null;
       const dbStatus = mapDelhiveryStatus(statusStr, returnedAt);
       if (!dbStatus) { skipped++; continue; }
+      if (dbStatus === order.status) { skipped++; continue; }
 
       const currentRank = STATUS_RANK[order.status] ?? 0;
       const newRank     = STATUS_RANK[dbStatus] ?? 0;

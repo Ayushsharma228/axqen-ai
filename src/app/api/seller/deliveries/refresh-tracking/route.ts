@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { recordCourierScans, scansFromDelhivery } from "@/lib/courier-scans";
+import { trackableWhere } from "@/lib/shipdaak-sync";
 
 // Higher number = further along. Never let a sync move an order backwards.
 const STATUS_RANK: Record<string, number> = {
@@ -39,7 +40,7 @@ export async function POST(req: NextRequest) {
     where: {
       sellerId: session.user.id,
       awbNumber: { not: null },
-      status: { notIn: ["DELIVERED", "CANCELLED", "RTO"] },
+      ...trackableWhere(),
       // Shipdaak shipments are synced from Shipdaak itself (see /api/seller/shipments/refresh).
       NOT: { courier: { startsWith: "Shipdaak · " } },
     },
@@ -77,6 +78,7 @@ export async function POST(req: NextRequest) {
 
       // Skip unknown statuses entirely
       if (!dbStatus) continue;
+      if (dbStatus === order.status) continue;
 
       // Never downgrade — only move forward in lifecycle (RTO/CANCELLED always allowed)
       const currentRank = STATUS_RANK[order.status] ?? 0;

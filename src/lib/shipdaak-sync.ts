@@ -13,6 +13,18 @@ const NOTIFY: Record<string, (ext: string, awb: string) => { title: string; msg:
   RTO:        (e, a) => ({ title: "Order RTO Initiated", msg: `Order ${e} is being returned. AWB: ${a}` }),
 };
 
+/** Active shipments plus returns still on their way back (RTO, not yet received, last 45 days). */
+export const trackableWhere = () => ({
+  OR: [
+    { status: { notIn: ["DELIVERED", "CANCELLED", "RTO", "HIDDEN"] as never[] } },
+    {
+      status: "RTO" as never,
+      updatedAt: { gte: new Date(Date.now() - 45 * 86400000) },
+      timeline: { none: { eventType: "RTO_RECEIVED" } },
+    },
+  ],
+});
+
 export const SHIPDAAK_SYNC_SELECT = {
   id: true, externalOrderId: true, status: true, awbNumber: true, sellerId: true, supplierId: true,
   ndrStatus: true, ndrAttempts: true, ndrCreatedAt: true, ndrActionTaken: true,
@@ -36,7 +48,17 @@ export async function syncShipdaakOrder(o: ShipdaakSyncOrder): Promise<boolean> 
   const latest = t.history?.[0];
   const data: Record<string, unknown> = {};
 
-  if (status && (status === "RTO" || (RANK[status] ?? -1) > (RANK[o.status] ?? -1))) data.status = status;
+  if (status && status !== o.status && (status === "RTO" || (RANK[status] ?? -1) > (RANK[o.status] ?? -1))) data.status = status;
+
+  // Remember Shipdaak's return AWB once the parcel is on its way back.
+  if (t.rtoAwb && (status === "RTO" || o.status === "RTO")) {
+    const known = await prisma.orderTimeline.findFirst({ where: { orderId: o.id, eventType: "RTO_INFO" }, select: { id: true } });
+    if (!known) {
+      await prisma.orderTimeline.create({
+        data: { orderId: o.id, actorRole: "SYSTEM", eventType: "RTO_INFO", event: "Return AWB assigned", details: t.rtoAwb, metadata: { rtoAwb: t.rtoAwb } },
+      }).catch(() => {});
+    }
+  }
 
   if (ndr) {
     const reason = latest?.message || t.status || "Delivery attempt failed";

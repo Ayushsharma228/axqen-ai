@@ -32,7 +32,7 @@ const SECTIONS: NavSection[] = [
   { title: "Shipping", items: [
     { label: "Shipments", href: "/seller/deliveries", icon: Truck },
     { label: "NDR",       href: "/seller/ndr",        icon: AlertTriangle },
-    { label: "RTO",       href: "/seller/rto",        icon: RotateCcw, soon: true },
+    { label: "RTO",       href: "/seller/rto",        icon: RotateCcw },
   ]},
   { title: "Products & Store", items: [
     { label: "Product Catalogue", href: "/seller/catalog",  icon: Package },

@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { SHIPDAAK_COURIER_PREFIX, shipdaakConfigured } from "@/lib/shipdaak";
-import { SHIPDAAK_SYNC_SELECT, syncShipdaakOrder } from "@/lib/shipdaak-sync";
+import { SHIPDAAK_SYNC_SELECT, syncShipdaakOrder, trackableWhere } from "@/lib/shipdaak-sync";
 
 const MAX_PER_RUN = 250;
 
@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
     where: {
       awbNumber: { not: null },
       courier:   { startsWith: SHIPDAAK_COURIER_PREFIX },
-      status:    { notIn: ["DELIVERED", "CANCELLED", "RTO", "HIDDEN"] as never[] },
+      ...trackableWhere(),
     },
     select: SHIPDAAK_SYNC_SELECT,
     orderBy: { dispatchedAt: "asc" },

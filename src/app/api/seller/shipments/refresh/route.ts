@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { SHIPDAAK_COURIER_PREFIX, shipdaakConfigured } from "@/lib/shipdaak";
-import { SHIPDAAK_SYNC_SELECT, syncShipdaakOrder } from "@/lib/shipdaak-sync";
+import { SHIPDAAK_SYNC_SELECT, syncShipdaakOrder, trackableWhere } from "@/lib/shipdaak-sync";
 
 // Seller "Refresh tracking" for Shipdaak shipments (Delhivery-direct ones use /api/seller/deliveries/refresh-tracking).
 export async function POST(req: NextRequest) {
@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
       sellerId:  session.user.id,
       awbNumber: { not: null },
       courier:   { startsWith: SHIPDAAK_COURIER_PREFIX },
-      status:    { notIn: ["DELIVERED", "CANCELLED", "RTO", "HIDDEN"] as never[] },
+      ...trackableWhere(),
     },
     select: SHIPDAAK_SYNC_SELECT,
     orderBy: { updatedAt: "asc" },

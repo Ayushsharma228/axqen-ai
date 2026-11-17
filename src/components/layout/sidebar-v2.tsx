@@ -13,7 +13,7 @@ import {
   Bot, Activity, MessageCircle, HelpCircle, ChevronLeft, ChevronRight,
   Network, Route, CreditCard, FileText, Cpu, BookOpen, Wrench,
   BarChart, Globe, Key, ScrollText, SlidersHorizontal,
-  PhoneCall,
+  PhoneCall, RotateCcw,
 } from "lucide-react";
 
 interface NavItem {
@@ -52,6 +52,7 @@ const adminNav: NavItem[] = [
   { label: "Order Calling",      href: "/admin/order-confirmation", icon: PhoneCall,      section: "OPERATIONS" },
   { label: "COD Verification",   href: "/admin/hillteck",          icon: MessageCircle },
   { label: "NDR Management",     href: "/admin/ndr",               icon: MonitorDot },
+  { label: "RTO Returns",        href: "/admin/rto",               icon: RotateCcw },
   { label: "Automation",         href: "/admin/automation",        icon: Zap },
   { label: "Tasks & Approvals",  href: "/admin/operations",        icon: ClipboardList },
 

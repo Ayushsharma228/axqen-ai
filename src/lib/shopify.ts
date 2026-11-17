@@ -15,8 +15,10 @@ export const PLATFORM_SCOPES = [
 
 export const ORDER_WEBHOOK_TOPICS = ["orders/create", "orders/updated", "orders/cancelled"];
 
+// Canonical public URL for Shopify. Must exactly match the app's allowed redirect URL, and webhooks
+// must not hit a redirect (axqen.app → www.axqen.app), so this is pinned rather than read from NEXTAUTH_URL.
 export function appUrl() {
-  return (process.env.NEXTAUTH_URL ?? "https://www.axqen.app").replace(/\/$/, "");
+  return (process.env.SHOPIFY_APP_URL ?? "https://www.axqen.app").replace(/\/$/, "");
 }
 
 /** "mystore", "mystore.myshopify.com" or "https://mystore.myshopify.com/" → "mystore.myshopify.com"; null if invalid. */

@@ -130,6 +130,11 @@ export default function SignupPage() {
     setStep(0);
   }
 
+  // Recommendation from the goal screen; only applies while the seller stays on the service that goal points to.
+  const goalDef = GOALS.find((g) => g.id === goal);
+  const recommendedTier = goalDef && goalDef.service === service ? goalDef.tier : null;
+  const recommendedPlan = recommendedTier ? PLANS[service].find((p) => p.tier === recommendedTier) ?? null : null;
+
   const visiblePlans = (s: Service) => (s === "DROPSHIPPING" && testMode ? [...PLANS[s], TEST_PLAN] : PLANS[s]);
 
   async function handleCreateAccount(e: React.FormEvent) {
@@ -294,8 +299,13 @@ export default function SignupPage() {
               )}
               <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
                 <div>
-                  <h2 className="text-xl font-bold mb-1" style={{ color: "#0A0E1A" }}>Choose your plan</h2>
+                  <h2 className="text-xl font-bold mb-1" style={{ color: "#0A0E1A" }}>
+                    {recommendedPlan ? "Your recommended plan" : "Choose your plan"}
+                  </h2>
                   <p className="text-sm" style={{ color: "#6B7280" }}>
+                    {recommendedPlan && service !== "MARKETPLACE"
+                      ? <>Based on your answer, we suggest <strong style={{ color: "#0A0E1A" }}>{recommendedPlan.label}</strong>. You can pick any plan. </>
+                      : null}
                     {service === "MARKETPLACE"
                       ? "Amazon management · 3-month plan · + 18% GST"
                       : "One-time setup fee · + 18% GST · No monthly subscription"}
@@ -329,7 +339,11 @@ export default function SignupPage() {
                       className="relative flex flex-col p-5 rounded-2xl text-left transition-all hover:-translate-y-0.5"
                       style={{ border: `2px solid ${active ? BLUE : "#e5e7eb"}`, background: active ? BLUEDIM : "#fff" }}
                     >
-                      {plan.popular && (
+                      {plan.tier === recommendedTier ? (
+                        <span className="absolute -top-2.5 left-5 inline-flex items-center gap-1 text-[11px] px-2.5 py-0.5 rounded-full font-semibold text-white" style={{ background: "#16A34A" }}>
+                          <Check className="w-3 h-3" strokeWidth={3} /> Recommended for you
+                        </span>
+                      ) : plan.popular && (
                         <span className="absolute -top-2.5 left-5 text-[11px] px-2.5 py-0.5 rounded-full font-semibold text-white" style={{ background: BLUE }}>
                           Most popular
                         </span>

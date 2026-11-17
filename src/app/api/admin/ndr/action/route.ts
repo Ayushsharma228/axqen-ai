@@ -2,82 +2,48 @@ import { NextRequest, NextResponse } from "next/server";
 import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { emailNdrActionedByAdmin } from "@/lib/email";
+import { takeNdrAction } from "@/lib/ndr";
 
+// POST { orderId, action: "REATTEMPT"|"RTO", reattemptDate?, name?, phone?, address?, city?, pincode?, state?, comments? | note? }
+// Sent to the shipment's courier (Shipdaak or Delhivery), then recorded on the order.
 export async function POST(req: NextRequest) {
   const session = await getRouteSession(req);
   if (!session || session.user.role !== "ADMIN") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { orderId, action, name, phone, address, city, pincode, state, comments } = await req.json();
+  const body = await req.json();
+  const { orderId, action } = body;
+  if (!orderId || !action) return NextResponse.json({ error: "orderId and action required" }, { status: 400 });
+  if (!["REATTEMPT", "RTO"].includes(action)) return NextResponse.json({ error: "action must be REATTEMPT or RTO" }, { status: 400 });
 
-  if (!orderId || !action) {
-    return NextResponse.json({ error: "orderId and action required" }, { status: 400 });
-  }
-  if (!["REATTEMPT", "RTO"].includes(action)) {
-    return NextResponse.json({ error: "action must be REATTEMPT or RTO" }, { status: 400 });
-  }
-
-  const token = process.env.DELHIVERY_API_TOKEN;
-  if (!token) return NextResponse.json({ error: "Delhivery not configured" }, { status: 500 });
-
-  const order = await prisma.order.findUnique({
-    where: { id: orderId },
-    include: { seller: { select: { name: true, email: true } } },
-  });
-
-  if (!order) return NextResponse.json({ error: "Order not found" }, { status: 404 });
-  if (!order.awbNumber) return NextResponse.json({ error: "No AWB on this order" }, { status: 400 });
-
-  // Submit to Delhivery
-  const payload = {
-    waybill:  order.awbNumber,
-    act:      action === "REATTEMPT" ? "Reattempt" : "RTO",
-    name:     name    || order.customerName || "",
-    phone:    phone   || "",
-    add:      address || "",
-    city:     city    || "",
-    pin:      pincode || "",
-    state:    state   || "",
-    country:  "India",
-    comments: comments || (action === "REATTEMPT" ? "Re-attempt delivery (admin)" : "Return to origin (admin)"),
-  };
-
-  const delhiveryRes = await fetch("https://track.delhivery.com/api/p/psc/ndr/wbns/", {
-    method:  "POST",
-    headers: { Authorization: `Token ${token}`, "Content-Type": "application/json" },
-    body:    JSON.stringify(payload),
-  });
-
-  if (!delhiveryRes.ok) {
-    const errText = await delhiveryRes.text();
-    return NextResponse.json({ error: `Delhivery error: ${errText}` }, { status: 400 });
-  }
-
-  // Update order in DB
-  const addr = order.customerAddress as Record<string, string> | null;
-  const updatedAddress = action === "REATTEMPT" && address
-    ? { ...addr, address, city, pincode, state, phone }
-    : addr;
-
-  await prisma.order.update({
-    where: { id: order.id },
-    data: {
-      ndrActionTaken: action,
-      customerAddress: updatedAddress ?? undefined,
-      ...(action === "RTO" ? { status: "RTO" as never } : {}),
-    },
-  });
-
-  // Notify seller (fire-and-forget)
-  if (order.seller?.email) {
-    emailNdrActionedByAdmin({
-      to:              order.seller.email,
-      name:            order.seller.name ?? "Seller",
-      externalOrderId: order.externalOrderId,
+  try {
+    const result = await takeNdrAction(orderId, {
       action,
-    }).catch(() => {});
-  }
+      reattemptDate: body.reattemptDate || undefined,
+      name: body.name || undefined,
+      phone: body.phone || undefined,
+      address: body.address || undefined,
+      city: body.city || undefined,
+      state: body.state || undefined,
+      pincode: body.pincode || undefined,
+      note: body.note ?? body.comments ?? undefined,
+    }, { id: session.user.id, label: session.user.name || "AXQEN team" });
 
-  return NextResponse.json({ ok: true });
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: { externalOrderId: true, seller: { select: { name: true, email: true } } },
+    });
+    if (order?.seller?.email) {
+      emailNdrActionedByAdmin({
+        to: order.seller.email,
+        name: order.seller.name ?? "Seller",
+        externalOrderId: order.externalOrderId,
+        action,
+      }).catch(() => {});
+    }
+    return NextResponse.json({ ok: true, message: result.message });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : "Could not send the NDR action" }, { status: 400 });
+  }
 }

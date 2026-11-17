@@ -141,8 +141,8 @@ export default function SellerDashboard() {
       icon: ClipboardCheck, tone: "#D97706", bg: "#FFFBEB", hint: "Call or WhatsApp before shipping",
     },
     {
-      label: "NDR — action needed", count: p?.ndr ?? 0, href: "/seller/ndr",
-      icon: AlertTriangle, tone: "#DC2626", bg: "#FEF2F2", hint: "Delivery failed, choose re-attempt or RTO",
+      label: "NDR open", count: p?.ndr ?? 0, href: "/seller/ndr",
+      icon: AlertTriangle, tone: "#DC2626", bg: "#FEF2F2", hint: "Failed deliveries the AXQEN team is handling",
     },
     {
       label: "Waiting to ship", count: (p?.confirmed ?? 0) + (p?.processing ?? 0), href: "/seller/orders?tab=CONFIRMED",

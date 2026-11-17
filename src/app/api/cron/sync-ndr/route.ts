@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
   const orders = await prisma.order.findMany({
     where: {
       awbNumber: { not: null },
-      ndrActionTaken: null,
+      // Actioned NDRs are re-checked too: a new failed attempt re-opens them.
       // Shipdaak shipments get NDR from /api/cron/track-shipdaak.
       NOT: { courier: { startsWith: "Shipdaak · " } },
       // Include RTO orders from last 30 days that never had NDR captured
@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
       ],
     },
     select: {
-      id: true, awbNumber: true, ndrAttempts: true, ndrCreatedAt: true,
+      id: true, awbNumber: true, ndrAttempts: true, ndrCreatedAt: true, ndrActionTaken: true,
       externalOrderId: true,
       seller: { select: { name: true, email: true } },
     },
@@ -89,6 +89,10 @@ export async function GET(req: NextRequest) {
     const { isNdr, udScans } = detectNdr(statusStr, statusType, scans);
     if (!isNdr) continue;
 
+    // Already actioned: only a new failed attempt (more UD scans than recorded) re-opens it.
+    const reopen = !!order.ndrActionTaken && udScans.length > (order.ndrAttempts ?? 0);
+    if (order.ndrActionTaken && !reopen) continue;
+
     // Use UD scan count as authoritative attempt count; never decrement
     const attemptCount = udScans.length > 0
       ? Math.max(udScans.length, order.ndrAttempts ?? 0)
@@ -114,6 +118,7 @@ export async function GET(req: NextRequest) {
         ndrReason,
         ndrAttempts: attemptCount,
         ndrCreatedAt: order.ndrCreatedAt ?? new Date(),
+        ...(reopen ? { ndrActionTaken: null } : {}),
       },
     });
 

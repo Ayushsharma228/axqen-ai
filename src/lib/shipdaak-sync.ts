@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { mapShipdaakStatus, trackShipment } from "@/lib/shipdaak";
 import { recordCourierScans, scansFromShipdaak } from "@/lib/courier-scans";
+import { failedAgainAfterAction } from "@/lib/ndr";
 
 const RANK: Record<string, number> = { NEW: 0, PROCESSING: 1, SHIPPED: 2, IN_TRANSIT: 3, DELIVERED: 4, RTO: 4, CANCELLED: 4 };
 
@@ -14,13 +15,13 @@ const NOTIFY: Record<string, (ext: string, awb: string) => { title: string; msg:
 
 export const SHIPDAAK_SYNC_SELECT = {
   id: true, externalOrderId: true, status: true, awbNumber: true, sellerId: true, supplierId: true,
-  ndrStatus: true, ndrAttempts: true, ndrCreatedAt: true,
+  ndrStatus: true, ndrAttempts: true, ndrCreatedAt: true, ndrActionTaken: true,
 } as const;
 
 export interface ShipdaakSyncOrder {
   id: string; externalOrderId: string; status: string; awbNumber: string | null;
   sellerId: string; supplierId: string | null;
-  ndrStatus: string | null; ndrAttempts: number | null; ndrCreatedAt: Date | null;
+  ndrStatus: string | null; ndrAttempts: number | null; ndrCreatedAt: Date | null; ndrActionTaken: string | null;
 }
 
 /** Returns true when the order's status/NDR changed. Throws if Shipdaak tracking fails. */
@@ -39,11 +40,18 @@ export async function syncShipdaakOrder(o: ShipdaakSyncOrder): Promise<boolean> 
 
   if (ndr) {
     const reason = latest?.message || t.status || "Delivery attempt failed";
-    const isNew = o.ndrStatus !== reason;
-    data.ndrStatus = reason;
-    data.ndrReason = reason;
-    if (isNew) data.ndrAttempts = (o.ndrAttempts ?? 0) + 1;
-    if (!o.ndrCreatedAt) data.ndrCreatedAt = new Date();
+    let isNew = o.ndrStatus !== reason;
+    // A failure after the team already acted (e.g. re-attempt failed again) re-opens the NDR.
+    if (o.ndrActionTaken && await failedAgainAfterAction(o.id, latest?.eventTime ? new Date(latest.eventTime).toISOString() : null)) {
+      data.ndrActionTaken = null;
+      isNew = true;
+    }
+    if (isNew || !o.ndrCreatedAt) {
+      data.ndrStatus = reason;
+      data.ndrReason = reason;
+      if (isNew) data.ndrAttempts = (o.ndrAttempts ?? 0) + 1;
+      if (!o.ndrCreatedAt) data.ndrCreatedAt = new Date();
+    }
   }
 
   if (!Object.keys(data).length) return false;

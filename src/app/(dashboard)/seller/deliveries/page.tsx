@@ -424,7 +424,8 @@ export default function ManageDeliveryPage() {
                           {awb ? (
                             <div className="flex flex-col gap-0.5">
                               <div className="flex items-center gap-1.5">
-                                <span className="font-mono text-[12px] font-semibold text-[#0C1220]">{awb}</span>
+                                <a href={`/seller/tracking/${encodeURIComponent(awb)}`} onClick={(e) => e.stopPropagation()}
+                                  className="font-mono text-[12px] font-semibold text-[#155EEF] hover:underline underline-offset-2">{awb}</a>
                                 <button onClick={() => copyAwb(awb, d.id)}
                                   className="opacity-50 hover:opacity-100 transition-opacity">
                                   {copiedId === d.id
@@ -433,12 +434,10 @@ export default function ManageDeliveryPage() {
                                 </button>
                               </div>
                               {carrier && <span className="text-[11px] text-[#9CA3AF]">{carrier}</span>}
-                              {d.trackingUrl && (
-                                <a href={d.trackingUrl} target="_blank" rel="noopener noreferrer"
-                                  className="flex items-center gap-0.5 text-[11px] font-semibold text-[#4361EE]">
-                                  Track <ExternalLink className="w-2.5 h-2.5" />
-                                </a>
-                              )}
+                              <a href={`/seller/tracking/${encodeURIComponent(awb)}`} onClick={(e) => e.stopPropagation()}
+                                className="flex items-center gap-0.5 text-[11px] font-semibold text-[#155EEF]">
+                                Track <Truck className="w-2.5 h-2.5" />
+                              </a>
                             </div>
                           ) : (
                             <span className="text-[11px] px-2.5 py-1 rounded-full font-semibold bg-[#FFF7ED] text-[#D97706]">
@@ -646,10 +645,10 @@ export default function ManageDeliveryPage() {
                                 </div>
 
                                 {/* Live tracking */}
-                                {awb && d.trackingUrl && (
-                                  <a href={d.trackingUrl} target="_blank" rel="noopener noreferrer"
-                                    className="w-full py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center gap-1.5 bg-[#EEF2FF] text-[#4361EE] border border-[#C7D2FE]">
-                                    <ExternalLink className="w-3.5 h-3.5" /> Open Live Tracking
+                                {awb && (
+                                  <a href={`/seller/tracking/${encodeURIComponent(awb)}`}
+                                    className="w-full py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center gap-1.5 bg-[#EEF2FF] text-[#155EEF] border border-[#C7D2FE]">
+                                    <Truck className="w-3.5 h-3.5" /> Open Live Tracking
                                   </a>
                                 )}
                               </div>

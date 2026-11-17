@@ -630,19 +630,18 @@ export default function SellerOrderDetailPage({ params }: { params: Promise<{ id
               <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--text-400)" }}>
                 Shipment
               </p>
-              <p className="text-sm font-bold font-mono" style={{ color: "var(--text-900)" }}>
+              <a href={`/seller/tracking/${encodeURIComponent(order.awbNumber)}`}
+                className="block text-sm font-bold font-mono hover:underline underline-offset-2" style={{ color: "#155EEF" }}>
                 {order.awbNumber}
-              </p>
+              </a>
               {order.courier && (
-                <p className="text-xs" style={{ color: "var(--text-400)" }}>{order.courier}</p>
+                <p className="text-xs" style={{ color: "var(--text-400)" }}>{order.courier.replace(/^Shipdaak · /, "")}</p>
               )}
-              {order.trackingUrl && (
-                <a href={order.trackingUrl} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 text-xs font-semibold mt-2"
-                  style={{ color: "#0369A1" }}>
-                  Track Shipment <ExternalLink className="w-3 h-3" />
-                </a>
-              )}
+              <a href={`/seller/tracking/${encodeURIComponent(order.awbNumber)}`}
+                className="flex items-center gap-1.5 text-xs font-semibold mt-2"
+                style={{ color: "#155EEF" }}>
+                Track Shipment <ExternalLink className="w-3 h-3" />
+              </a>
             </div>
           )}
 

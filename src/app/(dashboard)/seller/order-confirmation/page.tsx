@@ -1,557 +1,276 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import {
-  Phone, MessageSquare, CheckCircle, XCircle, Loader2,
-  RefreshCw, ShoppingCart, AlertTriangle, Clock, Info, Pencil, X,
-} from "lucide-react";
+import { RefreshCw, Loader2, PhoneCall, CheckCircle2, XCircle, Clock, Inbox, MapPin, StickyNote } from "lucide-react";
+import { MAX_ATTEMPTS, outcomeMeta, finalMeta, type ConfirmationState } from "@/lib/order-confirmation";
 
-// ── Types ──────────────────────────────────────────────────────────────────
-interface OrderItem { id: string; name: string; sku: string | null; quantity: number; price: number; }
-interface OrderAddress {
-  phone?: string; address?: string;
-  houseNo?: string; street?: string; landmark?: string;
-  city?: string; state?: string; pincode?: string;
-}
-interface Order {
+type View = "IN_PROGRESS" | "CONFIRMED" | "CANCELLED";
+interface Row {
   id: string;
   externalOrderId: string;
-  customerName: string | null;
-  customerAddress: OrderAddress | null;
-  totalAmount: number;
   paymentMode: string;
-  confirmationStatus: string;
-  confirmationChannel: string | null;
-  confirmationRequestedAt: string | null;
-  items: OrderItem[];
+  totalAmount: number;
+  customerName: string | null;
+  city: string | null;
+  state: string | null;
+  items: { name: string; quantity: number }[];
   createdAt: string;
+  view: View;
+  doneAt: string | null;
+  reason: string | null;
+  confirmation: ConfirmationState;
 }
-interface EditAddr {
-  houseNo: string; street: string; landmark: string;
-  city: string; state: string; pincode: string; phone: string;
-}
-interface RtoScore {
-  score: number;
-  level: string;
-  signals: string[];
-  breakdown?: { phone: number; address: number; pincode: number; history: number; velocity: number; payment: number };
+interface Stats {
+  received: number; inProgress: number; confirmed: number; cancelled: number;
+  avgHoursToConfirm: number | null; within24hPct: number | null;
+  reasons: { label: string; count: number }[];
 }
 
-// ── Config ─────────────────────────────────────────────────────────────────
-const RISK_CFG: Record<string, { color: string; label: string; dot: string }> = {
-  LOW:       { color: "#15803D", label: "Low Risk",       dot: "#86EFAC" },
-  MEDIUM:    { color: "#B45309", label: "Medium Risk",    dot: "#FCD34D" },
-  HIGH:      { color: "#C2410C", label: "High Risk",      dot: "#FB923C" },
-  VERY_HIGH: { color: "#DC2626", label: "Very High Risk", dot: "#FCA5A5" },
-};
-
-const CONF_LABEL: Record<string, string> = {
-  NOT_REQUIRED: "Not sent",
-  PENDING:      "Awaiting",
-  CONFIRMED:    "Confirmed ✓",
-  FAILED:       "Rejected ✗",
-  CANCELLED:    "No answer",
-};
+const RANGES = [
+  { key: "1",   label: "Today" },
+  { key: "7",   label: "7 days" },
+  { key: "30",  label: "30 days" },
+  { key: "all", label: "All time" },
+];
+const TABS: { key: View | "ALL"; label: string }[] = [
+  { key: "IN_PROGRESS", label: "In progress" },
+  { key: "CONFIRMED",   label: "Confirmed" },
+  { key: "CANCELLED",   label: "Cancelled" },
+  { key: "ALL",         label: "All" },
+];
 
 const inr = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
-
-// ── Shared UI primitives (match Dashboard style) ───────────────────────────
-function SubLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: "#9CA3AF" }}>
-      {children}
-    </p>
-  );
+const when = (iso: string) =>
+  new Date(iso).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+function duration(hours: number) {
+  if (hours < 1) return `${Math.max(1, Math.round(hours * 60))} min`;
+  if (hours < 48) return `${hours.toFixed(hours < 10 ? 1 : 0)} hrs`;
+  return `${Math.round(hours / 24)} days`;
 }
 
-// ── Page ───────────────────────────────────────────────────────────────────
 export default function OrderConfirmationPage() {
-  const [orders,      setOrders]      = useState<Order[]>([]);
-  const [rtoScores,   setRtoScores]   = useState<Record<string, RtoScore>>({});
-  const [loading,     setLoading]     = useState(true);
-  const [confirming,  setConfirming]  = useState<string | null>(null);
-  const [cancelling,  setCancelling]  = useState<string | null>(null);
-  const [whatsapping, setWhatsapping] = useState<string | null>(null);
-  const [calling,     setCalling]     = useState<string | null>(null);
-  const [actionMsg,   setActionMsg]   = useState<{ id: string; msg: string; ok: boolean } | null>(null);
-  const [hillteckOk,  setHillteckOk]  = useState(false);
-  const [editOrderId, setEditOrderId] = useState<string | null>(null);
-  const [editAddr,    setEditAddr]    = useState<EditAddr>({ houseNo: "", street: "", landmark: "", city: "", state: "", pincode: "", phone: "" });
-  const [editSaving,  setEditSaving]  = useState(false);
+  const [range, setRange] = useState("7");
+  const [tab, setTab] = useState<View | "ALL">("IN_PROGRESS");
+  const [rows, setRows] = useState<Row[]>([]);
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [key, setKey] = useState(0);
 
-  const flash = (id: string, msg: string, ok: boolean) => {
-    setActionMsg({ id, msg, ok });
-    setTimeout(() => setActionMsg(null), 3000);
-  };
-
-  const load = useCallback(async () => {
+  useEffect(() => {
     setLoading(true);
-    const [ordersRes, hillteckRes] = await Promise.all([
-      fetch("/api/seller/orders?status=NEW"),
-      fetch("/api/admin/hillteck").catch(() => null),
-    ]);
-    const data = await ordersRes.json();
-    const fetched: Order[] = data.orders || [];
-    setOrders(fetched);
+    fetch(`/api/seller/order-confirmation${range === "all" ? "" : `?days=${range}`}`)
+      .then(r => r.json())
+      .then(d => { setRows(d.orders ?? []); setStats(d.stats ?? null); })
+      .finally(() => setLoading(false));
+  }, [range, key]);
 
-    if (hillteckRes?.ok) {
-      const hd = await hillteckRes.json();
-      setHillteckOk(hd.connected && hd.enabled);
-    }
-    setLoading(false);
-
-    if (fetched.length > 0) {
-      fetch("/api/seller/orders/rto-score", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderIds: fetched.map(o => o.id) }),
-      })
-        .then(r => r.ok ? r.json() : null)
-        .then(d => { if (d?.scores) setRtoScores(d.scores); })
-        .catch(() => {});
-    }
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
-
-  async function handleConfirm(orderId: string) {
-    setConfirming(orderId);
-    const res = await fetch("/api/seller/orders/ship", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderId }),
-    });
-    if (res.ok) {
-      setOrders(prev => prev.filter(o => o.id !== orderId));
-      flash(orderId, "Order confirmed — sent to processing", true);
-    } else {
-      const d = await res.json();
-      flash(orderId, d.error || "Failed to confirm", false);
-    }
-    setConfirming(null);
-  }
-
-  async function handleCancel(orderId: string) {
-    setCancelling(orderId);
-    const res = await fetch("/api/seller/orders/cancel", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderId }),
-    });
-    if (res.ok) {
-      setOrders(prev => prev.filter(o => o.id !== orderId));
-      flash(orderId, "Order cancelled", true);
-    } else {
-      flash(orderId, "Failed to cancel", false);
-    }
-    setCancelling(null);
-  }
-
-  async function handleHillteck(orderId: string, mode: "whatsapp" | "call" = "whatsapp") {
-    const setSpinner = mode === "call" ? setCalling : setWhatsapping;
-    setSpinner(orderId);
-    const res = await fetch("/api/seller/orders/hillteck-verify", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderId, mode }),
-    });
-    const d = await res.json();
-    if (res.ok) {
-      flash(orderId, mode === "call" ? "AI call initiated" : "WhatsApp message sent", true);
-      setOrders(prev => prev.map(o => o.id === orderId
-        ? { ...o, confirmationStatus: "PENDING", confirmationChannel: mode === "call" ? "IVR" : "WHATSAPP" }
-        : o
-      ));
-    } else {
-      flash(orderId, d.error || "Request failed", false);
-    }
-    setSpinner(null);
-  }
-
-  function openEdit(order: Order) {
-    const a = order.customerAddress ?? {};
-    setEditAddr({
-      houseNo:  a.houseNo  ?? "",
-      street:   a.street   ?? "",
-      landmark: a.landmark ?? "",
-      city:     a.city     ?? "",
-      state:    a.state    ?? "",
-      pincode:  a.pincode  ?? "",
-      phone:    a.phone    ?? "",
-    });
-    setEditOrderId(order.id);
-  }
-
-  async function saveEdit(orderId: string) {
-    setEditSaving(true);
-    const res = await fetch(`/api/seller/orders/${orderId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(editAddr),
-    });
-    if (res.ok) {
-      const d = await res.json();
-      setOrders(prev => prev.map(o => o.id === orderId
-        ? { ...o, customerAddress: d.customerAddress }
-        : o
-      ));
-      fetch("/api/seller/orders/rto-score", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderIds: [orderId] }),
-      }).then(r => r.ok ? r.json() : null).then(d => {
-        if (d?.scores) setRtoScores(prev => ({ ...prev, ...d.scores }));
-      }).catch(() => {});
-      flash(orderId, "Address updated — RTO score recalculated", true);
-      setEditOrderId(null);
-    } else {
-      flash(orderId, "Failed to update address", false);
-    }
-    setEditSaving(false);
-  }
-
-  // Stats
-  const highRisk = orders.filter(o => ["HIGH", "VERY_HIGH"].includes(rtoScores[o.id]?.level ?? "")).length;
-  const medRisk  = orders.filter(o => rtoScores[o.id]?.level === "MEDIUM").length;
-  const pending  = orders.filter(o => o.confirmationStatus === "PENDING").length;
+  const shown = tab === "ALL" ? rows : rows.filter(r => r.view === tab);
+  const counts: Record<string, number> = {
+    IN_PROGRESS: stats?.inProgress ?? 0, CONFIRMED: stats?.confirmed ?? 0,
+    CANCELLED: stats?.cancelled ?? 0, ALL: stats?.received ?? 0,
+  };
+  const reasonTotal = (stats?.reasons ?? []).reduce((s, r) => s + r.count, 0);
 
   return (
     <div className="px-3 py-4 md:p-8 space-y-6" style={{ background: "#F7F8FC", minHeight: "100vh" }}>
 
-      {/* ── Header ── */}
+      {/* Header */}
       <div className="flex items-end justify-between gap-3 flex-wrap">
         <div>
-          <SubLabel>Review &amp; action</SubLabel>
-          <h1 className="text-[22px] font-black mt-0.5" style={{ color: "#0C1220" }}>
-            Order Confirmation
-          </h1>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-[#9CA3AF]">Orders</p>
+          <h1 className="text-[22px] font-black text-[#0C1220] mt-0.5">COD Confirmation</h1>
+          <p className="text-[12.5px] text-[#6B7280] mt-1 max-w-[60ch]">
+            The AXQEN team calls every customer before shipping. Here you can see each call, the outcome, and why an order was cancelled.
+          </p>
         </div>
-        <button
-          onClick={load}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12px] font-semibold bg-white border border-[#E8EDF6] transition-colors"
-          style={{ color: "#6B7280" }}
-        >
-          <RefreshCw className="w-3.5 h-3.5" /> Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center bg-white border border-[#E8EDF6] rounded-lg p-0.5">
+            {RANGES.map(r => (
+              <button
+                key={r.key}
+                onClick={() => setRange(r.key)}
+                className="px-3 py-1.5 text-[12px] font-semibold rounded-md transition-colors"
+                style={{ background: range === r.key ? "#4361EE" : "transparent", color: range === r.key ? "white" : "#6B7280" }}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => setKey(k => k + 1)}
+            aria-label="Refresh"
+            className="p-2 rounded-lg bg-white border border-[#E8EDF6] text-[#6B7280] hover:text-[#0C1220]"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
 
-      {/* ── Stat tiles (Dashboard StatTile style) ── */}
-      {!loading && orders.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {[
-            { label: "New Orders",   value: orders.length, icon: ShoppingCart, iconColor: "#4361EE" },
-            { label: "Pending Call", value: pending,       icon: Clock,        iconColor: "#C2410C" },
-            { label: "Medium Risk",  value: medRisk,       icon: AlertTriangle,iconColor: "#B45309" },
-            { label: "High Risk",    value: highRisk,      icon: XCircle,      iconColor: "#DC2626" },
-          ].map(({ label, value, icon: Icon, iconColor }) => (
-            <div
-              key={label}
-              className="rounded-lg border px-4 py-3.5"
-              style={{ background: "#FAFBFF", borderColor: "#E8EDF6" }}
-            >
+      {/* Stat tiles */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        {[
+          { label: "Orders received", value: String(stats?.received ?? 0), icon: Inbox, color: "#4361EE", sub: "In this period" },
+          { label: "Being called",    value: String(stats?.inProgress ?? 0), icon: PhoneCall, color: "#D97706", sub: "Confirmation in progress" },
+          { label: "Confirmed",       value: String(stats?.confirmed ?? 0), icon: CheckCircle2, color: "#059669",
+            sub: stats?.received ? `${Math.round(((stats.confirmed) / stats.received) * 100)}% of orders` : "—" },
+          { label: "Cancelled",       value: String(stats?.cancelled ?? 0), icon: XCircle, color: "#DC2626",
+            sub: stats?.received ? `${Math.round(((stats.cancelled) / stats.received) * 100)}% of orders` : "—" },
+          { label: "Avg time to confirm", value: stats?.avgHoursToConfirm != null ? duration(stats.avgHoursToConfirm) : "—", icon: Clock, color: "#0C1220",
+            sub: stats?.within24hPct != null ? `${stats.within24hPct}% within 24 hrs` : "No confirmed orders yet" },
+        ].map(t => {
+          const Icon = t.icon;
+          return (
+            <div key={t.label} className="bg-white rounded-xl border border-[#E8EDF6] px-4 py-3.5">
               <div className="flex items-center justify-between mb-2">
-                <SubLabel>{label}</SubLabel>
-                <Icon className="w-3.5 h-3.5" style={{ color: iconColor }} />
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-[#9CA3AF]">{t.label}</p>
+                <Icon className="w-3.5 h-3.5" style={{ color: t.color }} />
               </div>
-              <p className="text-[22px] font-black leading-none" style={{ color: "#0C1220" }}>{value}</p>
+              <p className="text-[22px] font-black leading-none tabular-nums text-[#0C1220]">{loading ? "…" : t.value}</p>
+              <p className="text-[11px] text-[#9CA3AF] mt-1.5">{t.sub}</p>
             </div>
+          );
+        })}
+      </div>
+
+      {/* Cancel reasons */}
+      {!loading && reasonTotal > 0 && (
+        <section className="bg-white rounded-xl border border-[#E8EDF6] p-5">
+          <h2 className="text-[14px] font-bold text-[#0C1220]">Why orders were cancelled</h2>
+          <p className="text-[12px] text-[#9CA3AF] mt-0.5 mb-4">Based on the last call outcome for each cancelled order</p>
+          <div className="space-y-2.5">
+            {stats!.reasons.map(r => {
+              const share = Math.round((r.count / reasonTotal) * 100);
+              return (
+                <div key={r.label} className="grid grid-cols-[minmax(0,160px)_1fr_auto] items-center gap-3">
+                  <span className="text-[12.5px] text-[#374151] truncate">{r.label}</span>
+                  <div className="h-2 rounded-full bg-[#F3F4F6] overflow-hidden">
+                    <div className="h-full rounded-full bg-[#EF4444]" style={{ width: `${share}%` }} />
+                  </div>
+                  <span className="text-[12px] font-semibold text-[#6B7280] tabular-nums w-[72px] text-right">{r.count} · {share}%</span>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* Orders */}
+      <section className="bg-white rounded-xl border border-[#E8EDF6] overflow-hidden">
+        <div className="flex items-center gap-1 px-3 pt-3 border-b border-[#F3F4F6] overflow-x-auto">
+          {TABS.map(t => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className="px-3 py-2.5 text-[13px] font-semibold whitespace-nowrap border-b-2 -mb-px transition-colors"
+              style={{ borderColor: tab === t.key ? "#4361EE" : "transparent", color: tab === t.key ? "#4361EE" : "#6B7280" }}
+            >
+              {t.label}
+              <span className="ml-1.5 text-[11px] font-bold px-1.5 py-0.5 rounded-full"
+                style={{ background: tab === t.key ? "#EEF2FF" : "#F3F4F6", color: tab === t.key ? "#4361EE" : "#9CA3AF" }}>
+                {counts[t.key]}
+              </span>
+            </button>
           ))}
         </div>
-      )}
 
-      {/* ── Orders section card ── */}
-      {loading ? (
-        <div className="flex flex-col items-center gap-3 py-16">
-          <Loader2 className="w-5 h-5 animate-spin" style={{ color: "#4361EE" }} />
-          <p className="text-[13px]" style={{ color: "#9CA3AF" }}>Loading orders…</p>
-        </div>
-      ) : orders.length === 0 ? (
-        <section className="bg-white rounded-xl overflow-hidden" style={{ border: "1px solid #E8EDF6" }}>
-          <div className="py-20 flex flex-col items-center gap-2">
-            <CheckCircle className="w-10 h-10" style={{ color: "#D1D5DB" }} />
-            <p className="text-[14px] font-semibold" style={{ color: "#6B7280" }}>All caught up</p>
-            <p className="text-[12px]" style={{ color: "#9CA3AF" }}>No new orders waiting for confirmation</p>
+        {loading ? (
+          <div className="flex items-center justify-center gap-2 py-16 text-[13px] text-[#9CA3AF]">
+            <Loader2 className="w-4 h-4 animate-spin text-[#4361EE]" /> Loading orders…
           </div>
-        </section>
-      ) : (
-        <section className="bg-white rounded-xl overflow-hidden" style={{ border: "1px solid #E8EDF6" }}>
-
-          {/* Card header */}
-          <div className="px-5 py-4 flex items-center gap-2" style={{ borderBottom: "1px solid #F3F4F6" }}>
-            <h2 className="text-[14px] font-bold" style={{ color: "#0C1220" }}>Pending Orders</h2>
-            <span
-              className="text-[11px] font-bold px-2 py-0.5 rounded-full"
-              style={{ background: "#EEF2FF", color: "#4361EE" }}
-            >
-              {orders.length}
-            </span>
-          </div>
-
-          {/* Order rows */}
-          {orders.map((order, idx) => {
-            const addr  = order.customerAddress;
-            const rto   = rtoScores[order.id];
-            const rCfg  = rto ? (RISK_CFG[rto.level] ?? RISK_CFG.LOW) : null;
-            const msg   = actionMsg?.id === order.id ? actionMsg : null;
-            const isEditing = editOrderId === order.id;
-
-            // Build address line: prefer structured fields, fall back to raw address1+address2
-            const addrLine = (() => {
-              if (!addr) return "";
-              const structured = [addr.houseNo, addr.street, addr.landmark].filter(Boolean);
-              const location   = [addr.city, addr.state, addr.pincode].filter(Boolean);
-              // If seller has filled in structured fields, use those + location
-              if (structured.length > 0) return [...structured, ...location].join(", ");
-              // Otherwise use raw address from Shopify (address1 + address2) + location
-              return [addr.address, ...location].filter(Boolean).join(", ");
-            })();
-
-            return (
-              <div
-                key={order.id}
-                style={idx < orders.length - 1 ? { borderBottom: "1px solid #F3F4F6" } : undefined}
-              >
-                <div className="px-5 py-4">
-
-                  {/* Line 1: order ID + payment badge + date — amount floats right */}
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <div className="flex items-center gap-2 flex-wrap min-w-0">
-                      <Link
-                        href={`/seller/orders/${order.id}`}
-                        className="text-[13px] font-bold hover:underline"
-                        style={{ color: "#4361EE" }}
-                      >
-                        #{order.externalOrderId}
-                      </Link>
-                      <span
-                        className="text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0"
-                        style={{
-                          background: order.paymentMode === "COD" ? "#FFF7ED" : "#EEF2FF",
-                          color: order.paymentMode === "COD" ? "#C2410C" : "#4361EE",
-                        }}
-                      >
-                        {order.paymentMode}
-                      </span>
-                      <span className="text-[11px] hidden sm:inline" style={{ color: "#9CA3AF" }}>
-                        {new Date(order.createdAt).toLocaleDateString("en-IN", {
-                          day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
-                        })}
-                      </span>
-                    </div>
-                    <p className="text-[16px] font-black flex-shrink-0" style={{ color: "#0C1220" }}>
-                      {inr(order.totalAmount)}
-                    </p>
-                  </div>
-
-                  {/* Date on mobile (second line) */}
-                  <p className="text-[11px] mb-1 sm:hidden" style={{ color: "#9CA3AF" }}>
-                    {new Date(order.createdAt).toLocaleDateString("en-IN", {
-                      day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
-                    })}
-                  </p>
-
-                  {/* Line 2: customer name */}
-                  <p className="text-[13px] font-semibold mb-1" style={{ color: "#0C1220" }}>
-                    {order.customerName || "Unknown customer"}
-                  </p>
-
-                  {/* Line 3: phone + edit toggle — RTO badge floats right */}
-                  <div className="flex items-center justify-between gap-2 flex-wrap mb-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {addr?.phone && (
-                        <span className="text-[12px]" style={{ color: "#6B7280" }}>{addr.phone}</span>
-                      )}
-                      <button
-                        onClick={() => isEditing ? setEditOrderId(null) : openEdit(order)}
-                        className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold transition-colors"
-                        style={{
-                          background: isEditing ? "#EEF2FF" : "#F9FAFB",
-                          color: isEditing ? "#4361EE" : "#9CA3AF",
-                          border: "1px solid",
-                          borderColor: isEditing ? "#C7D2FE" : "#E5E7EB",
-                        }}
-                      >
-                        {isEditing ? <X className="w-2.5 h-2.5" /> : <Pencil className="w-2.5 h-2.5" />}
-                        {isEditing ? "Cancel edit" : "Edit address"}
-                      </button>
-                    </div>
-                    {/* RTO badge inline — works on both mobile and desktop */}
-                    {rCfg && rto ? (
-                      <span
-                        className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded flex-shrink-0"
-                        style={{ background: "#F9FAFB", color: rCfg.color, border: "1px solid #E5E7EB" }}
-                        title={rto.signals.join(" · ")}
-                      >
-                        <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: rCfg.dot }} />
-                        {rCfg.label} · {rto.score}/100
-                      </span>
-                    ) : (
-                      <span
-                        className="text-[11px] px-2 py-0.5 rounded flex-shrink-0"
-                        style={{ background: "#F9FAFB", color: "#9CA3AF", border: "1px solid #E5E7EB" }}
-                      >
-                        Scoring…
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Address — shown whenever any address data exists */}
-                  {!isEditing && (
-                    <p className="text-[12px] break-words mb-0.5" style={{ color: addrLine ? "#374151" : "#9CA3AF" }}>
-                      {addrLine || "No address on file"}
-                    </p>
-                  )}
-
-                  {/* Items + conf status */}
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <p className="text-[11px]" style={{ color: "#6B7280" }}>
-                      {order.items.map(i => `${i.name} ×${i.quantity}`).join(" · ")}
-                    </p>
-                    <span className="text-[11px] flex-shrink-0" style={{ color: "#9CA3AF" }}>
-                      {CONF_LABEL[order.confirmationStatus] ?? "Not sent"}
-                    </span>
-                  </div>
-
-                  {/* ── Edit address form ── */}
-                  {isEditing && (
-                    <div
-                      className="mt-4 rounded-lg p-4 space-y-3"
-                      style={{ background: "#FAFBFF", border: "1px solid #E8EDF6" }}
-                    >
-                      <SubLabel>Edit Delivery Address</SubLabel>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                        {([
-                          { key: "houseNo",  label: "House / Flat No.",  placeholder: "e.g. H.No. 12, Flat 4B" },
-                          { key: "street",   label: "Street / Locality", placeholder: "e.g. MG Road, Sector 5" },
-                          { key: "landmark", label: "Nearby Landmark",   placeholder: "e.g. Near City Mall" },
-                          { key: "city",     label: "City",              placeholder: "e.g. Mumbai" },
-                          { key: "state",    label: "State",             placeholder: "e.g. Maharashtra" },
-                          { key: "pincode",  label: "Pincode",           placeholder: "6-digit pincode" },
-                          { key: "phone",    label: "Phone Number",      placeholder: "10-digit mobile" },
-                        ] as { key: keyof EditAddr; label: string; placeholder: string }[]).map(f => (
-                          <div key={f.key}>
-                            <label className="block text-[10px] font-semibold mb-0.5" style={{ color: "#6B7280" }}>
-                              {f.label}
-                            </label>
-                            <input
-                              type={f.key === "pincode" || f.key === "phone" ? "tel" : "text"}
-                              value={editAddr[f.key]}
-                              onChange={e => setEditAddr(prev => ({ ...prev, [f.key]: e.target.value }))}
-                              placeholder={f.placeholder}
-                              className="w-full px-3 py-2 rounded-lg text-[12px] border outline-none"
-                              style={{ background: "white", borderColor: "#E8EDF6", color: "#0C1220" }}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                      <div className="flex items-center gap-2 pt-1">
-                        <button
-                          onClick={() => saveEdit(order.id)}
-                          disabled={editSaving}
-                          className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-[12px] font-bold text-white disabled:opacity-50"
-                          style={{ background: "#4361EE" }}
-                        >
-                          {editSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle className="w-3.5 h-3.5" />}
-                          {editSaving ? "Saving…" : "Save & Rescore"}
-                        </button>
-                        <button
-                          onClick={() => setEditOrderId(null)}
-                          className="px-3 py-2 rounded-lg text-[12px] font-medium"
-                          style={{ background: "#F3F4F6", color: "#6B7280" }}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* RTO signals — only medium/high */}
-                  {rto && rto.signals.length > 0 && ["MEDIUM", "HIGH", "VERY_HIGH"].includes(rto.level) && (
-                    <div className="mt-2.5 flex flex-wrap gap-1.5">
-                      {rto.signals.map((s, i) => (
-                        <span
-                          key={i}
-                          className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px]"
-                          style={{ background: "#F9FAFB", color: "#6B7280", border: "1px solid #E5E7EB" }}
-                        >
-                          <Info className="w-2.5 h-2.5 flex-shrink-0" />
-                          {s}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Flash message */}
-                  {msg && (
-                    <div
-                      className="mt-3 px-3 py-2 rounded-lg text-[12px] font-medium"
-                      style={{ background: msg.ok ? "#F0FDF4" : "#FEF2F2", color: msg.ok ? "#15803D" : "#DC2626" }}
-                    >
-                      {msg.msg}
-                    </div>
-                  )}
-
-                  {/* ── Actions ── */}
-                  <div className="mt-3 grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
-                    {/* WhatsApp */}
-                    <button
-                      onClick={() => hillteckOk && handleHillteck(order.id, "whatsapp")}
-                      disabled={!hillteckOk || whatsapping === order.id || order.confirmationStatus === "CONFIRMED"}
-                      title={!hillteckOk ? "AiSensy not configured yet" : "Resend WhatsApp confirmation message"}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
-                      style={{ background: "#F0FDF4", color: "#15803D", border: "1px solid #BBF7D0" }}
-                    >
-                      {whatsapping === order.id
-                        ? <Loader2 className="w-3 h-3 animate-spin" />
-                        : <MessageSquare className="w-3 h-3" />}
-                      {hillteckOk ? "WhatsApp" : "WhatsApp (soon)"}
-                    </button>
-                    {/* AI Call */}
-                    <button
-                      onClick={() => hillteckOk && handleHillteck(order.id, "call")}
-                      disabled={!hillteckOk || calling === order.id || order.confirmationStatus === "CONFIRMED"}
-                      title={!hillteckOk ? "AiSensy not configured yet" : "Initiate AI call to customer"}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
-                      style={{ background: "#EEF2FF", color: "#4361EE", border: "1px solid #C7D2FE" }}
-                    >
-                      {calling === order.id
-                        ? <Loader2 className="w-3 h-3 animate-spin" />
-                        : <Phone className="w-3 h-3" />}
-                      {hillteckOk ? "AI Call" : "AI Call (soon)"}
-                    </button>
-
-                    <button
-                      onClick={() => handleConfirm(order.id)}
-                      disabled={confirming === order.id}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold text-white transition-opacity disabled:opacity-50"
-                      style={{ background: "#059669" }}
-                    >
-                      {confirming === order.id
-                        ? <Loader2 className="w-3 h-3 animate-spin" />
-                        : <CheckCircle className="w-3 h-3" />}
-                      Confirm
-                    </button>
-
-                    <button
-                      onClick={() => handleCancel(order.id)}
-                      disabled={cancelling === order.id}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-opacity disabled:opacity-50"
-                      style={{ background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA" }}
-                    >
-                      {cancelling === order.id
-                        ? <Loader2 className="w-3 h-3 animate-spin" />
-                        : <XCircle className="w-3 h-3" />}
-                      Cancel
-                    </button>
-                  </div>
-
-                </div>
-              </div>
-            );
-          })}
-        </section>
-      )}
+        ) : shown.length === 0 ? (
+          <p className="py-16 text-center text-[13px] text-[#9CA3AF]">
+            {tab === "IN_PROGRESS" ? "No orders waiting for a call right now." : "No orders here for this period."}
+          </p>
+        ) : (
+          <ul className="divide-y divide-[#F3F4F6]">
+            {shown.map(o => <OrderRow key={o.id} o={o} />)}
+          </ul>
+        )}
+      </section>
+      <div className="h-4" />
     </div>
+  );
+}
+
+function OrderRow({ o }: { o: Row }) {
+  const c = o.confirmation;
+  const prepaid = o.paymentMode?.toUpperCase() === "PREPAID";
+  const fm = finalMeta(c.final?.value);
+  const product = o.items.map(i => `${i.name}${i.quantity > 1 ? ` ×${i.quantity}` : ""}`).join(", ");
+  const tookHours = o.doneAt ? (new Date(o.doneAt).getTime() - new Date(o.createdAt).getTime()) / 3600000 : null;
+
+  const viewBadge = o.view === "CONFIRMED"
+    ? { text: fm?.label ?? "Confirmed", bg: "#ECFDF5", fg: "#047857" }
+    : o.view === "CANCELLED"
+      ? { text: "Cancelled", bg: "#FEF2F2", fg: "#B91C1C" }
+      : { text: fm?.key === "PENDING" ? "Pending" : "Being called", bg: "#FFFBEB", fg: "#B45309" };
+
+  return (
+    <li className="px-4 md:px-5 py-4 flex flex-col gap-3">
+      {/* Top line */}
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Link href={`/seller/orders/${o.id}`} className="text-[14px] font-bold text-[#0C1220] hover:text-[#4361EE]">
+              {o.externalOrderId}
+            </Link>
+            <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full"
+              style={{ background: prepaid ? "#EEF2FF" : "#FFF7ED", color: prepaid ? "#4361EE" : "#C2410C" }}>
+              {prepaid ? "PREPAID" : "COD"}
+            </span>
+            <span className="text-[13px] font-semibold text-[#374151] tabular-nums">{inr(o.totalAmount)}</span>
+          </div>
+          <p className="text-[12.5px] text-[#6B7280] mt-1 truncate">
+            {o.customerName ?? "Customer"}
+            {(o.city || o.state) && <> · <MapPin className="inline w-3 h-3 -mt-0.5" /> {[o.city, o.state].filter(Boolean).join(", ")}</>}
+          </p>
+          {product && <p className="text-[12px] text-[#9CA3AF] mt-0.5 truncate">{product}</p>}
+        </div>
+        <div className="text-right">
+          <span className="text-[11.5px] font-bold px-2.5 py-1 rounded-full" style={{ background: viewBadge.bg, color: viewBadge.fg }}>
+            {viewBadge.text}
+          </span>
+          <p className="text-[11px] text-[#9CA3AF] mt-1.5">Ordered {when(o.createdAt)}</p>
+          {tookHours != null && tookHours >= 0 && (
+            <p className="text-[11px] text-[#9CA3AF]">{o.view === "CANCELLED" ? "Cancelled" : "Confirmed"} in {duration(tookHours)}</p>
+          )}
+        </div>
+      </div>
+
+      {/* Calls */}
+      <div className="flex items-stretch gap-2 flex-wrap">
+        {Array.from({ length: MAX_ATTEMPTS }, (_, i) => {
+          const a = c.attempts[i];
+          const m = outcomeMeta(a?.outcome);
+          return (
+            <div key={i} className="flex items-center gap-2 rounded-lg border border-[#EEF1F8] bg-[#FAFBFF] px-2.5 py-1.5 min-w-[150px]">
+              <span className="text-[10.5px] font-bold text-[#9CA3AF] uppercase tracking-wide">Call {i + 1}</span>
+              {m ? (
+                <div className="flex flex-col">
+                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full w-fit" style={{ background: m.bg, color: m.fg }}>{m.label}</span>
+                  <span className="text-[10.5px] text-[#9CA3AF] mt-0.5">{when(a!.at)}</span>
+                </div>
+              ) : (
+                <span className="text-[11.5px] text-[#C4C9D4]">Not yet</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Notes */}
+      {(o.view === "CANCELLED" && o.reason) || c.remark || c.addressCorrectedAt ? (
+        <div className="rounded-lg px-3 py-2.5 text-[12.5px] flex gap-2"
+          style={{ background: o.view === "CANCELLED" ? "#FEF2F2" : "#F5F7FB", color: "#374151" }}>
+          <StickyNote className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: o.view === "CANCELLED" ? "#DC2626" : "#9CA3AF" }} />
+          <div className="space-y-0.5">
+            {o.view === "CANCELLED" && o.reason && <p><span className="font-semibold">Reason:</span> {o.reason}</p>}
+            {c.remark && <p><span className="font-semibold">Team note:</span> {c.remark.text}</p>}
+            {c.addressCorrectedAt && <p className="text-[#6B7280]">Address corrected on call · {when(c.addressCorrectedAt)}</p>}
+          </div>
+        </div>
+      ) : null}
+    </li>
   );
 }

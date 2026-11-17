@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import {
   LayoutDashboard, ShoppingCart, Wallet, MoreHorizontal,
   Package, Users, Megaphone, Brain, HelpCircle, X, LogOut,
-  ClipboardCheck, Truck, Bell, AlertTriangle, ListChecks, Store, ShoppingBag, UserCog,
+  ClipboardCheck, Truck, Bell, AlertTriangle, ListChecks, Store, ShoppingBag, UserCog, ChartColumn,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 
@@ -28,6 +28,7 @@ const MORE: { label: string; href: string; icon: React.ElementType; badge?: "not
   { label: "Shopify",          href: "/seller/shopify",            icon: Store },
   { label: "Amazon",           href: "/seller/amazon",             icon: ShoppingBag },
   { label: "Ad Spend",         href: "/seller/meta-ads",           icon: Megaphone },
+  { label: "Profit",           href: "/seller/analytics",          icon: ChartColumn },
   { label: "AI Intelligence",  href: "/seller/intelligence",       icon: Brain },
   { label: "Profile",          href: "/seller/profile",            icon: UserCog },
   { label: "Support",          href: "/seller/support",            icon: HelpCircle },

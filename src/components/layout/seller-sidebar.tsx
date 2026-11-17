@@ -45,7 +45,7 @@ const SECTIONS: NavSection[] = [
     { label: "Ad Spend",         href: "/seller/meta-ads", icon: Megaphone },
   ]},
   { title: "Insights", items: [
-    { label: "Profit & Analytics", href: "/seller/analytics",    icon: ChartColumn, soon: true },
+    { label: "Profit & Analytics", href: "/seller/analytics",    icon: ChartColumn },
     { label: "AI Intelligence",    href: "/seller/intelligence", icon: Brain },
   ]},
 ];

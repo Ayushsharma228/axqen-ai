@@ -1,12 +1,6 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
-import { createHmac } from "crypto";
 import { prisma } from "@/lib/prisma";
-
-function verifyWebhook(body: string, hmacHeader: string | null): boolean {
-  if (!hmacHeader) return false;
-  const digest = createHmac("sha256", process.env.SHOPIFY_API_SECRET!).update(body).digest("base64");
-  return digest === hmacHeader;
-}
+import { verifyWebhook } from "@/lib/shopify";
 
 export async function POST(req: NextRequest) {
   const body  = await req.text();
@@ -14,7 +8,7 @@ export async function POST(req: NextRequest) {
   const topic = req.headers.get("x-shopify-topic");
   const shop  = req.headers.get("x-shopify-shop-domain");
 
-  if (!verifyWebhook(body, hmac)) {
+  if (!(await verifyWebhook(body, hmac, shop))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

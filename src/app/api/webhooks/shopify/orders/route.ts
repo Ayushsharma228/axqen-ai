@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { rankSuppliers } from "@/lib/automation/supplier-assignment";
 import { getConfig, requestCODVerification } from "@/lib/hillteck";
-import crypto from "crypto";
+import { verifyWebhook } from "@/lib/shopify";
 import { PaymentMode } from "@prisma/client";
 
 // Structured event type constants shared across webhook + sync
@@ -17,18 +17,6 @@ export const ORDER_EVENTS = {
   PAYMENT_MODE_SET:        "PAYMENT_MODE_SET",
 } as const;
 
-// Fail CLOSED — reject all requests when secret is not configured.
-// Never fall back to accepting unauthenticated webhooks.
-function verifyHmac(body: string, hmacHeader: string | null): boolean {
-  const secret = process.env.SHOPIFY_WEBHOOK_SECRET;
-  if (!secret) {
-    console.error("[Shopify Webhook] SHOPIFY_WEBHOOK_SECRET is not set — rejecting request. Configure this env var in Vercel.");
-    return false;
-  }
-  if (!hmacHeader) return false;
-  const digest = crypto.createHmac("sha256", secret).update(body, "utf8").digest("base64");
-  return crypto.timingSafeEqual(Buffer.from(digest), Buffer.from(hmacHeader));
-}
 
 function generatePoNumber(): string {
   const now = new Date();
@@ -100,12 +88,13 @@ export async function POST(req: NextRequest) {
   const shopDomain = req.headers.get("x-shopify-shop-domain");
   const topic = req.headers.get("x-shopify-topic");
 
-  // Authenticate first — fail closed
-  if (!verifyHmac(rawBody, hmac)) {
+  // Authenticate first — fail closed. Accepts the platform app secret or the store's own custom-app secret.
+  if (!(await verifyWebhook(rawBody, hmac, shopDomain))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const HANDLED_TOPICS = ["orders/created", "orders/paid", "orders/updated", "orders/cancelled", "orders/fulfilled"];
+  // "orders/created" kept for safety; Shopify's actual topic name is "orders/create".
+  const HANDLED_TOPICS = ["orders/create", "orders/created", "orders/paid", "orders/updated", "orders/cancelled", "orders/fulfilled"];
   if (!topic || !HANDLED_TOPICS.includes(topic)) {
     // Acknowledge unhandled topics so Shopify doesn't retry
     return NextResponse.json({ ok: true });
@@ -379,6 +368,7 @@ async function handleExistingOrder(
   });
 
   const eventTypeMap: Record<string, string> = {
+    "orders/create":    ORDER_EVENTS.ORDER_CREATED,
     "orders/created":   ORDER_EVENTS.ORDER_CREATED,
     "orders/paid":      ORDER_EVENTS.ORDER_PAID,
     "orders/updated":   ORDER_EVENTS.ORDER_UPDATED,

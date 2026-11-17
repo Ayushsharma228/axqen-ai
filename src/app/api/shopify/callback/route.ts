@@ -1,63 +1,63 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createHmac } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { encrypt } from "@/lib/encrypt";
+import { getRouteSession } from "@/lib/session";
+import { SHOPIFY_API_VERSION, appUrl, normalizeShopDomain, registerWebhooks, verifyOAuthHmac, verifyState } from "@/lib/shopify";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const code  = searchParams.get("code");
-  const shop  = searchParams.get("shop");
-  const state = searchParams.get("state");
-  const hmac  = searchParams.get("hmac");
+  const shop  = normalizeShopDomain(searchParams.get("shop"));
+  const fail  = (reason: string) => NextResponse.redirect(`${appUrl()}/seller/shopify?error=${reason}`);
 
-  const fail = (r: string) =>
-    NextResponse.redirect(`${process.env.NEXTAUTH_URL}/seller/profile?shopify=${r}`);
+  if (!code || !shop) return fail("denied");
 
-  if (!code || !shop || !state || !hmac) return fail("denied");
+  // The state was signed when this seller started the connection; it must match the logged-in seller and shop.
+  const state = verifyState(searchParams.get("state"));
+  if (!state || state.shop !== shop) return fail("expired");
+  const session = await getRouteSession(req);
+  if (!session || session.user.id !== state.sellerId) return fail("session");
+  const sellerId = state.sellerId;
 
-  // Parse state to get sellerId (needed to look up stored credentials)
-  let sellerId: string;
-  try {
-    const decoded = JSON.parse(Buffer.from(state, "base64").toString("utf8"));
-    sellerId = decoded.sellerId;
-    if (!sellerId) throw new Error();
-  } catch {
-    return fail("error");
+  // Platform connections use the AXQEN AI app; "custom" is the older per-seller app flow.
+  let clientId = process.env.SHOPIFY_API_KEY ?? "";
+  let clientSecret = process.env.SHOPIFY_API_SECRET ?? "";
+  if (state.mode === "custom") {
+    const stored = await prisma.shopifyStore.findUnique({ where: { sellerId }, select: { clientId: true, clientSecret: true } });
+    if (!stored?.clientId || !stored.clientSecret) return fail("error");
+    clientId = stored.clientId;
+    clientSecret = stored.clientSecret;
   }
+  if (!clientId || !clientSecret) return fail("not_configured");
+  if (!verifyOAuthHmac(searchParams, clientSecret)) return fail("error");
 
-  // Look up seller's stored credentials (may have their own clientId/Secret)
-  const stored = await prisma.shopifyStore.findUnique({ where: { sellerId } });
-  const clientId     = stored?.clientId     || process.env.SHOPIFY_API_KEY!;
-  const clientSecret = stored?.clientSecret || process.env.SHOPIFY_API_SECRET!;
-
-  // Verify HMAC using the correct secret
-  const params: Record<string, string> = {};
-  searchParams.forEach((v, k) => { if (k !== "hmac") params[k] = v; });
-  const message = Object.keys(params).sort().map(k => `${k}=${params[k]}`).join("&");
-  const digest  = createHmac("sha256", clientSecret).update(message).digest("hex");
-  if (digest !== hmac) return fail("error");
-
-  // Exchange code for access token
   const tokenRes = await fetch(`https://${shop}/admin/oauth/access_token`, {
     method:  "POST",
     headers: { "Content-Type": "application/json" },
     body:    JSON.stringify({ client_id: clientId, client_secret: clientSecret, code }),
   });
-  const tokenData = await tokenRes.json() as { access_token?: string };
+  const tokenData = (await tokenRes.json().catch(() => ({}))) as { access_token?: string };
   if (!tokenData.access_token) return fail("error");
+  const accessToken = tokenData.access_token;
 
-  // Fetch shop name
-  const shopRes  = await fetch(`https://${shop}/admin/api/2025-01/shop.json`, {
-    headers: { "X-Shopify-Access-Token": tokenData.access_token },
+  // One store can belong to only one seller.
+  const owner = await prisma.shopifyStore.findFirst({ where: { storeUrl: shop }, select: { sellerId: true } });
+  if (owner && owner.sellerId !== sellerId) return fail("store_in_use");
+
+  const shopRes = await fetch(`https://${shop}/admin/api/${SHOPIFY_API_VERSION}/shop.json`, {
+    headers: { "X-Shopify-Access-Token": accessToken },
   });
-  const shopData = await shopRes.json() as { shop?: { name?: string } };
+  const shopData = (await shopRes.json().catch(() => ({}))) as { shop?: { name?: string } };
   const storeName = shopData.shop?.name ?? shop;
 
+  const creds = state.mode === "platform" ? { clientId: null, clientSecret: null } : { clientId, clientSecret };
   await prisma.shopifyStore.upsert({
     where:  { sellerId },
-    create: { sellerId, storeName, storeUrl: shop, accessToken: encrypt(tokenData.access_token), clientId, clientSecret },
-    update: { storeName, storeUrl: shop, accessToken: encrypt(tokenData.access_token) },
+    create: { sellerId, storeName, storeUrl: shop, accessToken: encrypt(accessToken), ...creds },
+    update: { storeName, storeUrl: shop, accessToken: encrypt(accessToken), lastSyncError: null, ...creds },
   });
 
-  return NextResponse.redirect(`${process.env.NEXTAUTH_URL}/seller/profile?shopify=connected`);
+  await registerWebhooks(shop, accessToken).catch((err) => console.error("[shopify/callback] webhook registration failed:", err));
+
+  return NextResponse.redirect(`${appUrl()}/seller/shopify?connected=1`);
 }

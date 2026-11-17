@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
+import { appUrl, normalizeShopDomain, signState } from "@/lib/shopify";
 
 export async function POST(req: NextRequest) {
   const session = await getRouteSession(req);
@@ -13,8 +14,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Store URL, Client ID, and Client Secret are required" }, { status: 400 });
   }
 
-  const shopDomain = storeUrl.trim().replace("https://", "").replace(/\/$/, "");
-  const domain = shopDomain.includes(".myshopify.com") ? shopDomain : `${shopDomain}.myshopify.com`;
+  const domain = normalizeShopDomain(storeUrl);
+  if (!domain) return NextResponse.json({ error: "Enter a valid store name, e.g. mystore" }, { status: 400 });
 
   // Store credentials so callback can use them
   await prisma.shopifyStore.upsert({
@@ -24,10 +25,10 @@ export async function POST(req: NextRequest) {
   });
 
   const scopes = "read_products,write_products,read_orders,write_orders,read_inventory,write_inventory";
-  const redirectUri = `${process.env.NEXTAUTH_URL}/api/shopify/callback`;
-  const state = Buffer.from(JSON.stringify({ sellerId: session.user.id })).toString("base64");
+  const redirectUri = `${appUrl()}/api/shopify/callback`;
+  const state = signState({ sellerId: session.user.id, shop: domain, mode: "custom" });
 
-  const authUrl = `https://${domain}/admin/oauth/authorize?client_id=${clientId}&scope=${scopes}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
+  const authUrl = `https://${domain}/admin/oauth/authorize?client_id=${encodeURIComponent(clientId)}&scope=${scopes}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${encodeURIComponent(state)}`;
 
   return NextResponse.json({ authUrl });
 }

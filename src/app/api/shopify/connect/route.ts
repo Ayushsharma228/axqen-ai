@@ -1,26 +1,26 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { getRouteSession } from "@/lib/session";
+import { PLATFORM_SCOPES, appUrl, normalizeShopDomain, signState } from "@/lib/shopify";
 
+// One-click connect through the AXQEN AI platform app: the seller only enters their store name.
 export async function GET(req: NextRequest) {
   const session = await getRouteSession(req);
   if (!session || session.user.role !== "SELLER") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.redirect(`${appUrl()}/login`);
   }
 
-  const { searchParams } = new URL(req.url);
-  const shop = searchParams.get("shop")?.trim().toLowerCase();
+  const shop = normalizeShopDomain(new URL(req.url).searchParams.get("shop"));
+  if (!shop) return NextResponse.redirect(`${appUrl()}/seller/shopify?error=invalid_store`);
 
-  if (!shop) {
-    return NextResponse.json({ error: "shop param required" }, { status: 400 });
-  }
+  const apiKey = process.env.SHOPIFY_API_KEY;
+  if (!apiKey) return NextResponse.redirect(`${appUrl()}/seller/shopify?error=not_configured`);
 
-  const shopDomain = shop.includes(".myshopify.com") ? shop : `${shop}.myshopify.com`;
-  const apiKey = process.env.SHOPIFY_API_KEY!;
-  const redirectUri = `${process.env.NEXTAUTH_URL}/api/shopify/callback`;
-  const scopes = "read_orders,read_products,read_customers,read_inventory";
-  const state = Buffer.from(JSON.stringify({ sellerId: session.user.id, shop: shopDomain })).toString("base64");
+  const state = signState({ sellerId: session.user.id, shop, mode: "platform" });
+  const url = new URL(`https://${shop}/admin/oauth/authorize`);
+  url.searchParams.set("client_id", apiKey);
+  url.searchParams.set("scope", PLATFORM_SCOPES);
+  url.searchParams.set("redirect_uri", `${appUrl()}/api/shopify/callback`);
+  url.searchParams.set("state", state);
 
-  const url = `https://${shopDomain}/admin/oauth/authorize?client_id=${apiKey}&scope=${scopes}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
-
-  return NextResponse.redirect(url);
+  return NextResponse.redirect(url.toString());
 }

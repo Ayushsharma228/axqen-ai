@@ -8,13 +8,14 @@ import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, ShoppingCart, Truck, Package,
   Users, Megaphone, Wallet, Brain, HelpCircle, LogOut,
-  ClipboardCheck,
+  ClipboardCheck, Store,
 } from "lucide-react";
 
 interface NavItem { label: string; href: string; icon: React.ElementType; exact?: boolean; isNew?: boolean }
 
 const NAV: NavItem[] = [
   { label: "Dashboard",           href: "/seller",                      icon: LayoutDashboard, exact: true },
+  { label: "Shopify Store",       href: "/seller/shopify",              icon: Store },
   { label: "Order Confirmation",  href: "/seller/order-confirmation",   icon: ClipboardCheck, isNew: true },
   { label: "Orders",              href: "/seller/orders",               icon: ShoppingCart },
   { label: "Fulfilment",          href: "/seller/deliveries",           icon: Truck },

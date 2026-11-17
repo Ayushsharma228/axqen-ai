@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { SHIPDAAK_COURIER_PREFIX, shipdaakConfigured, trackShipment } from "@/lib/shipdaak";
+import { loadCourierScans, recordCourierScans, scansFromShipdaak } from "@/lib/courier-scans";
 
 type Event = { status: string; message: string; location: string; time: string };
 
@@ -22,7 +23,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ awb:
       id: true, externalOrderId: true, status: true, createdAt: true, dispatchedAt: true,
       awbNumber: true, courier: true, trackingUrl: true, paymentMode: true, totalAmount: true,
       customerName: true, customerAddress: true, ndrStatus: true, ndrReason: true,
-      timeline: { orderBy: { createdAt: "desc" }, select: { event: true, details: true, createdAt: true } },
+      timeline: { orderBy: { createdAt: "desc" }, select: { event: true, eventType: true, details: true, createdAt: true } },
     },
   });
   if (!order) return NextResponse.json({ error: "Shipment not found" }, { status: 404 });
@@ -43,6 +44,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ awb:
         courier = t.courierName || courier;
         edd = (t as { edd?: string | null }).edd ?? null;
         deliveredDate = t.deliveredDate ?? null;
+        recordCourierScans(order.id, scansFromShipdaak(t), "shipdaak").catch(() => 0);
         events = (t.history ?? []).map((h) => ({
           status:   prettify(h.message || h.statusCode),
           message:  h.message && h.message !== h.statusCode ? h.message : "",
@@ -55,9 +57,20 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ awb:
     }
   }
 
+  // Saved courier scans (Delhivery and earlier Shipdaak polls) — full location history.
+  if (!events.length) {
+    const saved = (await loadCourierScans([order.id])).get(order.id) ?? [];
+    events = saved.map((sc) => ({
+      status: prettify(sc.status),
+      message: sc.message,
+      location: sc.location,
+      time: sc.time,
+    }));
+  }
+
   // Fallback: AXQEN's own order timeline (manual AWBs, other couriers, or when live tracking fails).
   if (!events.length) {
-    events = order.timeline.map((e) => ({
+    events = order.timeline.filter((e) => e.eventType !== "COURIER_SCAN").map((e) => ({
       status: prettify(e.event),
       message: e.details ?? "",
       location: "",

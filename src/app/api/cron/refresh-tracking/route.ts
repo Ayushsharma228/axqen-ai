@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { recordCourierScans, scansFromDelhivery } from "@/lib/courier-scans";
 
 const STATUS_RANK: Record<string, number> = {
   NEW: 0, PROCESSING: 1, SHIPPED: 2, IN_TRANSIT: 3,
@@ -75,6 +76,9 @@ export async function GET(req: NextRequest) {
       const data = await res.json();
       const shipment = data.ShipmentData?.[0]?.Shipment;
       if (!shipment) { skipped++; continue; }
+
+      // Save every courier scan (location history) before deciding on a status change
+      await recordCourierScans(order.id, scansFromDelhivery(shipment), "delhivery").catch(() => 0);
 
       const statusStr = (shipment.Status as { Status?: string } | null)?.Status ?? "";
       const returnedAt = (shipment as { ReturnedAt?: string | null }).ReturnedAt ?? null;

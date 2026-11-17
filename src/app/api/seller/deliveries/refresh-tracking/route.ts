@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
+import { recordCourierScans, scansFromDelhivery } from "@/lib/courier-scans";
 
 // Higher number = further along. Never let a sync move an order backwards.
 const STATUS_RANK: Record<string, number> = {
@@ -39,6 +40,8 @@ export async function POST(req: NextRequest) {
       sellerId: session.user.id,
       awbNumber: { not: null },
       status: { notIn: ["DELIVERED", "CANCELLED", "RTO"] },
+      // Shipdaak shipments are synced from Shipdaak itself (see /api/seller/shipments/refresh).
+      NOT: { courier: { startsWith: "Shipdaak · " } },
     },
     select: { id: true, awbNumber: true, status: true },
   });
@@ -64,6 +67,9 @@ export async function POST(req: NextRequest) {
       const data = await res.json();
       const shipment = data.ShipmentData?.[0]?.Shipment;
       if (!shipment) continue;
+
+      // Save every courier scan (location history) before deciding on a status change
+      await recordCourierScans(order.id, scansFromDelhivery(shipment), "delhivery").catch(() => 0);
 
       const statusStr = (shipment.Status as { Status?: string } | null)?.Status ?? "";
       const returnedAt = (shipment as { ReturnedAt?: string | null }).ReturnedAt ?? null;

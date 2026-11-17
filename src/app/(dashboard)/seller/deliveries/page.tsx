@@ -1,57 +1,49 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { Fragment, useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import {
-  RefreshCw, Truck, Clock, XCircle, AlertTriangle, CheckCircle2,
-  ChevronDown, ChevronUp, ExternalLink, Copy, CopyCheck,
-  AlertCircle, Flag, Package, MapPin, Send, CalendarDays, Search,
+  RefreshCw, Truck, Clock, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Copy, CopyCheck,
+  Flag, MapPin, Send, CalendarDays, Search, Loader2, PackageCheck, PackageOpen, RotateCcw, Bike,
+  ChevronLeft, ChevronRight, Timer, PauseCircle,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────
-interface DeliveryIssue { id: string; event: string; details: string | null; createdAt: string; }
-interface Delivery {
-  id: string; externalOrderId: string; status: string;
-  awbNumber: string | null; trackingUrl: string | null; courier: string | null;
-  supplierTrackingNo: string | null; supplierCourier: string | null;
-  createdAt: string; updatedAt: string; totalAmount: number;
-  expectedDeliveryDate: string | null;
-  customerName: string | null;
-  customerAddress: { phone?: string; city?: string; state?: string } | null;
-  timeline: DeliveryIssue[];
-  ndrStatus?: string | null;
+type Stage = "READY_FOR_PICKUP" | "IN_TRANSIT" | "OUT_FOR_DELIVERY" | "DELIVERED" | "RTO";
+interface Scan { status: string; location: string; message: string; time: string }
+interface Shipment {
+  id: string; externalOrderId: string; status: string; stage: Stage;
+  awb: string | null; courier: string; paymentMode: string; totalAmount: number;
+  customerName: string | null; phone: string | null; city: string | null; state: string | null;
+  orderDate: string; dispatchedAt: string | null; edd: string | null; deliveredAt: string | null;
+  daysInTransit: number; delayed: boolean; stuck: boolean;
+  lastScan: Scan | null; scanCount: number;
+  issues: { id: string; details: string | null; createdAt: string }[];
 }
-interface Stats { pending: number; delivered: number; inTransit: number; rto: number; cancelled: number; }
+interface Perf {
+  avgDeliveryDays: number | null; onTimePct: number | null;
+  byCourier: { courier: string; shipments: number; delivered: number; rto: number; rtoPct: number | null; avgDays: number | null }[];
+}
 
 // ── Config ─────────────────────────────────────────────────────────────────
-const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
-  SHIPPED:    { label: "Shipped",    color: "#7C3AED", bg: "#F5F3FF" },
-  IN_TRANSIT: { label: "In Transit", color: "#0369A1", bg: "#E0F2FE" },
-  DELIVERED:  { label: "Delivered",  color: "#059669", bg: "#ECFDF5" },
-  CANCELLED:  { label: "Cancelled",  color: "#6B7280", bg: "#F3F4F6" },
-  NEW:        { label: "Pending",    color: "#4361EE", bg: "#EEF2FF" },
-  PROCESSING: { label: "Processing", color: "#D97706", bg: "#FFF7ED" },
-  RTO:        { label: "RTO",        color: "#EF4444", bg: "#FEF2F2" },
+const STAGE: Record<Stage, { label: string; color: string; bg: string; icon: React.ElementType }> = {
+  READY_FOR_PICKUP: { label: "Ready for pickup", color: "#B45309", bg: "#FFFBEB", icon: PackageOpen },
+  IN_TRANSIT:       { label: "In transit",       color: "#0369A1", bg: "#E0F2FE", icon: Truck },
+  OUT_FOR_DELIVERY: { label: "Out for delivery", color: "#7C3AED", bg: "#F5F3FF", icon: Bike },
+  DELIVERED:        { label: "Delivered",        color: "#047857", bg: "#ECFDF5", icon: PackageCheck },
+  RTO:              { label: "RTO",              color: "#DC2626", bg: "#FEF2F2", icon: RotateCcw },
 };
-
-const TABS = [
-  { label: "All",         value: "ALL" },
-  { label: "In Transit",  value: "IN_TRANSIT" },
-  { label: "Delivered",   value: "DELIVERED" },
-  { label: "RTO",         value: "RTO" },
-  { label: "NDR",         value: "NDR" },
+const TABS: { key: "ALL" | Stage; label: string }[] = [
+  { key: "ALL", label: "All" },
+  { key: "READY_FOR_PICKUP", label: "Ready for pickup" },
+  { key: "IN_TRANSIT", label: "In transit" },
+  { key: "OUT_FOR_DELIVERY", label: "Out for delivery" },
+  { key: "DELIVERED", label: "Delivered" },
+  { key: "RTO", label: "RTO" },
 ];
-
-const STEPS = [
-  { key: "NEW",        label: "Ordered"    },
-  { key: "PROCESSING", label: "Processing" },
-  { key: "SHIPPED",    label: "Shipped"    },
-  { key: "IN_TRANSIT", label: "In Transit" },
-  { key: "DELIVERED",  label: "Delivered"  },
+const RANGES = [
+  { key: "7", label: "7d" }, { key: "30", label: "30d" }, { key: "90", label: "90d" }, { key: "all", label: "All" },
 ];
-const STEP_RANK: Record<string, number> = {
-  NEW: 0, PROCESSING: 1, SHIPPED: 2, IN_TRANSIT: 3, DELIVERED: 4, RTO: 4, CANCELLED: 4,
-};
-
 const ISSUE_TYPES = [
   "Delivery attempt failed",
   "Customer not available",
@@ -62,84 +54,99 @@ const ISSUE_TYPES = [
   "Other",
 ];
 
-function daysSince(dateStr: string) {
-  return Math.floor((Date.now() - new Date(dateStr).getTime()) / 86_400_000);
+const fmtDate = (d: string) => new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+const fmtTime = (d: string) => new Date(d).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+function ago(d: string) {
+  const h = (Date.now() - new Date(d).getTime()) / 3600000;
+  if (h < 1) return `${Math.max(1, Math.round(h * 60))}m ago`;
+  if (h < 24) return `${Math.round(h)}h ago`;
+  return `${Math.round(h / 24)}d ago`;
 }
-function fmtDate(d: string) {
-  return new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
-}
-const num = (n: number) => n.toLocaleString("en-IN");
+const pretty = (s: string) => {
+  const t = (s || "").replace(/[_-]+/g, " ").trim();
+  return t ? t.charAt(0).toUpperCase() + t.slice(1).toLowerCase() : "Update";
+};
 
 // ── Main ───────────────────────────────────────────────────────────────────
-export default function ManageDeliveryPage() {
-  const [deliveries,  setDeliveries]  = useState<Delivery[]>([]);
-  const [stats,       setStats]       = useState<Stats>({ pending: 0, delivered: 0, inTransit: 0, rto: 0, cancelled: 0 });
-  const [ndrCount,    setNdrCount]    = useState(0);
-  const [search,      setSearch]      = useState("");
-  const [tab,         setTab]         = useState("ALL");
-  const [loading,     setLoading]     = useState(true);
-  const [refreshing,  setRefreshing]  = useState(false);
-  const [syncMsg,     setSyncMsg]     = useState("");
-  const [expandedId,  setExpandedId]  = useState<string | null>(null);
-  const [copiedId,    setCopiedId]    = useState<string | null>(null);
+export default function ShipmentsPage() {
+  const [rows,     setRows]     = useState<Shipment[]>([]);
+  const [counts,   setCounts]   = useState<Record<string, number>>({});
+  const [couriers, setCouriers] = useState<string[]>([]);
+  const [perf,     setPerf]     = useState<Perf | null>(null);
+  const [total,    setTotal]    = useState(0);
+  const [pages,    setPages]    = useState(1);
+  const [loading,  setLoading]  = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [syncMsg,  setSyncMsg]  = useState("");
 
-  // Issue form
+  const [tab,      setTab]      = useState<"ALL" | Stage>("ALL");
+  const [flag,     setFlag]     = useState<"" | "DELAYED" | "STUCK">("");
+  const [range,    setRange]    = useState("30");
+  const [courier,  setCourier]  = useState("");
+  const [payment,  setPayment]  = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [search,   setSearch]   = useState("");
+  const [page,     setPage]     = useState(1);
+
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [copiedId,   setCopiedId]   = useState<string | null>(null);
+
   const [issueOrderId,  setIssueOrderId]  = useState<string | null>(null);
   const [issueType,     setIssueType]     = useState("");
   const [issueNote,     setIssueNote]     = useState("");
   const [issueSending,  setIssueSending]  = useState(false);
   const [issueSuccess,  setIssueSuccess]  = useState<string | null>(null);
-
-  // Reschedule form
   const [reschedOrderId, setReschedOrderId] = useState<string | null>(null);
   const [reschedDate,    setReschedDate]    = useState("");
   const [reschedNote,    setReschedNote]    = useState("");
   const [reschedSending, setReschedSending] = useState(false);
   const [reschedSuccess, setReschedSuccess] = useState<string | null>(null);
 
-  const fetchDeliveries = useCallback(async (showRefreshing = false) => {
-    if (showRefreshing) setRefreshing(true); else setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (search) params.set("search", search);
-      // NDR is client-side filtered — don't pass to API
-      if (tab !== "ALL" && tab !== "NDR") params.set("status", tab);
-      const [res, ndrRes] = await Promise.all([
-        fetch(`/api/seller/deliveries?${params}`),
-        fetch("/api/seller/ndr"),
-      ]);
-      const data    = await res.json();
-      const ndrData = await ndrRes.json();
-      setDeliveries(data.orders ?? []);
-      if (data.stats) setStats(data.stats);
-      setNdrCount(ndrData?.total ?? ndrData?.length ?? 0);
-    } finally { setLoading(false); setRefreshing(false); }
-  }, [search, tab]);
+  useEffect(() => { setPage(1); }, [tab, flag, range, courier, payment, search]);
 
-  useEffect(() => { fetchDeliveries(); }, [fetchDeliveries]);
+  const load = useCallback(async () => {
+    const p = new URLSearchParams({ tab, page: String(page) });
+    if (flag) p.set("flag", flag);
+    if (range !== "all") p.set("days", range);
+    if (courier) p.set("courier", courier);
+    if (payment) p.set("payment", payment);
+    if (search) p.set("search", search);
+    const res = await fetch(`/api/seller/shipments?${p}`);
+    const d = await res.json();
+    setRows(d.shipments ?? []);
+    setCounts(d.counts ?? {});
+    setCouriers(d.couriers ?? []);
+    setPerf(d.performance ?? null);
+    setTotal(d.total ?? 0);
+    setPages(d.pages ?? 1);
+    setLoading(false);
+  }, [tab, flag, range, courier, payment, search, page]);
 
-  async function handleRefreshTracking() {
+  useEffect(() => { setLoading(true); load(); }, [load]);
+
+  async function refreshTracking() {
     setRefreshing(true); setSyncMsg("");
-    const res  = await fetch("/api/seller/deliveries/refresh-tracking", { method: "POST" });
-    const data = await res.json();
-    setSyncMsg(`Updated ${data.updated ?? 0} tracking status${data.updated !== 1 ? "es" : ""}`);
-    await fetchDeliveries(false);
+    const [a, b] = await Promise.all([
+      fetch("/api/seller/shipments/refresh", { method: "POST" }).then(r => r.json()).catch(() => ({})),
+      fetch("/api/seller/deliveries/refresh-tracking", { method: "POST" }).then(r => r.json()).catch(() => ({})),
+    ]);
+    const n = (a.updated ?? 0) + (b.updated ?? 0);
+    setSyncMsg(n ? `${n} shipment${n === 1 ? "" : "s"} moved to a new status` : "Tracking is up to date");
+    await load();
     setRefreshing(false);
+    setTimeout(() => setSyncMsg(""), 5000);
   }
 
   async function submitIssue(orderId: string) {
     if (!issueType) return;
     setIssueSending(true);
     const res = await fetch(`/api/seller/deliveries/${orderId}/issue`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ issueType, note: issueNote }),
     });
     if (res.ok) {
-      setIssueSuccess(orderId);
-      setIssueOrderId(null); setIssueType(""); setIssueNote("");
-      fetchDeliveries();
-      setTimeout(() => setIssueSuccess(null), 4000);
+      setIssueSuccess(orderId); setIssueOrderId(null); setIssueType(""); setIssueNote("");
+      load(); setTimeout(() => setIssueSuccess(null), 4000);
     }
     setIssueSending(false);
   }
@@ -147,18 +154,15 @@ export default function ManageDeliveryPage() {
   async function submitReschedule(orderId: string) {
     if (!reschedDate) return;
     setReschedSending(true);
-    const noteParts = [`Preferred date: ${reschedDate}`];
-    if (reschedNote.trim()) noteParts.push(reschedNote.trim());
+    const parts = [`Preferred date: ${reschedDate}`];
+    if (reschedNote.trim()) parts.push(reschedNote.trim());
     const res = await fetch(`/api/seller/deliveries/${orderId}/issue`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ issueType: "Reschedule Request", note: noteParts.join(" — ") }),
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ issueType: "Reschedule Request", note: parts.join(" — ") }),
     });
     if (res.ok) {
-      setReschedSuccess(orderId);
-      setReschedOrderId(null); setReschedDate(""); setReschedNote("");
-      fetchDeliveries();
-      setTimeout(() => setReschedSuccess(null), 4000);
+      setReschedSuccess(orderId); setReschedOrderId(null); setReschedDate(""); setReschedNote("");
+      load(); setTimeout(() => setReschedSuccess(null), 4000);
     }
     setReschedSending(false);
   }
@@ -169,379 +173,264 @@ export default function ManageDeliveryPage() {
     setTimeout(() => setCopiedId(null), 2000);
   }
 
-  function toggleExpand(id: string) {
-    setExpandedId(prev => prev === id ? null : id);
-    setIssueOrderId(null); setIssueType(""); setIssueNote("");
-  }
+  const selectCls = "bg-white border border-[#E8EDF6] rounded-lg px-2.5 py-1.5 text-[12.5px] font-semibold text-[#374151] focus:outline-none focus:border-[#4361EE]";
 
-  // Fulfilment scope: shipped/in-transit/delivered/rto + NDR
-  const FULFILLMENT_STATUSES = ["SHIPPED", "IN_TRANSIT", "DELIVERED", "RTO"];
-  const displayed = tab === "NDR"
-    ? deliveries.filter(d => !!d.ndrStatus)
-    : tab === "ALL"
-      ? deliveries.filter(d => FULFILLMENT_STATUSES.includes(d.status) || !!d.ndrStatus)
-      : deliveries;
-
-  const STAT_CARDS = [
-    { label: "In Transit",  value: num(stats.inTransit), color: "#0369A1", sub: "On the way",          tab: "IN_TRANSIT" },
-    { label: "Delivered",   value: num(stats.delivered), color: "#059669", sub: "Successfully done",   tab: "DELIVERED" },
-    { label: "RTO",         value: num(stats.rto),       color: "#EF4444", sub: "Return to origin",    tab: "RTO" },
-    { label: "NDR",         value: num(ndrCount),        color: "#7C3AED", sub: "Non-delivery report", tab: "NDR" },
+  const tiles: { key: Stage | "DELAYED"; label: string; color: string; icon: React.ElementType }[] = [
+    { key: "READY_FOR_PICKUP", label: "Ready for pickup", color: STAGE.READY_FOR_PICKUP.color, icon: PackageOpen },
+    { key: "IN_TRANSIT",       label: "In transit",       color: STAGE.IN_TRANSIT.color,       icon: Truck },
+    { key: "OUT_FOR_DELIVERY", label: "Out for delivery", color: STAGE.OUT_FOR_DELIVERY.color, icon: Bike },
+    { key: "DELIVERED",        label: "Delivered",        color: STAGE.DELIVERED.color,        icon: PackageCheck },
+    { key: "RTO",              label: "RTO",              color: STAGE.RTO.color,              icon: RotateCcw },
+    { key: "DELAYED",          label: "Delayed",          color: "#DC2626",                    icon: AlertTriangle },
   ];
 
-  // ── Render ─────────────────────────────────────────────────────────────
   return (
     <div className="px-3 py-4 md:p-8 space-y-5" style={{ background: "#F7F8FC", minHeight: "100vh" }}>
 
-      {/* ── Header ── */}
+      {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-[18px] font-black text-[#0C1220]">Fulfilment</h1>
-          <p className="text-[12px] text-[#9CA3AF] mt-0.5">Track shipments, monitor delivery status, and raise issues</p>
+          <h1 className="text-[22px] font-black text-[#0C1220]">Shipments</h1>
+          <p className="text-[12px] text-[#9CA3AF] mt-0.5">Every courier scan, from pickup to doorstep. Failed deliveries are handled on the NDR page.</p>
         </div>
         <div className="flex items-center gap-2">
           {syncMsg && <span className="text-[12px] font-semibold text-[#059669]">{syncMsg}</span>}
-          <button
-            onClick={handleRefreshTracking} disabled={refreshing}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[13px] font-semibold bg-white border border-[#E8EDF6] text-[#6B7280] hover:text-[#0C1220] transition-colors disabled:opacity-50"
-          >
+          <button onClick={refreshTracking} disabled={refreshing}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[13px] font-semibold bg-white border border-[#E8EDF6] text-[#6B7280] hover:text-[#0C1220] disabled:opacity-50">
             <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
-            {refreshing ? "Syncing…" : "Refresh Tracking"}
+            {refreshing ? "Checking couriers…" : "Refresh tracking"}
           </button>
         </div>
       </div>
 
-      {/* ── Stat cards ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {STAT_CARDS.map(card => (
-          <button
-            key={card.tab}
-            onClick={() => setTab(card.tab)}
-            className="text-left rounded-xl border px-4 py-3.5 transition-all"
-            style={{
-              background: tab === card.tab ? card.color : "white",
-              borderColor: tab === card.tab ? card.color : "#E8EDF6",
-            }}
-          >
-            <p className="text-[11px] font-bold uppercase tracking-wide mb-1"
-              style={{ color: tab === card.tab ? "rgba(255,255,255,0.75)" : "#9CA3AF" }}>
-              {card.label}
-            </p>
-            <p className="text-[22px] font-black leading-none"
-              style={{ color: tab === card.tab ? "white" : card.color }}>
-              {card.value}
-            </p>
-            <p className="text-[11px] mt-1"
-              style={{ color: tab === card.tab ? "rgba(255,255,255,0.65)" : "#9CA3AF" }}>
-              {card.sub}
-            </p>
-          </button>
-        ))}
-      </div>
-
-      {/* ── Main card ── */}
-      <div className="bg-white rounded-xl border border-[#E8EDF6] overflow-hidden">
-
-        {/* Mobile search — above tabs, full width */}
-        <div className="flex md:hidden px-3 py-2 border-b border-[#F3F4F6]">
-          <div className="relative flex-1">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#9CA3AF]" />
-            <input
-              type="text"
-              placeholder="Search by order, customer, AWB…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && fetchDeliveries()}
-              className="pl-8 pr-3 py-2 text-[13px] rounded-lg border border-[#E8EDF6] bg-[#FAFBFF] text-[#0C1220] placeholder-[#9CA3AF] outline-none focus:border-[#4361EE] w-full transition-colors"
-            />
-          </div>
-        </div>
-
-        {/* Tabs + desktop search */}
-        <div className="flex items-center border-b border-[#F3F4F6] overflow-x-auto" style={{ scrollbarWidth: "none" }}>
-          {TABS.map(t => (
-            <button
-              key={t.value}
-              onClick={() => setTab(t.value)}
-              className="px-2.5 md:px-4 py-2.5 md:py-3 text-[12px] md:text-[13px] font-semibold whitespace-nowrap flex-shrink-0 border-b-2 transition-colors"
-              style={{
-                borderColor: tab === t.value ? "#4361EE" : "transparent",
-                color: tab === t.value ? "#4361EE" : "#9CA3AF",
-                background: tab === t.value ? "#FAFBFF" : "transparent",
+      {/* Stage tiles */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        {tiles.map(t => {
+          const Icon = t.icon;
+          const active = t.key === "DELAYED" ? flag === "DELAYED" : tab === t.key && !flag;
+          return (
+            <button key={t.key}
+              onClick={() => {
+                if (t.key === "DELAYED") { setTab("ALL"); setFlag(flag === "DELAYED" ? "" : "DELAYED"); }
+                else { setFlag(""); setTab(tab === t.key ? "ALL" : t.key); }
               }}
-            >
-              {t.label}
-              {(() => {
-                const c =
-                  t.value === "ALL"        ? displayed.length :
-                  t.value === "IN_TRANSIT" ? stats.inTransit :
-                  t.value === "DELIVERED"  ? stats.delivered :
-                  t.value === "RTO"        ? stats.rto :
-                  t.value === "NDR"        ? ndrCount :
-                  deliveries.filter(d => d.status === t.value).length;
-                return c > 0 ? (
-                  <span
-                    className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold"
-                    style={{
-                      background: tab === t.value ? "#4361EE" : "#EEF2FF",
-                      color: tab === t.value ? "white" : "#4361EE",
-                    }}
-                  >{c}</span>
-                ) : null;
-              })()}
+              className="text-left bg-white rounded-xl border px-4 py-3.5 transition-colors"
+              style={{ borderColor: active ? t.color : "#E8EDF6", boxShadow: active ? `inset 0 0 0 1px ${t.color}` : "none" }}>
+              <div className="flex items-center justify-between mb-1.5">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-[#9CA3AF]">{t.label}</p>
+                <Icon className="w-3.5 h-3.5" style={{ color: t.color }} />
+              </div>
+              <p className="text-[22px] font-black leading-none tabular-nums" style={{ color: t.key === "DELAYED" && (counts.DELAYED ?? 0) > 0 ? "#DC2626" : "#0C1220" }}>
+                {loading ? "…" : (counts[t.key] ?? 0).toLocaleString("en-IN")}
+              </p>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Performance strip */}
+      {perf && (perf.avgDeliveryDays !== null || perf.byCourier.length > 0) && (
+        <div className="bg-white rounded-xl border border-[#E8EDF6] px-4 py-3 flex items-center gap-x-6 gap-y-2 flex-wrap text-[12.5px]">
+          <span className="flex items-center gap-1.5 text-[#6B7280]">
+            <Timer className="w-3.5 h-3.5 text-[#4361EE]" /> Avg delivery
+            <b className="text-[#0C1220] tabular-nums">{perf.avgDeliveryDays !== null ? `${perf.avgDeliveryDays} days` : "—"}</b>
+          </span>
+          <span className="flex items-center gap-1.5 text-[#6B7280]">
+            <CheckCircle2 className="w-3.5 h-3.5 text-[#059669]" /> On time
+            <b className="text-[#0C1220] tabular-nums">{perf.onTimePct !== null ? `${perf.onTimePct}%` : "—"}</b>
+          </span>
+          {perf.byCourier.slice(0, 4).map(c => (
+            <span key={c.courier} className="text-[#6B7280]">
+              <b className="text-[#0C1220]">{c.courier}</b>
+              {" · "}{c.avgDays !== null ? `${c.avgDays}d` : "—"}
+              {" · RTO "}<b style={{ color: (c.rtoPct ?? 0) >= 25 ? "#DC2626" : "#0C1220" }}>{c.rtoPct !== null ? `${c.rtoPct}%` : "—"}</b>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* List */}
+      <div className="bg-white rounded-xl border border-[#E8EDF6] overflow-hidden">
+        <div className="flex items-center border-b border-[#F3F4F6] overflow-x-auto px-2" style={{ scrollbarWidth: "none" }}>
+          {TABS.map(t => {
+            const active = tab === t.key;
+            return (
+              <button key={t.key} onClick={() => setTab(t.key)}
+                className="px-3 md:px-4 py-3 text-[12.5px] md:text-[13px] font-semibold whitespace-nowrap flex-shrink-0 border-b-2 -mb-px"
+                style={{ borderColor: active ? "#4361EE" : "transparent", color: active ? "#4361EE" : "#6B7280" }}>
+                {t.label}
+                <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10.5px] font-bold tabular-nums"
+                  style={{ background: active ? "#4361EE" : "#F3F4F6", color: active ? "white" : "#9CA3AF" }}>
+                  {(counts[t.key] ?? 0).toLocaleString("en-IN")}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap px-3 md:px-4 py-3 border-b border-[#F3F4F6] bg-[#FAFBFF]">
+          <div className="flex items-center bg-white border border-[#E8EDF6] rounded-lg p-0.5">
+            {RANGES.map(r => (
+              <button key={r.key} onClick={() => setRange(r.key)}
+                className="px-2.5 py-1 text-[12px] font-semibold rounded-md"
+                style={{ background: range === r.key ? "#4361EE" : "transparent", color: range === r.key ? "white" : "#6B7280" }}>
+                {r.label}
+              </button>
+            ))}
+          </div>
+          {([["DELAYED", "Delayed", AlertTriangle, "#DC2626"], ["STUCK", "No update 3d+", PauseCircle, "#B45309"]] as const).map(([k, l, Icon, c]) => (
+            <button key={k} onClick={() => setFlag(flag === k ? "" : k)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[12px] font-semibold"
+              style={flag === k ? { background: c, borderColor: c, color: "white" } : { background: "white", borderColor: "#E8EDF6", color: "#374151" }}>
+              <Icon className="w-3.5 h-3.5" style={{ color: flag === k ? "white" : c }} /> {l}
+              <span className="tabular-nums opacity-80">{counts[k] ?? 0}</span>
             </button>
           ))}
-          {/* Desktop search */}
-          <div className="hidden md:block ml-auto pr-4 flex-shrink-0">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#9CA3AF]" />
-              <input
-                type="text"
-                placeholder="Search…"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && fetchDeliveries()}
-                className="pl-8 pr-3 py-1.5 text-[13px] rounded-lg border border-[#E8EDF6] bg-[#FAFBFF] text-[#0C1220] placeholder-[#9CA3AF] outline-none focus:border-[#4361EE] w-40 transition-colors"
-              />
-            </div>
-          </div>
+          <select id="ship-courier" aria-label="Courier" value={courier} onChange={e => setCourier(e.target.value)} className={selectCls}>
+            <option value="">All couriers</option>
+            {couriers.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <select id="ship-payment" aria-label="Payment" value={payment} onChange={e => setPayment(e.target.value)} className={selectCls}>
+            <option value="">All payments</option>
+            <option value="COD">COD</option>
+            <option value="PREPAID">Prepaid</option>
+          </select>
+          <form className="relative flex-1 min-w-[200px] md:max-w-[280px] md:ml-auto"
+            onSubmit={e => { e.preventDefault(); setSearch(searchInput.trim()); }}>
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#9CA3AF]" />
+            <input id="ship-search" value={searchInput}
+              onChange={e => { setSearchInput(e.target.value); if (!e.target.value) setSearch(""); }}
+              placeholder="AWB, order ID, name or phone"
+              className="pl-8 pr-3 py-1.5 text-[13px] rounded-lg border border-[#E8EDF6] bg-white outline-none focus:border-[#4361EE] w-full" />
+          </form>
         </div>
 
-        {/* Table */}
         {loading ? (
-          <div className="p-12 flex flex-col items-center gap-3">
-            <RefreshCw className="w-6 h-6 animate-spin text-[#4361EE]" />
-            <p className="text-[13px] text-[#9CA3AF]">Loading deliveries…</p>
+          <div className="p-12 flex items-center justify-center gap-2 text-[13px] text-[#9CA3AF]">
+            <Loader2 className="w-5 h-5 animate-spin text-[#4361EE]" /> Loading shipments…
           </div>
-        ) : displayed.length === 0 ? (
-          <div className="py-16 flex flex-col items-center gap-3">
+        ) : rows.length === 0 ? (
+          <div className="py-16 flex flex-col items-center gap-2">
             <Truck className="w-10 h-10 text-[#E8EDF6]" />
-            <p className="text-[13px] font-medium text-[#9CA3AF]">No deliveries found</p>
+            <p className="text-[13px] text-[#9CA3AF]">No shipments match these filters</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full min-w-[960px]">
               <thead>
-                <tr className="border-b border-[#F3F4F6]" style={{ background: "#FAFBFF" }}>
-                  {[
-                    { label: "ORDER #",       cls: "" },
-                    { label: "CUSTOMER",      cls: "" },
-                    { label: "STATUS",        cls: "" },
-                    { label: "EXPECTED BY",   cls: "hidden md:table-cell" },
-                    { label: "AWB / COURIER", cls: "hidden md:table-cell" },
-                    { label: "ISSUES",        cls: "hidden md:table-cell" },
-                    { label: "",              cls: "" },
-                  ].map(h => (
-                    <th key={h.label} className={`px-3 md:px-5 py-3 text-left text-[11px] font-bold text-[#9CA3AF] uppercase tracking-wide whitespace-nowrap ${h.cls}`}>
-                      {h.label}
-                    </th>
-                  ))}
+                <tr className="border-b border-[#F3F4F6] bg-[#FAFBFF] text-left text-[11px] font-bold text-[#9CA3AF] uppercase tracking-wide">
+                  <th className="px-4 py-3">Order / AWB</th>
+                  <th className="px-3 py-3">Customer</th>
+                  <th className="px-3 py-3">Courier</th>
+                  <th className="px-3 py-3">Status &amp; latest scan</th>
+                  <th className="px-3 py-3">Expected</th>
+                  <th className="px-3 py-3">Days</th>
+                  <th className="px-3 py-3 w-8"></th>
                 </tr>
               </thead>
               <tbody>
-                {displayed.map(d => {
-                  const cfg        = STATUS_CONFIG[d.status] ?? STATUS_CONFIG.NEW;
-                  const awb        = d.awbNumber || d.supplierTrackingNo;
-                  const carrier    = d.courier || d.supplierCourier;
-                  const isExpanded = expandedId === d.id;
-                  const isOverdue  = d.expectedDeliveryDate
-                    && new Date(d.expectedDeliveryDate) < new Date()
-                    && !["DELIVERED","CANCELLED","RTO"].includes(d.status);
-                  const daysShipped = (d.status === "SHIPPED" || d.status === "IN_TRANSIT")
-                    ? daysSince(d.updatedAt) : null;
-                  const issues = d.timeline ?? [];
-
+                {rows.map(s => {
+                  const st = STAGE[s.stage];
+                  const open = expandedId === s.id;
+                  const late = s.delayed;
                   return (
-                    <>
-                      <tr
-                        key={d.id}
-                        className="hover:bg-[#FAFBFF] cursor-pointer transition-colors"
-                        style={{
-                          borderBottom: isExpanded ? "none" : "1px solid #F9FAFB",
-                          background: isExpanded ? "rgba(67,97,238,0.02)" : undefined,
-                        }}
-                        onClick={() => toggleExpand(d.id)}
-                      >
-                        {/* Order # */}
-                        <td className="px-3 md:px-5 py-3.5">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[13px] font-bold text-[#4361EE]">#{d.externalOrderId}</span>
-                            {issueSuccess === d.id && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold bg-[#ECFDF5] text-[#059669]">
-                                Reported
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-[11px] text-[#9CA3AF] mt-0.5">{fmtDate(d.createdAt)}</p>
+                    <Fragment key={s.id}>
+                      <tr onClick={() => { setExpandedId(open ? null : s.id); setIssueOrderId(null); setReschedOrderId(null); }}
+                        className="align-top cursor-pointer hover:bg-[#FAFBFF] transition-colors"
+                        style={{ borderBottom: open ? "none" : "1px solid #F3F4F6", background: open ? "rgba(67,97,238,0.02)" : undefined }}>
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          <Link href={`/seller/orders/${s.id}`} onClick={e => e.stopPropagation()} className="text-[13px] font-bold text-[#4361EE] hover:underline">
+                            #{s.externalOrderId}
+                          </Link>
+                          {s.awb && (
+                            <div className="flex items-center gap-1 mt-0.5" onClick={e => e.stopPropagation()}>
+                              <Link href={`/seller/tracking/${encodeURIComponent(s.awb)}`} className="font-mono text-[11.5px] text-[#374151] hover:text-[#4361EE]">{s.awb}</Link>
+                              <button onClick={() => copyAwb(s.awb!, s.id)} aria-label="Copy AWB" className="opacity-60 hover:opacity-100">
+                                {copiedId === s.id ? <CopyCheck className="w-3 h-3 text-[#059669]" /> : <Copy className="w-3 h-3 text-[#9CA3AF]" />}
+                              </button>
+                            </div>
+                          )}
+                          {issueSuccess === s.id && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold bg-[#ECFDF5] text-[#059669]">Reported</span>}
                         </td>
-
-                        {/* Customer */}
-                        <td className="px-3 md:px-5 py-3.5">
-                          <p className="text-[13px] font-semibold text-[#0C1220]">{d.customerName || "—"}</p>
-                          <p className="text-[11px] text-[#9CA3AF] mt-0.5">
-                            {d.customerAddress?.phone || ""}
-                            {d.customerAddress?.city ? ` · ${d.customerAddress.city}` : ""}
-                          </p>
-                        </td>
-
-                        {/* Status */}
-                        <td className="px-3 md:px-5 py-3.5">
-                          <span className="px-2.5 py-1 rounded-full text-[11px] font-bold"
-                            style={{ background: cfg.bg, color: cfg.color }}>
-                            {cfg.label}
+                        <td className="px-3 py-3.5 max-w-[180px]">
+                          <p className="text-[13px] font-semibold text-[#0C1220] truncate">{s.customerName || "—"}</p>
+                          <p className="text-[11px] text-[#9CA3AF] truncate">{[s.city, s.state].filter(Boolean).join(", ") || "—"}</p>
+                          <span className="inline-block mt-1 text-[9.5px] font-bold px-1.5 py-0.5 rounded-full"
+                            style={{ background: s.paymentMode === "PREPAID" ? "#EEF2FF" : "#FFF7ED", color: s.paymentMode === "PREPAID" ? "#4361EE" : "#C2410C" }}>
+                            {s.paymentMode === "PREPAID" ? "PREPAID" : "COD"} · ₹{Math.round(s.totalAmount).toLocaleString("en-IN")}
                           </span>
-                          {daysShipped !== null && (
-                            <p className="text-[10px] text-[#9CA3AF] mt-1">{daysShipped}d in transit</p>
-                          )}
-                          {d.ndrStatus && (
-                            <span className="inline-block mt-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-[#F5F3FF] text-[#7C3AED]">
-                              NDR
-                            </span>
-                          )}
                         </td>
-
-                        {/* Expected By */}
-                        <td className="hidden md:table-cell px-5 py-3.5">
-                          {d.expectedDeliveryDate ? (
-                            <div>
-                              <span className="text-[13px] font-medium"
-                                style={{ color: isOverdue ? "#DC2626" : "#0C1220" }}>
-                                {fmtDate(d.expectedDeliveryDate)}
-                              </span>
-                              {isOverdue && (
-                                <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-[#FEF2F2] text-[#DC2626]">
-                                  Overdue
-                                </span>
-                              )}
-                            </div>
+                        <td className="px-3 py-3.5 text-[12.5px] font-semibold text-[#374151] whitespace-nowrap">{s.courier}</td>
+                        <td className="px-3 py-3.5 max-w-[300px]">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="px-2.5 py-1 rounded-full text-[11px] font-bold whitespace-nowrap" style={{ background: st.bg, color: st.color }}>{st.label}</span>
+                            {s.stuck && <span className="px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-[#FFFBEB] text-[#B45309]">NO UPDATE 3D+</span>}
+                            {s.issues.length > 0 && <span className="px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-[#FEF2F2] text-[#DC2626]">{s.issues.length} ISSUE{s.issues.length > 1 ? "S" : ""}</span>}
+                          </div>
+                          {s.lastScan ? (
+                            <p className="text-[11.5px] text-[#374151] mt-1.5 leading-snug">
+                              <span className="font-semibold">{pretty(s.lastScan.status)}</span>
+                              {s.lastScan.location && <> · <MapPin className="inline w-3 h-3 -mt-0.5 text-[#9CA3AF]" /> {s.lastScan.location}</>}
+                              <span className="text-[#9CA3AF]"> · {ago(s.lastScan.time)}</span>
+                            </p>
                           ) : (
-                            <span className="text-[13px] text-[#9CA3AF]">—</span>
+                            <p className="text-[11px] text-[#9CA3AF] mt-1.5">No courier scan yet</p>
                           )}
                         </td>
-
-                        {/* AWB */}
-                        <td className="hidden md:table-cell px-5 py-3.5" onClick={e => e.stopPropagation()}>
-                          {awb ? (
-                            <div className="flex flex-col gap-0.5">
-                              <div className="flex items-center gap-1.5">
-                                <a href={`/seller/tracking/${encodeURIComponent(awb)}`} onClick={(e) => e.stopPropagation()}
-                                  className="font-mono text-[12px] font-semibold text-[#155EEF] hover:underline underline-offset-2">{awb}</a>
-                                <button onClick={() => copyAwb(awb, d.id)}
-                                  className="opacity-50 hover:opacity-100 transition-opacity">
-                                  {copiedId === d.id
-                                    ? <CopyCheck className="w-3 h-3 text-[#059669]" />
-                                    : <Copy className="w-3 h-3 text-[#9CA3AF]" />}
-                                </button>
-                              </div>
-                              {carrier && <span className="text-[11px] text-[#9CA3AF]">{carrier}</span>}
-                              <a href={`/seller/tracking/${encodeURIComponent(awb)}`} onClick={(e) => e.stopPropagation()}
-                                className="flex items-center gap-0.5 text-[11px] font-semibold text-[#155EEF]">
-                                Track <Truck className="w-2.5 h-2.5" />
-                              </a>
-                            </div>
-                          ) : (
-                            <span className="text-[11px] px-2.5 py-1 rounded-full font-semibold bg-[#FFF7ED] text-[#D97706]">
-                              Pending AWB
-                            </span>
-                          )}
+                        <td className="px-3 py-3.5 whitespace-nowrap">
+                          {s.stage === "DELIVERED" && s.deliveredAt ? (
+                            <p className="text-[12.5px] font-semibold text-[#047857]">Delivered {fmtDate(s.deliveredAt)}</p>
+                          ) : s.edd ? (
+                            <p className="text-[12.5px] font-semibold" style={{ color: late ? "#DC2626" : "#0C1220" }}>
+                              {fmtDate(s.edd)}{late && <span className="ml-1.5 text-[9.5px] px-1.5 py-0.5 rounded-full font-bold bg-[#FEF2F2]">LATE</span>}
+                            </p>
+                          ) : <span className="text-[12px] text-[#9CA3AF]">—</span>}
                         </td>
-
-                        {/* Issues */}
-                        <td className="hidden md:table-cell px-5 py-3.5">
-                          {issues.length > 0 ? (
-                            <span className="flex items-center gap-1 text-[12px] font-semibold text-[#DC2626]">
-                              <AlertCircle className="w-3.5 h-3.5" />
-                              {issues.length} issue{issues.length !== 1 ? "s" : ""}
-                            </span>
-                          ) : (
-                            <span className="text-[12px] text-[#9CA3AF]">None</span>
-                          )}
+                        <td className="px-3 py-3.5 text-[12.5px] font-semibold tabular-nums text-[#374151] whitespace-nowrap">
+                          {s.stage === "READY_FOR_PICKUP" ? "—" : `${s.daysInTransit}d`}
                         </td>
-
-                        {/* Expand */}
-                        <td className="px-3 md:px-5 py-3.5">
-                          {isExpanded
-                            ? <ChevronUp className="w-4 h-4 text-[#9CA3AF]" />
-                            : <ChevronDown className="w-4 h-4 text-[#9CA3AF]" />}
+                        <td className="px-3 py-3.5">
+                          {open ? <ChevronUp className="w-4 h-4 text-[#9CA3AF]" /> : <ChevronDown className="w-4 h-4 text-[#9CA3AF]" />}
                         </td>
                       </tr>
 
-                      {/* ── Expanded panel ── */}
-                      {isExpanded && (
-                        <tr key={`${d.id}-exp`} style={{ borderBottom: "1px solid #F3F4F6", background: "rgba(67,97,238,0.02)" }}>
-                          <td colSpan={7} className="px-3 md:px-5 pb-6 pt-2">
+                      {open && (
+                        <tr style={{ borderBottom: "1px solid #F3F4F6", background: "rgba(67,97,238,0.02)" }}>
+                          <td colSpan={7} className="px-4 pb-6 pt-1">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-[#F3F4F6]">
-
-                              {/* LEFT — progress + meta */}
-                              <div className="space-y-5">
-                                <p className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-wide">Delivery Progress</p>
-
-                                {/* Step track */}
-                                <div className="flex items-start gap-0">
-                                  {(d.status === "RTO" ? [
-                                    ...STEPS.slice(0, 3), { key: "RTO", label: "RTO" },
-                                  ] : d.status === "CANCELLED" ? [
-                                    STEPS[0], { key: "CANCELLED", label: "Cancelled" },
-                                  ] : STEPS).map((step, i, arr) => {
-                                    const rank   = STEP_RANK[d.status] ?? 0;
-                                    const myRank = STEP_RANK[step.key] ?? i;
-                                    const isDone = myRank < rank;
-                                    const isCurr = myRank === rank || step.key === d.status;
-                                    const isRto  = step.key === "RTO";
-                                    const isCncl = step.key === "CANCELLED";
-                                    const dotColor =
-                                      isCncl ? "#6B7280" :
-                                      isRto  ? "#EF4444" :
-                                      isDone || (isCurr && d.status === "DELIVERED") ? "#059669" :
-                                      isCurr ? "#4361EE" : "#E8EDF6";
-                                    return (
-                                      <div key={step.key} className="flex items-center flex-1">
-                                        <div className="flex flex-col items-center gap-1 flex-shrink-0">
-                                          <div className="w-3 h-3 rounded-full ring-2 ring-offset-2"
-                                            style={{ background: dotColor, ["--tw-ring-color" as string]: dotColor }} />
-                                          <p className="text-[10px] font-medium text-center leading-tight max-w-[56px]"
-                                            style={{ color: isCurr || isDone ? "#0C1220" : "#9CA3AF" }}>
-                                            {step.label}
-                                          </p>
-                                        </div>
-                                        {i < arr.length - 1 && (
-                                          <div className="flex-1 h-px mx-1 mb-5"
-                                            style={{ background: isDone ? "#059669" : "#E8EDF6" }} />
-                                        )}
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-
-                                {/* Meta grid */}
-                                <div className="grid grid-cols-2 gap-3">
+                              {/* Left: summary + issues */}
+                              <div className="space-y-4">
+                                <div className="grid grid-cols-2 gap-3 text-[12px]">
                                   {[
-                                    { icon: Package,  label: "Order Value",  value: `₹${d.totalAmount.toLocaleString("en-IN")}` },
-                                    { icon: Truck,    label: "Carrier",      value: carrier || "—" },
-                                    { icon: MapPin,   label: "Deliver To",   value: d.customerAddress?.city ? `${d.customerAddress.city}${d.customerAddress.state ? `, ${d.customerAddress.state}` : ""}` : "—" },
-                                    { icon: Clock,    label: "Last Updated", value: fmtDate(d.updatedAt) },
+                                    { icon: CalendarDays, label: "Ordered",    value: fmtDate(s.orderDate) },
+                                    { icon: Truck,        label: "Dispatched", value: s.dispatchedAt ? fmtDate(s.dispatchedAt) : "—" },
+                                    { icon: Clock,        label: "Last scan",  value: s.lastScan ? fmtTime(s.lastScan.time) : "—" },
+                                    { icon: MapPin,       label: "Deliver to", value: [s.city, s.state].filter(Boolean).join(", ") || "—" },
                                   ].map(({ icon: Icon, label, value }) => (
                                     <div key={label} className="flex items-center gap-2">
-                                      <Icon className="w-3.5 h-3.5 flex-shrink-0 text-[#9CA3AF]" />
-                                      <div>
-                                        <p className="text-[10px] text-[#9CA3AF]">{label}</p>
-                                        <p className="text-[12px] font-semibold text-[#0C1220]">{value}</p>
-                                      </div>
+                                      <Icon className="w-3.5 h-3.5 text-[#9CA3AF] flex-shrink-0" />
+                                      <div><p className="text-[10px] text-[#9CA3AF]">{label}</p><p className="font-semibold text-[#0C1220]">{value}</p></div>
                                     </div>
                                   ))}
                                 </div>
-
-                                {/* Reported issues */}
-                                {issues.length > 0 && (
+                                {s.lastScan?.message && (
+                                  <p className="text-[12px] text-[#374151] rounded-lg bg-[#F5F7FB] px-3 py-2">Courier remark: {s.lastScan.message}</p>
+                                )}
+                                {s.awb && (
+                                  <Link href={`/seller/tracking/${encodeURIComponent(s.awb)}`}
+                                    className="w-full py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center gap-1.5 bg-[#EEF2FF] text-[#155EEF] border border-[#C7D2FE]">
+                                    <Truck className="w-3.5 h-3.5" /> See all {s.scanCount > 0 ? `${s.scanCount} ` : ""}location updates
+                                  </Link>
+                                )}
+                                {s.issues.length > 0 && (
                                   <div className="space-y-2">
-                                    <p className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-wide">Reported Issues</p>
-                                    {issues.map(issue => (
-                                      <div key={issue.id}
-                                        className="flex items-start gap-2 px-3 py-2 rounded-lg bg-[#FEF2F2] border border-[#FECACA]">
+                                    <p className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-wide">Reported issues</p>
+                                    {s.issues.map(i => (
+                                      <div key={i.id} className="flex items-start gap-2 px-3 py-2 rounded-lg bg-[#FEF2F2] border border-[#FECACA]">
                                         <Flag className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-[#DC2626]" />
                                         <div>
-                                          <p className="text-[12px] font-medium text-[#7F1D1D]">{issue.details}</p>
-                                          <p className="text-[10px] text-[#B91C1C] mt-0.5">{fmtDate(issue.createdAt)}</p>
+                                          <p className="text-[12px] font-medium text-[#7F1D1D]">{i.details}</p>
+                                          <p className="text-[10px] text-[#B91C1C] mt-0.5">{fmtTime(i.createdAt)}</p>
                                         </div>
                                       </div>
                                     ))}
@@ -549,114 +438,73 @@ export default function ManageDeliveryPage() {
                                 )}
                               </div>
 
-                              {/* RIGHT — actions */}
+                              {/* Right: actions */}
                               <div className="space-y-5">
-
-                                {/* Raise Issue */}
-                                <div className="space-y-3">
-                                  <p className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-wide">Raise a Delivery Issue</p>
-                                  {issueSuccess === d.id ? (
-                                    <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-[#ECFDF5] border border-[#BBF7D0]">
-                                      <CheckCircle2 className="w-4 h-4 text-[#059669]" />
-                                      <p className="text-[12px] font-medium text-[#15803D]">Issue reported. Admin will be notified.</p>
-                                    </div>
-                                  ) : issueOrderId === d.id ? (
-                                    <div className="space-y-3">
-                                      <select value={issueType} onChange={e => setIssueType(e.target.value)}
-                                        className="w-full px-3 py-2 text-[12px] rounded-xl border border-[#E8EDF6] bg-[#FAFBFF] text-[#0C1220] outline-none focus:border-[#4361EE]">
+                                <div className="space-y-2.5">
+                                  <p className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-wide">Report a delivery issue</p>
+                                  {issueSuccess === s.id ? (
+                                    <p className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-[#ECFDF5] text-[12px] font-medium text-[#15803D]"><CheckCircle2 className="w-4 h-4" /> Issue reported. The AXQEN team will look into it.</p>
+                                  ) : issueOrderId === s.id ? (
+                                    <div className="space-y-2.5">
+                                      <select id={`issue-type-${s.id}`} value={issueType} onChange={e => setIssueType(e.target.value)}
+                                        className="w-full px-3 py-2 text-[12px] rounded-xl border border-[#E8EDF6] bg-white outline-none focus:border-[#4361EE]">
                                         <option value="">Select issue type…</option>
                                         {ISSUE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                                       </select>
-                                      <textarea value={issueNote} onChange={e => setIssueNote(e.target.value)}
-                                        placeholder="Additional details (optional)" rows={3}
-                                        className="w-full px-3 py-2 text-[12px] rounded-xl border border-[#E8EDF6] bg-[#FAFBFF] text-[#0C1220] outline-none focus:border-[#4361EE] resize-none" />
+                                      <textarea id={`issue-note-${s.id}`} value={issueNote} onChange={e => setIssueNote(e.target.value)} rows={3}
+                                        placeholder="Additional details (optional)"
+                                        className="w-full px-3 py-2 text-[12px] rounded-xl border border-[#E8EDF6] bg-white outline-none focus:border-[#4361EE] resize-none" />
                                       <div className="flex gap-2">
-                                        <button onClick={() => { setIssueOrderId(null); setIssueType(""); setIssueNote(""); }}
-                                          className="flex-1 py-2 rounded-xl text-[12px] font-medium bg-[#F3F4F6] text-[#6B7280]">
-                                          Cancel
-                                        </button>
-                                        <button onClick={() => submitIssue(d.id)}
-                                          disabled={!issueType || issueSending}
-                                          className="flex-1 py-2 rounded-xl text-[12px] font-bold text-white disabled:opacity-50 flex items-center justify-center gap-1.5"
-                                          style={{ background: "#EF4444" }}>
-                                          {issueSending ? "Submitting…" : <><Send className="w-3.5 h-3.5" /> Submit Issue</>}
+                                        <button onClick={() => setIssueOrderId(null)} className="flex-1 py-2 rounded-xl text-[12px] font-medium bg-[#F3F4F6] text-[#6B7280]">Cancel</button>
+                                        <button onClick={() => submitIssue(s.id)} disabled={!issueType || issueSending}
+                                          className="flex-1 py-2 rounded-xl text-[12px] font-bold text-white bg-[#EF4444] disabled:opacity-50 flex items-center justify-center gap-1.5">
+                                          {issueSending ? "Submitting…" : <><Send className="w-3.5 h-3.5" /> Submit issue</>}
                                         </button>
                                       </div>
                                     </div>
                                   ) : (
-                                    <div className="space-y-2">
-                                      <p className="px-4 py-3 rounded-xl text-[12px] leading-relaxed bg-[#FAFBFF] border border-[#E8EDF6] text-[#6B7280]">
-                                        Report problems — wrong address, failed attempt, damaged package, or delays.
-                                      </p>
-                                      <button
-                                        onClick={() => { setIssueOrderId(d.id); setIssueType(""); setIssueNote(""); setReschedOrderId(null); }}
-                                        className="w-full py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center gap-1.5 bg-[#FEF2F2] text-[#DC2626] border border-[#FECACA]">
-                                        <AlertTriangle className="w-3.5 h-3.5" /> Raise Delivery Issue
-                                      </button>
-                                    </div>
+                                    <button onClick={() => { setIssueOrderId(s.id); setIssueType(""); setIssueNote(""); setReschedOrderId(null); }}
+                                      className="w-full py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center gap-1.5 bg-[#FEF2F2] text-[#DC2626] border border-[#FECACA]">
+                                      <AlertTriangle className="w-3.5 h-3.5" /> Report issue
+                                    </button>
                                   )}
                                 </div>
 
-                                {/* Reschedule */}
-                                <div className="space-y-3">
-                                  <p className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-wide">Reschedule Delivery</p>
-                                  {reschedSuccess === d.id ? (
-                                    <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-[#ECFDF5] border border-[#BBF7D0]">
-                                      <CheckCircle2 className="w-4 h-4 text-[#059669]" />
-                                      <p className="text-[12px] font-medium text-[#15803D]">Reschedule request sent.</p>
-                                    </div>
-                                  ) : reschedOrderId === d.id ? (
-                                    <div className="space-y-3">
-                                      <div>
-                                        <label className="block text-[11px] font-semibold text-[#6B7280] mb-1">Preferred delivery date</label>
-                                        <input type="date" value={reschedDate}
-                                          min={new Date().toISOString().split("T")[0]}
+                                {s.stage !== "DELIVERED" && s.stage !== "RTO" && (
+                                  <div className="space-y-2.5">
+                                    <p className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-wide">Reschedule delivery</p>
+                                    {reschedSuccess === s.id ? (
+                                      <p className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-[#ECFDF5] text-[12px] font-medium text-[#15803D]"><CheckCircle2 className="w-4 h-4" /> Reschedule request sent.</p>
+                                    ) : reschedOrderId === s.id ? (
+                                      <div className="space-y-2.5">
+                                        <input id={`resched-date-${s.id}`} type="date" value={reschedDate} min={new Date().toISOString().split("T")[0]}
                                           onChange={e => setReschedDate(e.target.value)}
-                                          className="w-full px-3 py-2 text-[12px] rounded-xl border border-[#E8EDF6] bg-[#FAFBFF] text-[#0C1220] outline-none focus:border-[#4361EE]" />
+                                          className="w-full px-3 py-2 text-[12px] rounded-xl border border-[#E8EDF6] bg-white outline-none focus:border-[#4361EE]" />
+                                        <textarea id={`resched-note-${s.id}`} value={reschedNote} onChange={e => setReschedNote(e.target.value)} rows={2}
+                                          placeholder="Instructions for the courier (optional)"
+                                          className="w-full px-3 py-2 text-[12px] rounded-xl border border-[#E8EDF6] bg-white outline-none focus:border-[#4361EE] resize-none" />
+                                        <div className="flex gap-2">
+                                          <button onClick={() => setReschedOrderId(null)} className="flex-1 py-2 rounded-xl text-[12px] font-medium bg-[#F3F4F6] text-[#6B7280]">Cancel</button>
+                                          <button onClick={() => submitReschedule(s.id)} disabled={!reschedDate || reschedSending}
+                                            className="flex-1 py-2 rounded-xl text-[12px] font-bold text-white bg-[#7C3AED] disabled:opacity-50 flex items-center justify-center gap-1.5">
+                                            {reschedSending ? "Sending…" : <><CalendarDays className="w-3.5 h-3.5" /> Request reschedule</>}
+                                          </button>
+                                        </div>
                                       </div>
-                                      <textarea value={reschedNote} onChange={e => setReschedNote(e.target.value)}
-                                        placeholder="Instructions for courier (optional)" rows={3}
-                                        className="w-full px-3 py-2 text-[12px] rounded-xl border border-[#E8EDF6] bg-[#FAFBFF] text-[#0C1220] outline-none focus:border-[#4361EE] resize-none" />
-                                      <div className="flex gap-2">
-                                        <button onClick={() => { setReschedOrderId(null); setReschedDate(""); setReschedNote(""); }}
-                                          className="flex-1 py-2 rounded-xl text-[12px] font-medium bg-[#F3F4F6] text-[#6B7280]">
-                                          Cancel
-                                        </button>
-                                        <button onClick={() => submitReschedule(d.id)}
-                                          disabled={!reschedDate || reschedSending}
-                                          className="flex-1 py-2 rounded-xl text-[12px] font-bold text-white disabled:opacity-50 flex items-center justify-center gap-1.5"
-                                          style={{ background: "#7C3AED" }}>
-                                          {reschedSending ? "Sending…" : <><CalendarDays className="w-3.5 h-3.5" /> Request Reschedule</>}
-                                        </button>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <div className="space-y-2">
-                                      <p className="px-4 py-3 rounded-xl text-[12px] leading-relaxed bg-[#FAFBFF] border border-[#E8EDF6] text-[#6B7280]">
-                                        Ask admin to reschedule to a different date or with special courier instructions.
-                                      </p>
-                                      <button
-                                        onClick={() => { setReschedOrderId(d.id); setReschedDate(""); setReschedNote(""); setIssueOrderId(null); }}
+                                    ) : (
+                                      <button onClick={() => { setReschedOrderId(s.id); setReschedDate(""); setReschedNote(""); setIssueOrderId(null); }}
                                         className="w-full py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center gap-1.5 bg-[#F5F3FF] text-[#7C3AED] border border-[#DDD6FE]">
-                                        <CalendarDays className="w-3.5 h-3.5" /> Request Reschedule
+                                        <CalendarDays className="w-3.5 h-3.5" /> Request reschedule
                                       </button>
-                                    </div>
-                                  )}
-                                </div>
-
-                                {/* Live tracking */}
-                                {awb && (
-                                  <a href={`/seller/tracking/${encodeURIComponent(awb)}`}
-                                    className="w-full py-2.5 rounded-xl text-[12px] font-bold flex items-center justify-center gap-1.5 bg-[#EEF2FF] text-[#155EEF] border border-[#C7D2FE]">
-                                    <Truck className="w-3.5 h-3.5" /> Open Live Tracking
-                                  </a>
+                                    )}
+                                  </div>
                                 )}
                               </div>
                             </div>
                           </td>
                         </tr>
                       )}
-                    </>
+                    </Fragment>
                   );
                 })}
               </tbody>
@@ -664,12 +512,18 @@ export default function ManageDeliveryPage() {
           </div>
         )}
 
-        {/* Footer */}
-        {!loading && displayed.length > 0 && (
-          <div className="px-5 py-3 border-t border-[#F3F4F6]">
-            <p className="text-[12px] text-[#9CA3AF]">
-              Showing {displayed.length} delivery{displayed.length !== 1 ? "ies" : "y"}
-            </p>
+        {!loading && rows.length > 0 && (
+          <div className="px-4 py-3 border-t border-[#F3F4F6] flex items-center justify-between gap-3 flex-wrap">
+            <p className="text-[12px] text-[#9CA3AF]">{((page - 1) * 50 + 1).toLocaleString("en-IN")}–{((page - 1) * 50 + rows.length).toLocaleString("en-IN")} of {total.toLocaleString("en-IN")}</p>
+            {pages > 1 && (
+              <div className="flex items-center gap-1">
+                <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} aria-label="Previous page"
+                  className="w-8 h-8 rounded-lg flex items-center justify-center border border-[#E8EDF6] text-[#6B7280] disabled:opacity-40"><ChevronLeft className="w-4 h-4" /></button>
+                <span className="text-[12px] font-semibold text-[#6B7280] px-2 tabular-nums">Page {page} of {pages}</span>
+                <button onClick={() => setPage(p => Math.min(pages, p + 1))} disabled={page >= pages} aria-label="Next page"
+                  className="w-8 h-8 rounded-lg flex items-center justify-center border border-[#E8EDF6] text-[#6B7280] disabled:opacity-40"><ChevronRight className="w-4 h-4" /></button>
+              </div>
+            )}
           </div>
         )}
       </div>

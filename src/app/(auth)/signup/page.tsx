@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { signIn } from "next-auth/react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   Eye, EyeOff, Check, ChevronRight, ChevronLeft, Store, Sprout, ShoppingBag, Package, ArrowRight,
   Zap, TrendingUp, Crown, Mail, Loader2, RefreshCw,
@@ -92,7 +91,6 @@ function StepBar({ current }: { current: number }) {
 }
 
 export default function SignupPage() {
-  const router = useRouter();
   const [step, setStep]       = useState(0);
   const [error, setError]     = useState("");
   const [loading, setLoading] = useState(false);
@@ -568,16 +566,14 @@ export default function SignupPage() {
                 <p className="text-xs mt-1" style={{ color: "#6B7280" }}>{service === "MARKETPLACE" ? "3-month plan" : "One-time"} · + 18% GST</p>
               </div>
 
-              <button onClick={() => router.push("/onboarding")}
-                className="w-full py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 text-white transition-all hover:opacity-90"
-                style={{ background: BLUE }}>
-                Continue to onboarding <ChevronRight className="w-4 h-4" />
-              </button>
               <a href={WA_LINK} target="_blank" rel="noopener noreferrer"
-                className="w-full py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-colors hover:bg-[#F0FDF4]"
-                style={{ color: "#15803D", border: "1px solid #BBF7D0" }}>
-                Can&apos;t wait? Chat with us on WhatsApp
+                className="w-full py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 text-white transition-all hover:opacity-90"
+                style={{ background: "#16A34A" }}>
+                Can&apos;t wait? Chat with us on WhatsApp <ChevronRight className="w-4 h-4" />
               </a>
+              <p className="text-center text-xs" style={{ color: "#6B7280" }}>
+                Onboarding opens after your payment is confirmed.
+              </p>
             </div>
           )}
 

@@ -2,33 +2,45 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   LayoutDashboard, ShoppingCart, Wallet, MoreHorizontal,
   Package, Users, Megaphone, Brain, HelpCircle, X, LogOut,
-  ClipboardCheck, Truck,
+  ClipboardCheck, Truck, Bell, AlertTriangle, ListChecks, Store, ShoppingBag, UserCog,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 
-const PRIMARY = [
-  { label: "Home",    href: "/seller",                    icon: LayoutDashboard, exact: true },
-  { label: "Confirm", href: "/seller/order-confirmation", icon: ClipboardCheck,  isNew: true },
-  { label: "Orders",  href: "/seller/orders",             icon: ShoppingCart },
-  { label: "Finance", href: "/seller/wallet",             icon: Wallet },
+const PRIMARY: { label: string; href: string; icon: React.ElementType; exact?: boolean; isNew?: boolean }[] = [
+  { label: "Home",      href: "/seller",            icon: LayoutDashboard, exact: true },
+  { label: "Orders",    href: "/seller/orders",     icon: ShoppingCart },
+  { label: "Shipments", href: "/seller/deliveries", icon: Truck },
+  { label: "Wallet",    href: "/seller/wallet",     icon: Wallet },
 ];
 
-const MORE = [
-  { label: "Fulfilment",   href: "/seller/deliveries",   icon: Truck },
-  { label: "Products",     href: "/seller/catalog",      icon: Package },
-  { label: "Customers",    href: "/seller/customers",    icon: Users },
-  { label: "Meta Spends",  href: "/seller/meta-ads",     icon: Megaphone },
-  { label: "Intelligence", href: "/seller/intelligence", icon: Brain },
-  { label: "Support",      href: "/seller/support",      icon: HelpCircle },
+// Same order as the desktop sidebar; pages still being built are left out on mobile.
+const MORE: { label: string; href: string; icon: React.ElementType; badge?: "notifications" }[] = [
+  { label: "Notifications",    href: "/seller/notifications",      icon: Bell, badge: "notifications" },
+  { label: "COD Confirm",      href: "/seller/order-confirmation", icon: ClipboardCheck },
+  { label: "Customers",        href: "/seller/customers",          icon: Users },
+  { label: "NDR",              href: "/seller/ndr",                icon: AlertTriangle },
+  { label: "Catalogue",        href: "/seller/catalog",            icon: Package },
+  { label: "My Listings",      href: "/seller/listings",           icon: ListChecks },
+  { label: "Shopify",          href: "/seller/shopify",            icon: Store },
+  { label: "Amazon",           href: "/seller/amazon",             icon: ShoppingBag },
+  { label: "Ad Spend",         href: "/seller/meta-ads",           icon: Megaphone },
+  { label: "AI Intelligence",  href: "/seller/intelligence",       icon: Brain },
+  { label: "Profile",          href: "/seller/profile",            icon: UserCog },
+  { label: "Support",          href: "/seller/support",            icon: HelpCircle },
 ];
 
 export function MobileBottomNav({ userName, plan }: { userName?: string; plan?: string }) {
   const pathname = usePathname();
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    fetch("/api/seller/notifications").then(r => r.json()).then(d => setUnreadCount(d.unreadCount ?? 0)).catch(() => {});
+  }, []);
 
   function isActive(href: string, exact?: boolean) {
     return exact ? pathname === href : pathname === href || pathname.startsWith(href + "/");
@@ -88,10 +100,15 @@ export function MobileBottomNav({ userName, plan }: { userName?: string; plan?: 
                 style={{ background: active ? "#EEF2FF" : "transparent" }}
               >
                 <div
-                  className="w-11 h-11 rounded-2xl flex items-center justify-center"
+                  className="relative w-11 h-11 rounded-2xl flex items-center justify-center"
                   style={{ background: active ? "#4361EE" : "#F5F7FB" }}
                 >
                   <Icon className="w-5 h-5" style={{ color: active ? "white" : "#6B7280" }} />
+                  {item.badge === "notifications" && unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 text-[9px] font-bold min-w-[16px] h-[16px] px-1 rounded-full flex items-center justify-center bg-[#EF4444] text-white ring-2 ring-white">
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </span>
+                  )}
                 </div>
                 <span
                   className="text-[11px] font-semibold text-center leading-tight"
@@ -181,8 +198,11 @@ export function MobileBottomNav({ userName, plan }: { userName?: string; plan?: 
           >
             <div
               className="w-7 h-7 rounded-lg flex items-center justify-center"
-              style={{ background: moreIsActive || sheetOpen ? "#EEF2FF" : "transparent" }}
+              style={{ background: moreIsActive || sheetOpen ? "#EEF2FF" : "transparent", position: "relative" }}
             >
+              {unreadCount > 0 && !sheetOpen && (
+                <span className="absolute top-0 right-0 w-2 h-2 rounded-full bg-[#EF4444] ring-2 ring-white" />
+              )}
               <MoreHorizontal
                 className="w-[18px] h-[18px]"
                 style={{ color: moreIsActive || sheetOpen ? "#4361EE" : "#9CA3AF" }}

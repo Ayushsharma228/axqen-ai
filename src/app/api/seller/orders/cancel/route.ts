@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
+import { getShopifyAccessToken } from "@/lib/shopify";
 
 export async function POST(req: NextRequest) {
   const session = await getRouteSession(req);
@@ -42,7 +43,7 @@ export async function POST(req: NextRequest) {
           {
             method: "POST",
             headers: {
-              "X-Shopify-Access-Token": store.accessToken,
+              "X-Shopify-Access-Token": await getShopifyAccessToken(store.id),
               "Content-Type": "application/json",
             },
             body: JSON.stringify({ reason: "customer" }),

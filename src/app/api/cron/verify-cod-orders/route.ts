@@ -12,6 +12,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getShopifyAccessToken } from "@/lib/shopify";
 import { getConfig, requestCODVerification } from "@/lib/hillteck";
 import { batchPredictRtoRisk } from "@/lib/rto-predictor";
 import { decrypt } from "@/lib/encrypt";
@@ -95,7 +96,7 @@ export async function GET(req: NextRequest) {
   const shopifyStores = sellerIdsWithHighRisk.size > 0
     ? await prisma.shopifyStore.findMany({
         where:  { sellerId: { in: [...sellerIdsWithHighRisk] } },
-        select: { sellerId: true, storeUrl: true, accessToken: true },
+        select: { id: true, sellerId: true, storeUrl: true, accessToken: true },
       })
     : [];
   const storeMap = new Map(shopifyStores.map(s => [s.sellerId, s]));
@@ -129,7 +130,7 @@ export async function GET(req: NextRequest) {
         const rawData      = order.rawData as { id?: number | string } | null;
         const shopifyOrderId = rawData?.id;
         if (store && shopifyOrderId) {
-          await cancelOnShopify(shopifyOrderId, store.storeUrl, decrypt(store.accessToken));
+          await cancelOnShopify(shopifyOrderId, store.storeUrl, await getShopifyAccessToken(store.id));
         }
       }
       await prisma.order.update({

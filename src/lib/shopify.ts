@@ -1,5 +1,80 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { prisma } from "@/lib/prisma";
+import { encrypt, decrypt } from "@/lib/encrypt";
+
+// ── Access tokens ─────────────────────────────────────────────────────────────
+// New public apps must use expiring offline tokens (~1h) plus a refresh token.
+// Older custom-app connections have non-expiring tokens (no accessTokenExpiresAt) and are used as-is.
+
+type TokenResponse = {
+  access_token?: string;
+  expires_in?: number;
+  refresh_token?: string;
+  refresh_token_expires_in?: number;
+  error?: string;
+  error_description?: string;
+};
+
+/** Converts Shopify's token response into the encrypted fields stored on ShopifyStore. */
+export function tokenFields(t: TokenResponse) {
+  const now = Date.now();
+  return {
+    accessToken:           encrypt(t.access_token!),
+    refreshToken:          t.refresh_token ? encrypt(t.refresh_token) : null,
+    accessTokenExpiresAt:  t.expires_in ? new Date(now + t.expires_in * 1000) : null,
+    refreshTokenExpiresAt: t.refresh_token_expires_in ? new Date(now + t.refresh_token_expires_in * 1000) : null,
+  };
+}
+
+/** Exchanges an OAuth code for an expiring offline token. */
+export async function exchangeCodeForToken(shop: string, clientId: string, clientSecret: string, code: string): Promise<TokenResponse> {
+  const res = await fetch(`https://${shop}/admin/oauth/access_token`, {
+    method:  "POST",
+    headers: { "Content-Type": "application/json" },
+    body:    JSON.stringify({ client_id: clientId, client_secret: clientSecret, code, expiring: 1 }),
+  });
+  return (await res.json().catch(() => ({}))) as TokenResponse;
+}
+
+/** Returns a usable access token for the store, refreshing it first if it is about to expire. */
+export async function getShopifyAccessToken(storeId: string): Promise<string> {
+  const store = await prisma.shopifyStore.findUnique({ where: { id: storeId } });
+  if (!store) throw new Error("Shopify store not found");
+
+  const expiresAt = store.accessTokenExpiresAt?.getTime();
+  if (!expiresAt || expiresAt - Date.now() > 2 * 60_000 || !store.refreshToken) {
+    return decrypt(store.accessToken);
+  }
+
+  const clientId = store.clientId || process.env.SHOPIFY_API_KEY;
+  const clientSecret = store.clientSecret || process.env.SHOPIFY_API_SECRET;
+  if (!clientId || !clientSecret) throw new Error("Shopify app credentials are not configured");
+
+  const res = await fetch(`https://${store.storeUrl}/admin/oauth/access_token`, {
+    method:  "POST",
+    headers: { "Content-Type": "application/json" },
+    body:    JSON.stringify({
+      client_id:     clientId,
+      client_secret: clientSecret,
+      grant_type:    "refresh_token",
+      refresh_token: decrypt(store.refreshToken),
+    }),
+  });
+  const t = (await res.json().catch(() => ({}))) as TokenResponse;
+  if (!res.ok || !t.access_token) {
+    const reason = t.error_description || t.error || `HTTP ${res.status}`;
+    await prisma.shopifyStore.update({ where: { id: storeId }, data: { lastSyncError: `Access expired — please reconnect your store (${reason})` } }).catch(() => {});
+    throw new Error(`Shopify token refresh failed: ${reason}`);
+  }
+
+  const fields = tokenFields(t);
+  // Keep the existing refresh token if Shopify didn't rotate it.
+  await prisma.shopifyStore.update({
+    where: { id: storeId },
+    data:  fields.refreshToken ? fields : { accessToken: fields.accessToken, accessTokenExpiresAt: fields.accessTokenExpiresAt },
+  });
+  return t.access_token;
+}
 
 export const SHOPIFY_API_VERSION = "2026-10";
 

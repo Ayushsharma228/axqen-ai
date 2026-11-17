@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
+import { getShopifyAccessToken, SHOPIFY_API_VERSION } from "@/lib/shopify";
 import { decrypt } from "@/lib/encrypt";
 
 export async function POST(req: NextRequest) {
@@ -47,12 +48,12 @@ export async function POST(req: NextRequest) {
       : undefined;
 
     const shopifyRes = await fetch(
-      `https://${shopifyStore.storeUrl}/admin/api/2025-01/products.json`,
+      `https://${shopifyStore.storeUrl}/admin/api/${SHOPIFY_API_VERSION}/products.json`,
       {
         method:  "POST",
         headers: {
           "Content-Type":            "application/json",
-          "X-Shopify-Access-Token":  decrypt(shopifyStore.accessToken),
+          "X-Shopify-Access-Token":  await getShopifyAccessToken(shopifyStore.id),
         },
         body: JSON.stringify({
           product: {

@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { encrypt } from "@/lib/encrypt";
 import { getRouteSession } from "@/lib/session";
-import { SHOPIFY_API_VERSION, appUrl, normalizeShopDomain, registerWebhooks, verifyOAuthHmac, verifyState } from "@/lib/shopify";
+import { SHOPIFY_API_VERSION, appUrl, exchangeCodeForToken, normalizeShopDomain, registerWebhooks, tokenFields, verifyOAuthHmac, verifyState } from "@/lib/shopify";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -31,12 +30,7 @@ export async function GET(req: NextRequest) {
   if (!clientId || !clientSecret) return fail("not_configured");
   if (!verifyOAuthHmac(searchParams, clientSecret)) return fail("error");
 
-  const tokenRes = await fetch(`https://${shop}/admin/oauth/access_token`, {
-    method:  "POST",
-    headers: { "Content-Type": "application/json" },
-    body:    JSON.stringify({ client_id: clientId, client_secret: clientSecret, code }),
-  });
-  const tokenData = (await tokenRes.json().catch(() => ({}))) as { access_token?: string };
+  const tokenData = await exchangeCodeForToken(shop, clientId, clientSecret, code);
   if (!tokenData.access_token) return fail("error");
   const accessToken = tokenData.access_token;
 
@@ -53,8 +47,8 @@ export async function GET(req: NextRequest) {
   const creds = state.mode === "platform" ? { clientId: null, clientSecret: null } : { clientId, clientSecret };
   await prisma.shopifyStore.upsert({
     where:  { sellerId },
-    create: { sellerId, storeName, storeUrl: shop, accessToken: encrypt(accessToken), ...creds },
-    update: { storeName, storeUrl: shop, accessToken: encrypt(accessToken), lastSyncError: null, ...creds },
+    create: { sellerId, storeName, storeUrl: shop, ...tokenFields(tokenData), ...creds },
+    update: { storeName, storeUrl: shop, ...tokenFields(tokenData), lastSyncError: null, lastSyncAt: null, ...creds },
   });
 
   await registerWebhooks(shop, accessToken).catch((err) => console.error("[shopify/callback] webhook registration failed:", err));

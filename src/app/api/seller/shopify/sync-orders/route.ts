@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
+import { getShopifyAccessToken, SHOPIFY_API_VERSION } from "@/lib/shopify";
 import { OrderStatus, Prisma } from "@prisma/client";
 import { decrypt } from "@/lib/encrypt";
 import { inferPaymentMode } from "@/app/api/webhooks/shopify/orders/route";
@@ -38,7 +39,7 @@ async function fetchAllShopifyOrders(
   accessToken: string,
 ): Promise<{ orders: Record<string, unknown>[]; pageCount: number }> {
   const orders: Record<string, unknown>[] = [];
-  let url: string | null = `https://${storeUrl}/admin/api/2025-01/orders.json?status=any&limit=250`;
+  let url: string | null = `https://${storeUrl}/admin/api/${SHOPIFY_API_VERSION}/orders.json?status=any&limit=250`;
   let pageCount = 0;
 
   while (url) {
@@ -75,7 +76,7 @@ export async function syncShopifyOrders(sellerId: string): Promise<{ created: nu
   let pageCount: number;
 
   try {
-    const result = await fetchAllShopifyOrders(store.storeUrl, decrypt(store.accessToken));
+    const result = await fetchAllShopifyOrders(store.storeUrl, await getShopifyAccessToken(store.id));
     shopifyOrders = result.orders;
     pageCount = result.pageCount;
   } catch (err) {

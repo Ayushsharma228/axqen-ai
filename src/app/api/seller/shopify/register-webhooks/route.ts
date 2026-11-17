@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { decrypt } from "@/lib/encrypt";
-import { registerWebhooks } from "@/lib/shopify";
+import { getShopifyAccessToken, registerWebhooks } from "@/lib/shopify";
 
 export async function POST(req: NextRequest) {
   const session = await getRouteSession(req);
@@ -13,6 +12,6 @@ export async function POST(req: NextRequest) {
   const store = await prisma.shopifyStore.findUnique({ where: { sellerId: session.user.id } });
   if (!store) return NextResponse.json({ error: "No Shopify store connected" }, { status: 400 });
 
-  const results = await registerWebhooks(store.storeUrl, decrypt(store.accessToken));
+  const results = await registerWebhooks(store.storeUrl, await getShopifyAccessToken(store.id));
   return NextResponse.json({ ok: results.every((r) => r.status !== "failed"), results });
 }

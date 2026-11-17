@@ -4,24 +4,34 @@ import bcrypt from "bcryptjs";
 
 export async function POST(req: NextRequest) {
   try {
-    const { name, email, username, password, confirmPassword } = await req.json();
+    // username and confirmPassword are optional (older clients still send them); phone is optional for those clients too.
+    const { name, email, username, password, confirmPassword, phone } = await req.json();
 
-    if (!name || !email || !username || !password) {
+    if (!name || !email || !password) {
       return NextResponse.json({ error: "All fields are required" }, { status: 400 });
     }
-    if (password !== confirmPassword) {
+    if (confirmPassword !== undefined && password !== confirmPassword) {
       return NextResponse.json({ error: "Passwords do not match" }, { status: 400 });
     }
     if (password.length < 8) {
       return NextResponse.json({ error: "Password must be at least 8 characters" }, { status: 400 });
     }
-    if (!/^[a-z0-9_]+$/.test(username)) {
+    if (username && !/^[a-z0-9_]+$/.test(username)) {
       return NextResponse.json({ error: "Username: only lowercase letters, numbers and underscores" }, { status: 400 });
+    }
+
+    let normalizedPhone: string | null = null;
+    if (phone !== undefined && phone !== null && String(phone).trim() !== "") {
+      const digits = String(phone).replace(/\D/g, "").replace(/^91(?=\d{10}$)/, "").replace(/^0(?=\d{10}$)/, "");
+      if (!/^[6-9]\d{9}$/.test(digits)) {
+        return NextResponse.json({ error: "Enter a valid 10-digit Indian mobile number" }, { status: 400 });
+      }
+      normalizedPhone = `+91${digits}`;
     }
 
     const [existingEmail, existingUsername] = await Promise.all([
       prisma.user.findUnique({ where: { email } }),
-      prisma.user.findFirst({ where: { username } }),
+      username ? prisma.user.findFirst({ where: { username } }) : Promise.resolve(null),
     ]);
 
     if (existingEmail) return NextResponse.json({ error: "An account with this email already exists" }, { status: 409 });
@@ -33,7 +43,8 @@ export async function POST(req: NextRequest) {
       data: {
         name,
         email,
-        username,
+        username: username || null,
+        phone: normalizedPhone,
         password: hashed,
         role: "SELLER",
         accountStatus: "PENDING",

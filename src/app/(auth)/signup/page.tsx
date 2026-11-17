@@ -98,9 +98,8 @@ export default function SignupPage() {
 
   const [name, setName]           = useState("");
   const [email, setEmail]         = useState("");
-  const [username, setUsername]   = useState("");
+  const [phone, setPhone]         = useState("");
   const [password, setPassword]   = useState("");
-  const [confirm, setConfirm]     = useState("");
   const [showPw, setShowPw]       = useState(false);
 
   // Email OTP (step 1)
@@ -143,7 +142,7 @@ export default function SignupPage() {
     const res = await fetch("/api/auth/signup", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, email, username, password, confirmPassword: confirm }),
+      body: JSON.stringify({ name, email, phone, password }),
     });
     const data = await res.json();
     if (!res.ok) { setError(data.error); setLoading(false); return; }
@@ -413,40 +412,39 @@ export default function SignupPage() {
               <p className="text-sm mb-5" style={{ color: "#6B7280" }}>Fill in your details to get started</p>
 
               <div>
-                <label className="block text-xs font-medium mb-1.5" style={{ color: "#374151" }}>Full Name</label>
-                <input value={name} onChange={(e) => setName(e.target.value)} required
+                <label htmlFor="su-name" className="block text-xs font-medium mb-1.5" style={{ color: "#374151" }}>Full name</label>
+                <input id="su-name" value={name} onChange={(e) => setName(e.target.value)} required autoComplete="name"
                   placeholder="Your full name" className={inputCls} style={inputStyle} />
               </div>
 
               <div>
-                <label className="block text-xs font-medium mb-1.5" style={{ color: "#374151" }}>Email Address</label>
-                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required
+                <label htmlFor="su-email" className="block text-xs font-medium mb-1.5" style={{ color: "#374151" }}>Email address</label>
+                <input id="su-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email"
                   placeholder="you@example.com" className={inputCls} style={inputStyle} />
               </div>
 
               <div>
-                <label className="block text-xs font-medium mb-1.5" style={{ color: "#374151" }}>Username</label>
-                <input value={username} onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))} required
-                  placeholder="your_username" className={`${inputCls} font-mono`} style={inputStyle} />
-                <p className="text-xs mt-1" style={{ color: "#9CA3AF" }}>Lowercase letters, numbers, underscores only</p>
+                <label htmlFor="su-phone" className="block text-xs font-medium mb-1.5" style={{ color: "#374151" }}>Mobile number</label>
+                <div className="flex rounded-xl border overflow-hidden focus-within:ring-2 focus-within:border-blue-500 transition-all" style={{ borderColor: "#e5e7eb", background: "#fff" }}>
+                  <span className="flex items-center px-3 text-sm font-medium border-r" style={{ color: "#374151", borderColor: "#e5e7eb", background: "#f9fafb" }}>+91</span>
+                  <input id="su-phone" type="tel" inputMode="numeric" autoComplete="tel-national" required
+                    value={phone} onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                    pattern="[6-9][0-9]{9}" title="10-digit mobile number"
+                    placeholder="98765 43210" className="flex-1 px-4 py-2.5 text-sm outline-none" style={{ color: "#0A0E1A" }} />
+                </div>
+                <p className="text-xs mt-1" style={{ color: "#9CA3AF" }}>Our team will call you on this number to set up your account</p>
               </div>
 
               <div>
-                <label className="block text-xs font-medium mb-1.5" style={{ color: "#374151" }}>Password</label>
+                <label htmlFor="su-password" className="block text-xs font-medium mb-1.5" style={{ color: "#374151" }}>Password</label>
                 <div className="relative">
-                  <input type={showPw ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} required
+                  <input id="su-password" type={showPw ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} autoComplete="new-password"
                     placeholder="Min. 8 characters" className={`${inputCls} pr-10`} style={inputStyle} />
-                  <button type="button" onClick={() => setShowPw(!showPw)}
+                  <button type="button" onClick={() => setShowPw(!showPw)} aria-label={showPw ? "Hide password" : "Show password"}
                     className="absolute right-3 top-1/2 -translate-y-1/2" style={{ color: "#9CA3AF" }}>
                     {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium mb-1.5" style={{ color: "#374151" }}>Confirm Password</label>
-                <input type={showPw ? "text" : "password"} value={confirm} onChange={(e) => setConfirm(e.target.value)} required
-                  placeholder="Re-enter password" className={inputCls} style={inputStyle} />
               </div>
 
               <button type="submit" disabled={loading}

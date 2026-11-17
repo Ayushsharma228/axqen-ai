@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { PLAN_PRICES_INR, TEST_TIER, TEST_PRICE_INR, TEST_PLAN_ENABLED, type Service, type Tier } from "@/lib/plan-pricing";
 import { PRICING, MARKETPLACE_PLAN } from "@/components/landing/content";
+import { WA_LINK } from "@/components/landing/constants";
 
 const BLUE   = "#0048DF";
 const BLUEDIM = "rgba(0,72,223,0.08)";
@@ -191,7 +192,15 @@ export default function SignupPage() {
     // The plan was chosen before the account existed; save it now that there is a session.
     const saved = (await saveStep({ step: "service", service })) && (await saveStep({ step: "plan", planTier }));
     setOtpLoading(false);
-    if (saved) setStep(3);
+    if (saved) {
+      // Alert the sales team; never block the seller on it.
+      fetch("/api/onboarding/signup-lead", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ goal }),
+      }).catch(() => {});
+      setStep(3);
+    }
   }
 
   async function saveStep(payload: Record<string, unknown>): Promise<boolean> {
@@ -527,12 +536,28 @@ export default function SignupPage() {
                   <Check className="w-7 h-7" style={{ color: BLUE }} strokeWidth={3} />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold" style={{ color: "#0A0E1A" }}>Your account is ready</h2>
+                  <h2 className="text-xl font-bold" style={{ color: "#0A0E1A" }}>You&apos;re all set{name ? `, ${name.split(" ")[0]}` : ""}!</h2>
                   <p className="text-sm mt-1" style={{ color: "#6B7280" }}>
-                    Our team will contact you to complete payment and set up your account.
+                    Our team will call you{phone ? <> on <strong style={{ color: "#0A0E1A" }}>+91 {phone}</strong></> : null} shortly to complete payment and set up your account.
                   </p>
                 </div>
               </div>
+
+              <ol className="space-y-2.5 text-sm" style={{ color: "#374151" }}>
+                {[
+                  ["Account created", true],
+                  ["Our team calls you to confirm your plan and collect payment", false],
+                  ["Your account is activated and the dashboard opens", false],
+                ].map(([label, done], i) => (
+                  <li key={i} className="flex items-start gap-3">
+                    <span className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold"
+                      style={done ? { background: "#16A34A", color: "#fff" } : { background: "#f3f4f6", color: "#6B7280" }}>
+                      {done ? <Check className="w-3.5 h-3.5" strokeWidth={3} /> : i + 1}
+                    </span>
+                    <span className="pt-0.5">{label}</span>
+                  </li>
+                ))}
+              </ol>
 
               <div className="rounded-xl p-5 text-center" style={{ background: BLUEDIM, border: `1px solid ${BLUEBORDER}` }}>
                 <p className="text-xs font-medium mb-1" style={{ color: "#6B7280" }}>Selected plan</p>
@@ -548,6 +573,11 @@ export default function SignupPage() {
                 style={{ background: BLUE }}>
                 Continue to onboarding <ChevronRight className="w-4 h-4" />
               </button>
+              <a href={WA_LINK} target="_blank" rel="noopener noreferrer"
+                className="w-full py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-colors hover:bg-[#F0FDF4]"
+                style={{ color: "#15803D", border: "1px solid #BBF7D0" }}>
+                Can&apos;t wait? Chat with us on WhatsApp
+              </a>
             </div>
           )}
 

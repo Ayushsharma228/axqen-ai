@@ -48,6 +48,8 @@ export default function ShopifyConnectPage() {
   async function syncOrders() {
     setSyncing(true);
     setSyncMsg("");
+    // Keeps webhooks current for stores connected before automatic registration existed.
+    await fetch("/api/seller/shopify/register-webhooks", { method: "POST" }).catch(() => {});
     const res = await fetch("/api/seller/shopify/sync-orders", { method: "POST" });
     const d = await res.json().catch(() => ({}));
     if (res.ok) setSyncMsg(`Orders synced: ${d.created ?? 0} new, ${d.updated ?? 0} updated.`);

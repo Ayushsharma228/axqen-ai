@@ -65,6 +65,8 @@ export default function AdminOrderConfirmationPage() {
   const [tab, setTab] = useState<Tab>("TO_CALL");
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
+  const [sellerId, setSellerId] = useState("");
+  const [sellers, setSellers] = useState<{ id: string; name: string | null; brandName: string | null; email: string }[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
@@ -74,13 +76,20 @@ export default function AdminOrderConfirmationPage() {
   const load = useCallback(() => {
     setLoading(true);
     const from = toISO(new Date(Date.now() - (days - 1) * 86400000));
-    const p = new URLSearchParams({ from, to: toISO(new Date()), ...(query ? { search: query } : {}) });
+    const p = new URLSearchParams({
+      from, to: toISO(new Date()),
+      ...(query ? { search: query } : {}),
+      ...(sellerId ? { sellerId } : {}),
+    });
     fetch(`/api/admin/order-confirmation?${p}`)
       .then(r => r.json())
       .then(d => setOrders(d.orders ?? []))
       .finally(() => setLoading(false));
-  }, [days, query]);
+  }, [days, query, sellerId]);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    fetch("/api/admin/sellers").then(r => r.json()).then(d => setSellers(d.sellers ?? [])).catch(() => {});
+  }, []);
 
   async function post(orderId: string, body: Record<string, unknown>, savingKey: string) {
     setSaving(savingKey);
@@ -165,6 +174,16 @@ export default function AdminOrderConfirmationPage() {
         onSearchChange={setSearch}
         onSearchSubmit={() => setQuery(search.trim())}
         filters={
+          <div className="flex items-center gap-2 flex-wrap">
+          <select
+            id="seller-filter"
+            value={sellerId}
+            onChange={e => setSellerId(e.target.value)}
+            className="bg-white border border-[#E8EDF6] rounded-lg px-3 py-2 text-[12.5px] font-semibold text-[#374151] max-w-[220px] focus:outline-none focus:border-[#4361EE]"
+          >
+            <option value="">All sellers</option>
+            {sellers.map(s => <option key={s.id} value={s.id}>{s.brandName || s.name || s.email}</option>)}
+          </select>
           <div className="flex items-center gap-1 bg-white border border-[#E8EDF6] rounded-lg p-0.5">
             {RANGES.map(r => (
               <button key={r.d} onClick={() => setDays(r.d)}
@@ -173,6 +192,7 @@ export default function AdminOrderConfirmationPage() {
                 {r.l}
               </button>
             ))}
+          </div>
           </div>
         }
       />

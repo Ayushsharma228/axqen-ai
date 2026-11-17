@@ -145,7 +145,7 @@ export default function SellerDashboard() {
       icon: AlertTriangle, tone: "#DC2626", bg: "#FEF2F2", hint: "Delivery failed, choose re-attempt or RTO",
     },
     {
-      label: "Waiting to ship", count: (p?.confirmed ?? 0) + (p?.processing ?? 0), href: "/seller/orders",
+      label: "Waiting to ship", count: (p?.confirmed ?? 0) + (p?.processing ?? 0), href: "/seller/orders?tab=CONFIRMED",
       icon: PackageOpen, tone: "#4361EE", bg: "#EEF2FF", hint: "Confirmed, being packed",
     },
   ];

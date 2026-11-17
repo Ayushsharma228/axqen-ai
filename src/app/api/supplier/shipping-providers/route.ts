@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { encrypt, decrypt } from "@/lib/encrypt";
+import { shipdaakConfigured } from "@/lib/shipdaak";
 
 export async function GET(req: NextRequest) {
   const session = await getRouteSession(req);
@@ -24,7 +25,13 @@ export async function GET(req: NextRequest) {
     };
   });
 
-  return NextResponse.json({ providers: masked });
+  // The dispatch popup also offers AXQEN Shipping (platform Shipdaak account) first, when configured.
+  const forDispatch = new URL(req.url).searchParams.get("forDispatch") === "1";
+  const platform = forDispatch && shipdaakConfigured()
+    ? [{ id: "SHIPDAAK", provider: "SHIPDAAK", label: "AXQEN Shipping (Shipdaak)", baseUrl: null, isActive: true, createdAt: null, apiKey: null }]
+    : [];
+
+  return NextResponse.json({ providers: [...platform, ...masked] });
 }
 
 export async function POST(req: NextRequest) {

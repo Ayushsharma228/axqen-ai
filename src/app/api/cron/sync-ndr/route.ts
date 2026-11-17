@@ -44,6 +44,8 @@ export async function GET(req: NextRequest) {
     where: {
       awbNumber: { not: null },
       ndrActionTaken: null,
+      // Shipdaak shipments get NDR from /api/cron/track-shipdaak.
+      NOT: { courier: { startsWith: "Shipdaak · " } },
       // Include RTO orders from last 30 days that never had NDR captured
       OR: [
         { status: { notIn: ["DELIVERED", "CANCELLED", "RTO"] } },

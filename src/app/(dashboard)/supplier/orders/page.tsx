@@ -184,7 +184,7 @@ export default function SupplierOrdersPage() {
     setAutoDispatchError("");
     setLoadingProviders(true);
     try {
-      const res = await fetch("/api/supplier/shipping-providers");
+      const res = await fetch("/api/supplier/shipping-providers?forDispatch=1");
       const d = await res.json();
       const active = (d.providers ?? []).filter((p: { isActive: boolean }) => p.isActive);
       setShippingProviders(active);
@@ -213,6 +213,7 @@ export default function SupplierOrdersPage() {
       });
       const d = await res.json();
       if (!res.ok) { setAutoDispatchError(d.error || "Shipment creation failed"); return; }
+      if (d.labelUrl) window.open(d.labelUrl, "_blank", "noopener");
       setShowDispatch(null);
       setShippingProviders([]);
       await fetchOrders();
@@ -640,7 +641,7 @@ export default function SupplierOrdersPage() {
           <div className="rounded-2xl w-full max-w-md shadow-2xl" style={{ background: "var(--bg-card)" }}>
             <div className="px-6 py-4 flex items-center justify-between"
               style={{ borderBottom: "1px solid var(--border)" }}>
-              <h3 className="font-semibold" style={{ color: "var(--text-900)" }}>Push to Delhivery</h3>
+              <h3 className="font-semibold" style={{ color: "var(--text-900)" }}>Create Shipment</h3>
               <button onClick={() => { setShowDispatch(null); setShippingProviders([]); setAutoDispatchError(""); }}
                 className="text-2xl leading-none" style={{ color: "var(--text-400)" }}>×</button>
             </div>
@@ -666,9 +667,14 @@ export default function SupplierOrdersPage() {
                     <select value={selectedProviderId} onChange={(e) => setSelectedProviderId(e.target.value)}
                       className="w-full px-3 py-2.5 text-sm border border-green-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-400 bg-white">
                       {shippingProviders.map((p) => (
-                        <option key={p.id} value={p.id}>{p.label} ({p.provider})</option>
+                        <option key={p.id} value={p.id}>{p.id === "SHIPDAAK" ? p.label : `${p.label} (${p.provider})`}</option>
                       ))}
                     </select>
+                    {selectedProviderId === "SHIPDAAK" && (
+                      <p className="text-xs text-green-700">
+                        Ships from your approved pickup warehouse. The best courier is chosen automatically, and the label opens after booking.
+                      </p>
+                    )}
 
                     {/* Shipment mode toggle */}
                     <div>

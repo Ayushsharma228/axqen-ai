@@ -52,6 +52,8 @@ export async function GET(req: NextRequest) {
         { courier: null },
         { courier: { contains: "delhivery", mode: "insensitive" } },
       ],
+      // Shipdaak shipments (even with Delhivery as the courier) are tracked by /api/cron/track-shipdaak.
+      NOT: { courier: { startsWith: "Shipdaak · " } },
     },
     select: { id: true, awbNumber: true, status: true },
   });

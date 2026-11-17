@@ -12,30 +12,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getShopifyAccessToken } from "@/lib/shopify";
 import { getConfig, requestCODVerification } from "@/lib/hillteck";
 import { batchPredictRtoRisk } from "@/lib/rto-predictor";
-import { decrypt } from "@/lib/encrypt";
-
-async function cancelOnShopify(
-  shopifyOrderId: string | number,
-  storeUrl: string,
-  accessToken: string,
-): Promise<boolean> {
-  try {
-    const res = await fetch(
-      `https://${storeUrl}/admin/api/2025-01/orders/${shopifyOrderId}/cancel.json`,
-      {
-        method:  "POST",
-        headers: { "X-Shopify-Access-Token": accessToken, "Content-Type": "application/json" },
-        body:    JSON.stringify({ reason: "other" }),
-      },
-    );
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
 
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
@@ -85,21 +63,6 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Fetch Shopify stores for sellers with HIGH-risk orders (needed for Shopify cancellation)
-  const sellerIdsWithHighRisk = new Set<string>();
-  for (const o of orders) {
-    const level = scoreMap[o.id] ?? "MEDIUM";
-    if ((level === "HIGH" || level === "VERY_HIGH") && o.source === "SHOPIFY") {
-      sellerIdsWithHighRisk.add(o.sellerId);
-    }
-  }
-  const shopifyStores = sellerIdsWithHighRisk.size > 0
-    ? await prisma.shopifyStore.findMany({
-        where:  { sellerId: { in: [...sellerIdsWithHighRisk] } },
-        select: { id: true, sellerId: true, storeUrl: true, accessToken: true },
-      })
-    : [];
-  const storeMap = new Map(shopifyStores.map(s => [s.sellerId, s]));
 
   // Fetch seller brand names for WhatsApp trigger payload
   const sellerIds = [...new Set(orders.map(o => o.sellerId))];
@@ -125,14 +88,7 @@ export async function GET(req: NextRequest) {
 
     // HIGH / VERY_HIGH → auto-cancel immediately
     if (level === "HIGH" || level === "VERY_HIGH") {
-      if (order.source === "SHOPIFY") {
-        const store        = storeMap.get(order.sellerId);
-        const rawData      = order.rawData as { id?: number | string } | null;
-        const shopifyOrderId = rawData?.id;
-        if (store && shopifyOrderId) {
-          await cancelOnShopify(shopifyOrderId, store.storeUrl, await getShopifyAccessToken(store.id));
-        }
-      }
+      // Shopify is read-only for AXQEN (read_orders), so the order is cancelled in AXQEN only.
       await prisma.order.update({
         where: { id: order.id },
         data:  { status: "CANCELLED" as never, confirmationStatus: "FAILED" as never, confirmationFailedAt: new Date() },

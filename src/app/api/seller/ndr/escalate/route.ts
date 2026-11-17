@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { NDR_ESCALATION, NDR_ORDER_SELECT, buildNdrCards } from "@/lib/ndr";
+import { NDR_ESCALATION, NDR_ORDER_SELECT, NDR_VISIBLE_FROM, buildNdrCards } from "@/lib/ndr";
 
 // Seller escalates an NDR that has had no action for 24h+ → every admin gets a notification.
 export async function POST(req: NextRequest) {
@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
 
   const { orderId, note } = (await req.json()) as { orderId?: string; note?: string };
   const order = await prisma.order.findFirst({
-    where: { id: orderId ?? "", sellerId: session.user.id, ndrStatus: { not: null } },
+    where: { id: orderId ?? "", sellerId: session.user.id, ndrStatus: { not: null }, ndrCreatedAt: { gte: NDR_VISIBLE_FROM } },
     select: NDR_ORDER_SELECT,
   });
   if (!order) return NextResponse.json({ error: "NDR not found" }, { status: 404 });

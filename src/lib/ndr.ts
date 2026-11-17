@@ -9,6 +9,13 @@ export const NDR_ACTION = "NDR_ACTION";
 export const NDR_ESCALATION = "NDR_ESCALATION";
 export const ESCALATE_AFTER_HOURS = 24;
 
+// NDRs raised before this moment are hidden from the NDR pages (kept in the database, just not listed).
+export const NDR_VISIBLE_FROM = new Date("2026-11-17T19:15:00Z");
+export const ndrSince = (days: number | null) => {
+  const d = days ? new Date(Date.now() - days * 86400000) : null;
+  return d && d > NDR_VISIBLE_FROM ? d : NDR_VISIBLE_FROM;
+};
+
 export type NdrTab = "ACTION_NEEDED" | "REATTEMPT" | "DELIVERED" | "RTO";
 
 const FAILED = /undelivered|not\s*delivered|delivery\s*failed|failed\s*attempt|attempt(ed)?\s*(failed|unsuccessful)|not\s*available|unavailable|refused|door\s*locked|premises\s*closed|not\s*contactable|not\s*reachable|unreachable|wrong\s*address|incomplete\s*address|address\s*not\s*found|out\s*of\s*delivery\s*area|cod\s*(amount\s*)?not\s*ready|cash\s*not\s*ready|future\s*delivery|customer\s*(wants|requested)|\bndr\b/i;

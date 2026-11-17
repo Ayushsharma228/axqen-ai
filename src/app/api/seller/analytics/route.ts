@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
+import { NDR_VISIBLE_FROM } from "@/lib/ndr";
 
 async function getPlatformFeePerOrder(): Promise<number> {
   try {
@@ -59,6 +60,7 @@ export async function GET(req: NextRequest) {
         customerAddress: true,
         ndrStatus: true,
         ndrActionTaken: true,
+        ndrCreatedAt: true,
         paymentMode: true,
         confirmationStatus: true,
         items: { select: { name: true, sku: true, quantity: true } },
@@ -270,7 +272,7 @@ export async function GET(req: NextRequest) {
     shipped:    orders.filter(o => o.status === "SHIPPED").length,
     inTransit:  orders.filter(o => o.status === "IN_TRANSIT").length,
     delivered:  delivered.length,
-    ndr:        orders.filter(o => o.ndrStatus !== null && o.ndrActionTaken === null).length,
+    ndr:        orders.filter(o => o.ndrStatus !== null && o.ndrActionTaken === null && !!o.ndrCreatedAt && o.ndrCreatedAt >= NDR_VISIBLE_FROM).length,
     rtoRisk:    orders.filter(o => o.ndrStatus !== null).length,
     cancelled:  cancelled.length,
   };

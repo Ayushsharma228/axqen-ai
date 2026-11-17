@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { NDR_ORDER_SELECT, buildNdrCards, ndrStats, ndrTab } from "@/lib/ndr";
+import { NDR_ORDER_SELECT, buildNdrCards, ndrSince, ndrStats, ndrTab } from "@/lib/ndr";
 
 // GET ?tab=ACTION_NEEDED|REATTEMPT|DELIVERED|RTO|ALL &sellerId &search &days
 export async function GET(req: NextRequest) {
@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
   const where: Prisma.OrderWhereInput = {
     ndrStatus: { not: null },
     ...(sellerId ? { sellerId } : {}),
-    ...(days ? { ndrCreatedAt: { gte: new Date(Date.now() - days * 86400000) } } : {}),
+    ndrCreatedAt: { gte: ndrSince(days) },
     ...(search ? {
       OR: [
         { externalOrderId: { contains: search, mode: "insensitive" } },

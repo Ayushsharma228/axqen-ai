@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { NDR_ORDER_SELECT, buildNdrCards, ndrStats, ndrTab } from "@/lib/ndr";
+import { NDR_ORDER_SELECT, buildNdrCards, ndrSince, ndrStats, ndrTab } from "@/lib/ndr";
 
 // Read-only NDR view for the signed-in seller. GET ?tab=…&days
 export async function GET(req: NextRequest) {
@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
     where: {
       sellerId: session.user.id,
       ndrStatus: { not: null },
-      ...(days ? { ndrCreatedAt: { gte: new Date(Date.now() - days * 86400000) } } : {}),
+      ndrCreatedAt: { gte: ndrSince(days) },
     },
     select: NDR_ORDER_SELECT,
     orderBy: { ndrCreatedAt: "asc" },

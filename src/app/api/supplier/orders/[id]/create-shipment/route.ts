@@ -8,10 +8,6 @@ import {
   ShipmentInput,
 } from "@/lib/shipping-adapters";
 import { decrypt } from "@/lib/encrypt";
-import { SHIPDAAK_COURIER_PREFIX, createShipment as shipdaakCreateShipment, ensureShipdaakWarehouse, shipdaakConfigured } from "@/lib/shipdaak";
-
-// Virtual provider for the AXQEN platform Shipdaak account (not stored per supplier).
-const SHIPDAAK_PROVIDER_ID = "SHIPDAAK";
 
 export async function POST(
   req: NextRequest,
@@ -22,7 +18,7 @@ export async function POST(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
-  const { providerId, shipmentMode, weight, length, breadth, height, warehouseId, courierId } = await req.json();
+  const { providerId, shipmentMode, weight, length, breadth, height } = await req.json();
   if (!providerId) return NextResponse.json({ error: "providerId required" }, { status: 400 });
   const resolvedMode: "Surface" | "Express" = shipmentMode === "Express" ? "Express" : "Surface";
 
@@ -34,6 +30,12 @@ export async function POST(
   if (!order) return NextResponse.json({ error: "Order not found" }, { status: 404 });
   if (order.supplierStatus === "DISPATCHED")
     return NextResponse.json({ error: "Order already dispatched" }, { status: 400 });
+
+  // Fetch provider credentials (full, unmasked)
+  const provider = await prisma.supplierShippingProvider.findFirst({
+    where: { id: providerId, supplierId: session.user.id, isActive: true },
+  });
+  if (!provider) return NextResponse.json({ error: "Shipping provider not found" }, { status: 404 });
 
   // Parse customer address
   const addr = (order.customerAddress ?? {}) as Record<string, string>;
@@ -62,54 +64,7 @@ export async function POST(
     shipmentMode: resolvedMode,
   };
 
-  let result: { awb: string; courier: string; trackingUrl?: string; labelUrl?: string };
-
-  // ── AXQEN Shipping via Shipdaak (platform account) ──
-  if (providerId === SHIPDAAK_PROVIDER_ID) {
-    if (!shipdaakConfigured()) return NextResponse.json({ error: "AXQEN Shipping is not set up yet. Contact admin." }, { status: 400 });
-    if (order.paymentMode === "UNKNOWN") {
-      return NextResponse.json({ error: "This order's payment mode (COD or prepaid) is unknown. Ask admin to set it before shipping." }, { status: 400 });
-    }
-
-    const warehouse = await prisma.warehouse.findFirst({
-      where: { supplierId: session.user.id, status: "APPROVED", ...(warehouseId ? { id: warehouseId } : {}) },
-      orderBy: { createdAt: "asc" },
-    });
-    if (!warehouse) {
-      return NextResponse.json({ error: "You need an approved pickup warehouse first. Add one under Warehouse and wait for admin approval." }, { status: 400 });
-    }
-
-    try {
-      const shipdaakWarehouseId = await ensureShipdaakWarehouse(warehouse.id);
-      const shipment = await shipdaakCreateShipment({
-        orderNo:     order.externalOrderId,
-        payType:     order.paymentMode === "COD" ? "cod" : "prepaid",
-        totalAmount: order.totalAmount,
-        weightGrams: (input.weight ?? 0.5) * 1000,
-        length: input.length ?? 23, breadth: input.breadth ?? 13, height: input.height ?? 4,
-        warehouseId: shipdaakWarehouseId,
-        courierId:   typeof courierId === "number" && courierId > 0 ? courierId : undefined,
-        consignee:   { name: input.customerName, address1: address, city, state, pincode, phone },
-        items:       order.items.map((i) => ({ name: i.name, quantity: i.quantity, price: i.price, sku: i.sku })),
-      });
-      result = {
-        awb:      shipment.awb_number,
-        courier:  `${SHIPDAAK_COURIER_PREFIX}${shipment.courier_name}`,
-        labelUrl: shipment.label,
-      };
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Shipment creation failed";
-      return NextResponse.json({ error: `AXQEN Shipping: ${msg}` }, { status: 502 });
-    }
-
-    return finishDispatch({ id, order, sessionUserId: session.user.id, result, providerLabel: "AXQEN Shipping", providerType: "SHIPDAAK", resolvedMode });
-  }
-
-  // Fetch provider credentials (full, unmasked)
-  const provider = await prisma.supplierShippingProvider.findFirst({
-    where: { id: providerId, supplierId: session.user.id, isActive: true },
-  });
-  if (!provider) return NextResponse.json({ error: "Shipping provider not found" }, { status: 404 });
+  let result: { awb: string; courier: string; trackingUrl?: string };
 
   const plainApiKey    = provider.apiKey    ? decrypt(provider.apiKey)    : null;
   const plainApiSecret = provider.apiSecret ? decrypt(provider.apiSecret) : null;
@@ -133,21 +88,7 @@ export async function POST(
     return NextResponse.json({ error: msg }, { status: 502 });
   }
 
-  return finishDispatch({ id, order, sessionUserId: session.user.id, result, providerLabel: provider.label, providerType: provider.provider, resolvedMode });
-}
-
-type DispatchOrder = { externalOrderId: string; purchaseOrder: { id: string } | null };
-
-async function finishDispatch(p: {
-  id: string;
-  order: DispatchOrder;
-  sessionUserId: string;
-  result: { awb: string; courier: string; trackingUrl?: string; labelUrl?: string };
-  providerLabel: string;
-  providerType: string;
-  resolvedMode: string;
-}) {
-  const { id, order, result } = p;
+  // Mark order dispatched
   const ops: any[] = [
     prisma.order.update({
       where: { id },
@@ -166,11 +107,11 @@ async function finishDispatch(p: {
     prisma.orderTimeline.create({
       data: {
         orderId:   id,
-        actorId:   p.sessionUserId,
+        actorId:   session.user.id,
         actorRole: "SUPPLIER",
         event:     "DISPATCHED",
-        details:   `Auto-dispatched via ${p.providerLabel} (${p.resolvedMode})`,
-        metadata:  { awb: result.awb, courier: result.courier, provider: p.providerType, shipmentMode: p.resolvedMode, labelUrl: result.labelUrl ?? null },
+        details:   `Auto-dispatched via ${provider.label} (${resolvedMode})`,
+        metadata:  { awb: result.awb, courier: result.courier, provider: provider.provider, shipmentMode: resolvedMode },
       },
     }),
   ];
@@ -190,7 +131,7 @@ async function finishDispatch(p: {
         userId:  a.id,
         type:    "ORDER_UPDATE",
         title:   "Order Dispatched",
-        message: `Order ${order.externalOrderId} dispatched via ${p.providerLabel}. AWB: ${result.awb}`,
+        message: `Order ${order.externalOrderId} dispatched via ${provider.label}. AWB: ${result.awb}`,
         data:    { orderId: id, awb: result.awb },
       },
     }));
@@ -198,5 +139,5 @@ async function finishDispatch(p: {
 
   await prisma.$transaction(ops);
 
-  return NextResponse.json({ success: true, awb: result.awb, courier: result.courier, trackingUrl: result.trackingUrl, labelUrl: result.labelUrl ?? null });
+  return NextResponse.json({ success: true, awb: result.awb, courier: result.courier, trackingUrl: result.trackingUrl });
 }

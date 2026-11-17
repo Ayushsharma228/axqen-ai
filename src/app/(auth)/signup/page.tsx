@@ -5,7 +5,7 @@ import { signIn } from "next-auth/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  Eye, EyeOff, Check, ChevronRight, ChevronLeft, Store,
+  Eye, EyeOff, Check, ChevronRight, ChevronLeft, Store, Sprout, ShoppingBag, Package, ArrowRight,
   Zap, TrendingUp, Crown, Mail, Loader2, RefreshCw,
 } from "lucide-react";
 import { PLAN_PRICES_INR, TEST_TIER, TEST_PRICE_INR, TEST_PLAN_ENABLED, type Service, type Tier } from "@/lib/plan-pricing";
@@ -42,6 +42,15 @@ const TEST_PLAN: PlanCard = {
 };
 
 const STEPS = ["Plan", "Account", "Verify Email", "Done"];
+
+// Screen 1: what brings the seller here. Each answer picks the service and a recommended plan.
+type GoalId = "NEW_BUSINESS" | "SHOPIFY_STORE" | "AMAZON" | "BRAND";
+const GOALS: { id: GoalId; title: string; desc: string; icon: typeof Zap; service: Service; tier: Tier }[] = [
+  { id: "NEW_BUSINESS",  title: "Starting a new business", desc: "I don't have an online store yet",                    icon: Sprout,      service: "DROPSHIPPING", tier: "STARTER" },
+  { id: "SHOPIFY_STORE", title: "I have a Shopify store",  desc: "I want to run orders, shipping and profit better",   icon: ShoppingBag, service: "DROPSHIPPING", tier: "GROWTH" },
+  { id: "AMAZON",        title: "I sell on Amazon",         desc: "I want my Amazon account managed",                   icon: Package,     service: "MARKETPLACE",  tier: "STARTER" },
+  { id: "BRAND",         title: "Growing a brand",          desc: "I'm scaling and want more support",                  icon: TrendingUp,  service: "DROPSHIPPING", tier: "SCALE" },
+];
 
 const inputCls = "w-full px-4 py-2.5 rounded-xl text-sm outline-none border focus:ring-2 focus:border-blue-500 transition-all";
 const inputStyle = { background: "#fff", borderColor: "#e5e7eb", color: "#0A0E1A" };
@@ -103,13 +112,23 @@ export default function SignupPage() {
   const [service,    setService]    = useState<Service>("DROPSHIPPING");
   const [planTier,   setPlanTier]   = useState<PlanCard["tier"] | "">("");
   const [testMode,   setTestMode]   = useState(false);
+  const [goal,       setGoal]       = useState<GoalId | null>(null);
+  const [showGoal,   setShowGoal]   = useState(true);
 
-  // Preselect the plan picked on the website pricing section (/signup?plan=growth).
+  // Preselect the plan picked on the website pricing section (/signup?plan=growth) and skip the goal question.
   useEffect(() => {
     const p = new URLSearchParams(window.location.search).get("plan")?.toUpperCase();
-    if (p === "STARTER" || p === "GROWTH" || p === "SCALE") setPlanTier(p);
-    if (TEST_PLAN_ENABLED && p === TEST_TIER) { setTestMode(true); setPlanTier(TEST_TIER); }
+    if (p === "STARTER" || p === "GROWTH" || p === "SCALE") { setPlanTier(p); setShowGoal(false); }
+    if (TEST_PLAN_ENABLED && p === TEST_TIER) { setTestMode(true); setPlanTier(TEST_TIER); setShowGoal(false); }
   }, []);
+
+  function chooseGoal(g: (typeof GOALS)[number]) {
+    setGoal(g.id);
+    setService(g.service);
+    setPlanTier(g.tier);
+    setShowGoal(false);
+    setStep(0);
+  }
 
   const visiblePlans = (s: Service) => (s === "DROPSHIPPING" && testMode ? [...PLANS[s], TEST_PLAN] : PLANS[s]);
 
@@ -199,7 +218,7 @@ export default function SignupPage() {
     <div className="min-h-screen flex items-center justify-center px-4 py-12"
       style={{ background: "#f8f9fa" }}>
 
-      <div className={`w-full ${step === 0 ? "max-w-5xl" : "max-w-lg"}`}>
+      <div className={`w-full ${showGoal ? "max-w-3xl" : step === 0 ? "max-w-5xl" : "max-w-lg"}`}>
         {/* Logo */}
         <div className="text-center mb-6">
           <a href="/" aria-label="AXQEN home" className="inline-flex items-center gap-2 mb-2 transition-opacity hover:opacity-80">
@@ -209,6 +228,46 @@ export default function SignupPage() {
           <p className="text-sm" style={{ color: "#6B7280" }}>Create your seller account</p>
         </div>
 
+        {showGoal ? (
+          <div>
+            <div className="text-center mb-8">
+              <h1 className="text-2xl md:text-3xl font-black mb-2" style={{ color: "#0A0E1A", letterSpacing: "-0.02em" }}>
+                Let&apos;s set up AXQEN for you
+              </h1>
+              <p className="text-sm md:text-base" style={{ color: "#6B7280" }}>
+                Pick what fits you best. You can change it later.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {GOALS.map((g) => {
+                const Icon = g.icon;
+                return (
+                  <button
+                    key={g.id}
+                    onClick={() => chooseGoal(g)}
+                    className="group flex items-start gap-4 p-5 md:p-6 rounded-2xl bg-white text-left border-2 border-[#e5e7eb] transition-all duration-200 hover:border-[#0048DF] hover:-translate-y-0.5 hover:shadow-[0_12px_28px_-14px_rgba(0,72,223,0.45)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0048DF]"
+                  >
+                    <span className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors bg-[rgba(0,72,223,0.08)] group-hover:bg-[#0048DF]">
+                      <Icon className="w-6 h-6 text-[#0048DF] group-hover:text-white transition-colors" />
+                    </span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-base font-bold mb-1" style={{ color: "#0A0E1A" }}>{g.title}</span>
+                      <span className="block text-sm leading-snug" style={{ color: "#6B7280" }}>{g.desc}</span>
+                    </span>
+                    <ArrowRight className="w-5 h-5 mt-1 flex-shrink-0 text-[#d1d5db] transition-all group-hover:text-[#0048DF] group-hover:translate-x-0.5" />
+                  </button>
+                );
+              })}
+            </div>
+
+            <p className="text-center text-sm mt-8" style={{ color: "#6B7280" }}>
+              Already have an account?{" "}
+              <Link href="/login" style={{ color: BLUE }} className="font-semibold hover:opacity-80">Sign in</Link>
+            </p>
+          </div>
+        ) : (
+        <>
         <StepBar current={step} />
 
         {/* Card */}
@@ -227,6 +286,12 @@ export default function SignupPage() {
           {/* ── Step 0: Plan ── */}
           {step === 0 && (
             <div>
+              {goal && (
+                <button type="button" onClick={() => setShowGoal(true)}
+                  className="flex items-center gap-1 text-xs font-semibold -mt-2 mb-4 hover:opacity-70" style={{ color: BLUE }}>
+                  <ChevronLeft className="w-3.5 h-3.5" /> Change answer
+                </button>
+              )}
               <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
                 <div>
                   <h2 className="text-xl font-bold mb-1" style={{ color: "#0A0E1A" }}>Choose your plan</h2>
@@ -475,6 +540,8 @@ export default function SignupPage() {
           )}
 
         </div>
+        </>
+        )}
       </div>
     </div>
   );

@@ -1,9 +1,8 @@
 import { PostLink, Source, Table, Checklist, Cta } from "../_components/Prose";
-import { getPost } from "../posts";
+import { getPost, SOURCES } from "../posts";
 
-// TODO(product owner): paste the exact Razorpay and ClickPost source URLs; the citations render as plain text until then.
-const RAZORPAY_URL: string | undefined = undefined;
-const CLICKPOST_URL: string | undefined = undefined;
+const RAZORPAY_URL = SOURCES.razorpay;
+const CLICKPOST_URL = SOURCES.clickpost;
 
 export default function StartDropshippingBusinessIndia() {
   const faqs = getPost("start-dropshipping-business-india")?.faqs ?? [];

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect, useCallback } from "react";
 import {
@@ -351,8 +351,9 @@ export default function SellerListingsPage() {
       .then(d => {
         setListings(d.listings ?? []);
         if (d.stats) setStats(d.stats);
-        setLoading(false);
-      });
+      })
+      .catch(() => setListings([]))
+      .finally(() => setLoading(false));
   }, []);
 
   const filtered = filter === "ALL" ? listings : listings.filter(l => l.status === filter);

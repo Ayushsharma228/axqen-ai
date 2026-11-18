@@ -3,7 +3,8 @@ import { getRouteSession } from "@/lib/session";
 import crypto from "crypto";
 
 const APP_ID       = "amzn1.sp.solution.c3c38782-a77e-492d-b3bc-fb63c2732a5a";
-const CALLBACK_URL = `${process.env.NEXTAUTH_URL}/api/seller/amazon/callback`;
+// Must match the OAuth Redirect URI registered on the Amazon SP-API app exactly.
+const CALLBACK_URL = process.env.AMAZON_REDIRECT_URI ?? "https://www.axqen.app/api/seller/amazon/callback";
 
 const SC_URLS: Record<string, string> = {
   IN: "https://sellercentral.amazon.in",

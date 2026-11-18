@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
     body:    new URLSearchParams({
       grant_type:    "authorization_code",
       code,
-      redirect_uri:  `${process.env.NEXTAUTH_URL}/api/seller/amazon/callback`,
+      redirect_uri:  process.env.AMAZON_REDIRECT_URI ?? "https://www.axqen.app/api/seller/amazon/callback",
       client_id:     process.env.AMAZON_CLIENT_ID!,
       client_secret: process.env.AMAZON_CLIENT_SECRET!,
     }),

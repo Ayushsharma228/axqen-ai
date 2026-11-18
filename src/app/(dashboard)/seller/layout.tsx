@@ -24,7 +24,7 @@ export default async function SellerLayout({ children }: { children: React.React
       />
 
       {/* Main content — full width on mobile, offset on desktop */}
-      <main className="flex-1 min-h-screen pb-[72px] md:pb-0 md:ml-[232px]">
+      <main className="flex-1 min-w-0 min-h-screen pb-[72px] md:pb-0 md:ml-[var(--seller-nav-w,248px)] transition-[margin] duration-200">
         {children}
       </main>
 

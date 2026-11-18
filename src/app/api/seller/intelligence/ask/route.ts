@@ -5,6 +5,7 @@ import { buildFacts } from "@/lib/seller-insights";
 import { ASK_DAILY_LIMIT, askUsedToday, recordAsk } from "@/lib/ai-ask-quota";
 
 const MODEL = "claude-haiku-5-5";
+const FALLBACK_MODEL = "claude-haiku-4-5";
 
 // Ask AXQEN: answers from the seller's own figures, built on the server (never from the browser).
 // POST { question: string, history?: { role: "user" | "assistant", content: string }[] }
@@ -59,14 +60,25 @@ SELLER FACTS:
 ${JSON.stringify(sheet)}`;
 
   const client = new Anthropic();
+  const messages: Anthropic.MessageParam[] = [...history, { role: "user", content: question }];
   try {
-    const response = await client.messages.create({
-      model: MODEL,
-      max_tokens: 4000,
-      system,
-      output_config: { effort: "low" },
-      messages: [...history, { role: "user", content: question }],
-    } as Anthropic.MessageCreateParamsNonStreaming);
+    let response: Anthropic.Message;
+    try {
+      response = await client.messages.create({
+        model: MODEL,
+        max_tokens: 4000,
+        system,
+        output_config: { effort: "low" },
+        messages,
+      } as Anthropic.MessageCreateParamsNonStreaming);
+    } catch (err) {
+      // Account without access to the newest Haiku: fall back to Haiku 4.5 (no effort setting on that model).
+      const modelProblem = err instanceof Anthropic.NotFoundError
+        || (err instanceof Anthropic.BadRequestError && /model|output_config|effort/i.test(err.message));
+      if (!modelProblem) throw err;
+      console.warn("[intelligence/ask] falling back to", FALLBACK_MODEL, err instanceof Error ? err.message : err);
+      response = await client.messages.create({ model: FALLBACK_MODEL, max_tokens: 1500, system, messages });
+    }
 
     if (response.stop_reason === "refusal") {
       return NextResponse.json({ error: "I can't help with that one. Try asking about your orders, profit, products or ads." }, { status: 422 });
@@ -83,9 +95,17 @@ ${JSON.stringify(sheet)}`;
     if (err instanceof Anthropic.RateLimitError) {
       return NextResponse.json({ error: "Ask AXQEN is busy right now. Try again in a minute." }, { status: 429 });
     }
+    if (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError) {
+      console.error("[intelligence/ask]", err.status, err.message);
+      return NextResponse.json({ error: "Ask AXQEN's AI key isn't valid. The AXQEN team needs to update it.", detail: err.message }, { status: 502 });
+    }
     if (err instanceof Anthropic.APIError) {
       console.error("[intelligence/ask]", err.status, err.message);
-      return NextResponse.json({ error: "Ask AXQEN couldn't answer right now. Please try again." }, { status: 502 });
+      const credit = /credit balance|billing/i.test(err.message);
+      return NextResponse.json({
+        error: credit ? "Ask AXQEN is paused: the AI account is out of credit. The AXQEN team needs to top it up." : "Ask AXQEN couldn't answer right now. Please try again.",
+        detail: `${err.status ?? ""} ${err.message}`.trim().slice(0, 300),
+      }, { status: 502 });
     }
     console.error("[intelligence/ask]", err);
     return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });

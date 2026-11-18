@@ -68,7 +68,9 @@ export default function IntelligencePage() {
       });
       const d = await res.json().catch(() => ({}));
       if (typeof d.remaining === "number") setRemaining(d.remaining);
-      setMessages(m => [...m, res.ok ? { role: "assistant", content: d.answer } : { role: "assistant", content: d.error ?? "Couldn't answer right now.", error: true }]);
+      setMessages(m => [...m, res.ok ? { role: "assistant", content: d.answer } : { role: "assistant", content: (d.error ?? "Couldn't answer right now.") + (d.detail ? `
+
+Details: ${d.detail}` : ""), error: true }]);
     } catch {
       setMessages(m => [...m, { role: "assistant", content: "Network problem. Please try again.", error: true }]);
     } finally {

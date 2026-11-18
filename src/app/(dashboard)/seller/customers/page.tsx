@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { Fragment, useState, useEffect, useMemo } from "react";
+import Link from "next/link";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell,
 } from "recharts";
 import {
   Search, Users, TrendingUp, ShoppingBag, RefreshCw,
-  ChevronDown, ChevronUp, MapPin, Phone, Mail,
+  ChevronDown, ChevronUp, MapPin, Phone, Mail, AlertTriangle, Download,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -33,6 +34,7 @@ interface Customer {
   state: string | null;
   totalOrders: number;
   gmv: number;
+  deliveredValue: number;
   delivered: number;
   rto: number;
   cancelled: number;
@@ -43,11 +45,19 @@ interface Customer {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
+// One person = one phone number (COD buyers often skip or change email). Email is the fallback.
 function customerKey(email: string | null, addr: RawOrder["customerAddress"]): string | null {
+  const digits = (addr?.phone ?? "").replace(/\D/g, "").slice(-10);
+  if (digits.length === 10) return `phone:${digits}`;
   if (email) return `email:${email.toLowerCase()}`;
-  const phone = addr?.phone?.replace(/\s+/g, "");
-  return phone ? `phone:${phone}` : null;
+  return null;
 }
+
+// Risky = 2 or more orders that came back or were cancelled.
+const isRisky = (c: { rto: number; cancelled: number }) => c.rto + c.cancelled >= 2;
+// Delivery rate over completed shipments only (delivered + RTO), same rule as the dashboard.
+const deliveryRate = (c: { delivered: number; rto: number }) =>
+  c.delivered + c.rto > 0 ? Math.round((c.delivered / (c.delivered + c.rto)) * 100) : null;
 
 const inr = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
 const num = (n: number) => Math.round(n).toLocaleString("en-IN");
@@ -79,9 +89,9 @@ export default function CustomersPage() {
   const [rawOrders, setRawOrders]   = useState<RawOrder[]>([]);
   const [loading,   setLoading]     = useState(true);
   const [search,    setSearch]      = useState("");
-  const [sortBy,    setSortBy]      = useState<"gmv" | "orders" | "last">("gmv");
+  const [sortBy,    setSortBy]      = useState<"value" | "orders" | "last" | "risk">("value");
   const [expanded,  setExpanded]    = useState<string | null>(null);
-  const [tab,       setTab]         = useState<"all" | "repeat" | "single">("all");
+  const [tab,       setTab]         = useState<"all" | "repeat" | "single" | "risky">("all");
 
   // Date range: last 12 months
   const today   = new Date();
@@ -114,7 +124,7 @@ export default function CustomersPage() {
           key: k, name: o.customerName || "Unknown",
           email: o.customerEmail, phone: addr?.phone || null,
           city: addr?.city || null, state: addr?.state || null,
-          totalOrders: 0, gmv: 0, delivered: 0, rto: 0, cancelled: 0,
+          totalOrders: 0, gmv: 0, deliveredValue: 0, delivered: 0, rto: 0, cancelled: 0,
           firstOrder: o.createdAt, lastOrder: o.createdAt,
           products: [], orders: [],
         };
@@ -122,7 +132,9 @@ export default function CustomersPage() {
       }
       c.totalOrders++;
       c.gmv += o.totalAmount;
-      if (o.status === "DELIVERED")  c.delivered++;
+      if (o.status === "DELIVERED")  { c.delivered++; c.deliveredValue += o.totalAmount; }
+      if (!c.phone && addr?.phone) c.phone = addr.phone;
+      if (!c.email && o.customerEmail) c.email = o.customerEmail;
       if (o.status === "RTO")        c.rto++;
       if (o.status === "CANCELLED")  c.cancelled++;
       if (o.createdAt < c.firstOrder) c.firstOrder = o.createdAt;
@@ -144,6 +156,8 @@ export default function CustomersPage() {
   const totalCustomers  = customers.length;
   const repeatCustomers = customers.filter(c => c.totalOrders > 1).length;
   const totalGmv        = customers.reduce((s, c) => s + c.gmv, 0);
+  const totalDelivered  = customers.reduce((s, c) => s + c.deliveredValue, 0);
+  const riskyCustomers  = customers.filter(isRisky).length;
   const avgOrderValue   = rawOrders.length > 0 ? totalGmv / rawOrders.length : 0;
 
   // ── State chart ────────────────────────────────────────────────────────
@@ -168,6 +182,7 @@ export default function CustomersPage() {
     let list = customers;
     if (tab === "repeat") list = list.filter(c => c.totalOrders > 1);
     if (tab === "single") list = list.filter(c => c.totalOrders === 1);
+    if (tab === "risky")  list = list.filter(isRisky);
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(c =>
@@ -178,11 +193,27 @@ export default function CustomersPage() {
       );
     }
     return [...list].sort((a, b) => {
-      if (sortBy === "gmv")    return b.gmv - a.gmv;
+      if (sortBy === "value")  return b.deliveredValue - a.deliveredValue;
+      if (sortBy === "risk")   return (b.rto + b.cancelled) - (a.rto + a.cancelled);
       if (sortBy === "orders") return b.totalOrders - a.totalOrders;
       return b.lastOrder.localeCompare(a.lastOrder);
     });
   }, [customers, search, sortBy, tab]);
+
+  function exportCsv() {
+    const rows = [
+      ["Name", "Phone", "Email", "City", "State", "Orders", "Delivered", "RTO", "Cancelled", "Delivery rate %", "Delivered value", "Total ordered", "First order", "Last order", "Risky"],
+      ...filtered.map(c => [
+        c.name, c.phone ?? "", c.email ?? "", c.city ?? "", c.state ?? "", c.totalOrders, c.delivered, c.rto, c.cancelled,
+        deliveryRate(c) ?? "", Math.round(c.deliveredValue), Math.round(c.gmv), fmtDate(c.firstOrder), fmtDate(c.lastOrder), isRisky(c) ? "Yes" : "",
+      ]),
+    ];
+    const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8;" }));
+    a.download = `customers-${tab}.csv`;
+    a.click();
+  }
 
   // ── Render ─────────────────────────────────────────────────────────────
   return (
@@ -191,25 +222,33 @@ export default function CustomersPage() {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-[18px] font-black text-[#0C1220]">Customers</h1>
-          <p className="text-[12px] text-[#9CA3AF] mt-0.5">Unique buyers from your orders · last 12 months</p>
+          <h1 className="text-[22px] font-black text-[#0C1220]">Customers</h1>
+          <p className="text-[12px] text-[#9CA3AF] mt-0.5">Unique buyers (one phone number = one customer) · last 12 months</p>
         </div>
-        <button
-          onClick={load} disabled={loading}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[13px] font-semibold bg-white border border-[#E8EDF6] text-[#6B7280] hover:text-[#0C1220] transition-colors disabled:opacity-50"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={load} disabled={loading}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[13px] font-semibold bg-white border border-[#E8EDF6] text-[#6B7280] hover:text-[#0C1220] transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+            Refresh
+          </button>
+          <button
+            onClick={exportCsv} disabled={loading || filtered.length === 0}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[13px] font-bold text-white bg-[#4361EE] disabled:opacity-50"
+          >
+            <Download className="w-3.5 h-3.5" /> Export
+          </button>
+        </div>
       </div>
 
       {/* Stat tiles */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: "Total Customers",  value: num(totalCustomers),  sub: "Unique buyers",           icon: Users,      color: "#4361EE" },
-          { label: "Repeat Customers", value: num(repeatCustomers), sub: "Ordered 2+ times",         icon: TrendingUp, color: "#059669" },
-          { label: "Total GMV",        value: inr(totalGmv),        sub: "All customer orders",      icon: ShoppingBag,color: "#7C3AED" },
-          { label: "Avg Order Value",  value: inr(avgOrderValue),   sub: "Per order",                icon: TrendingUp, color: "#D97706" },
+          { label: "Customers",        value: num(totalCustomers),  sub: `Avg order ${inr(avgOrderValue)}`, icon: Users, color: "#4361EE" },
+          { label: "Repeat customers", value: num(repeatCustomers), sub: totalCustomers ? `${Math.round((repeatCustomers / totalCustomers) * 100)}% ordered 2+ times` : "Ordered 2+ times", icon: TrendingUp, color: "#059669" },
+          { label: "Delivered value",  value: inr(totalDelivered),  sub: `${inr(totalGmv)} ordered in total`, icon: ShoppingBag, color: "#7C3AED" },
+          { label: "Risky customers",  value: num(riskyCustomers),  sub: "2+ returned or cancelled orders", icon: AlertTriangle, color: riskyCustomers ? "#DC2626" : "#9CA3AF" },
         ].map(card => {
           const Icon = card.icon;
           return (
@@ -277,6 +316,7 @@ export default function CustomersPage() {
             { label: "All",     value: "all",    count: totalCustomers },
             { label: "Repeat",  value: "repeat", count: repeatCustomers },
             { label: "One-time",value: "single", count: totalCustomers - repeatCustomers },
+            { label: "Risky",   value: "risky",  count: riskyCustomers },
           ].map(t => (
             <button
               key={t.value}
@@ -306,16 +346,17 @@ export default function CustomersPage() {
               onChange={e => setSortBy(e.target.value as typeof sortBy)}
               className="text-[12px] rounded-lg border border-[#E8EDF6] bg-[#FAFBFF] text-[#6B7280] px-2 py-1.5 outline-none focus:border-[#4361EE]"
             >
-              <option value="gmv">Sort: GMV</option>
+              <option value="value">Sort: Delivered value</option>
               <option value="orders">Sort: Orders</option>
               <option value="last">Sort: Recent</option>
+              <option value="risk">Sort: Most returns</option>
             </select>
             {/* Search */}
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#9CA3AF]" />
               <input
                 type="text"
-                placeholder="Search customers…"
+                placeholder="Name, phone, email or state"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 className="pl-8 pr-3 py-1.5 text-[13px] rounded-lg border border-[#E8EDF6] bg-[#FAFBFF] text-[#0C1220] placeholder-[#9CA3AF] outline-none focus:border-[#4361EE] w-44 transition-colors"
@@ -340,7 +381,7 @@ export default function CustomersPage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-[#F3F4F6]" style={{ background: "#FAFBFF" }}>
-                  {["CUSTOMER", "LOCATION", "ORDERS", "GMV", "DELIVERY RATE", "TOP PRODUCT", "LAST ORDER", ""].map(h => (
+                  {["CUSTOMER", "LOCATION", "ORDERS", "DELIVERED VALUE", "DELIVERY RATE", "TOP PRODUCT", "LAST ORDER", ""].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-[11px] font-bold text-[#9CA3AF] uppercase tracking-wide whitespace-nowrap">
                       {h}
                     </th>
@@ -350,14 +391,14 @@ export default function CustomersPage() {
               <tbody>
                 {filtered.map(c => {
                   const isOpen       = expanded === c.key;
-                  const delivRate    = c.totalOrders > 0 ? Math.round((c.delivered / c.totalOrders) * 100) : 0;
+                  const delivRate    = deliveryRate(c);
+                  const risky        = isRisky(c);
                   const topProduct   = [...c.products].sort((a, b) => b.qty - a.qty)[0];
                   const isRepeat     = c.totalOrders > 1;
 
                   return (
-                    <>
+                    <Fragment key={c.key}>
                       <tr
-                        key={c.key}
                         className="hover:bg-[#FAFBFF] cursor-pointer transition-colors"
                         style={{
                           borderBottom: isOpen ? "none" : "1px solid #F9FAFB",
@@ -374,11 +415,18 @@ export default function CustomersPage() {
                             </div>
                             <div>
                               <p className="text-[13px] font-semibold text-[#0C1220]">{c.name}</p>
-                              {isRepeat && (
-                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-[#ECFDF5] text-[#059669]">
-                                  Repeat ×{c.totalOrders}
-                                </span>
-                              )}
+                              <div className="flex items-center gap-1 mt-0.5">
+                                {isRepeat && (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-[#ECFDF5] text-[#059669]">
+                                    Repeat ×{c.totalOrders}
+                                  </span>
+                                )}
+                                {risky && (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-[#FEF2F2] text-[#DC2626]" title="2 or more orders returned or cancelled">
+                                    Risky
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </td>
@@ -397,17 +445,17 @@ export default function CustomersPage() {
 
                         {/* GMV */}
                         <td className="px-4 py-3.5">
-                          <p className="text-[13px] font-bold text-[#4361EE]">{inr(c.gmv)}</p>
-                          <p className="text-[11px] text-[#9CA3AF]">{inr(c.gmv / c.totalOrders)} avg</p>
+                          <p className="text-[13px] font-bold" style={{ color: c.deliveredValue > 0 ? "#047857" : "#9CA3AF" }}>{c.deliveredValue > 0 ? inr(c.deliveredValue) : "—"}</p>
+                          <p className="text-[11px] text-[#9CA3AF]">{inr(c.gmv)} ordered</p>
                         </td>
 
                         {/* Delivery rate */}
                         <td className="px-4 py-3.5">
                           <p className="text-[13px] font-bold"
-                            style={{ color: delivRate >= 70 ? "#059669" : delivRate >= 50 ? "#D97706" : "#EF4444" }}>
-                            {delivRate}%
+                            style={{ color: delivRate === null ? "#9CA3AF" : delivRate >= 70 ? "#059669" : delivRate >= 50 ? "#D97706" : "#EF4444" }}>
+                            {delivRate === null ? "—" : `${delivRate}%`}
                           </p>
-                          <p className="text-[11px] text-[#9CA3AF]">{c.delivered} delivered · {c.rto} RTO</p>
+                          <p className="text-[11px] text-[#9CA3AF]">{c.delivered} delivered · {c.rto} RTO{c.cancelled ? ` · ${c.cancelled} cancelled` : ""}</p>
                         </td>
 
                         {/* Top product */}
@@ -435,7 +483,7 @@ export default function CustomersPage() {
 
                       {/* ── Expanded: purchase history ── */}
                       {isOpen && (
-                        <tr key={`${c.key}-exp`} style={{ borderBottom: "1px solid #F3F4F6", background: "rgba(67,97,238,0.015)" }}>
+                        <tr style={{ borderBottom: "1px solid #F3F4F6", background: "rgba(67,97,238,0.015)" }}>
                           <td colSpan={8} className="px-5 pb-5 pt-3">
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
 
@@ -476,7 +524,7 @@ export default function CustomersPage() {
                               {/* Order history table */}
                               <div className="md:col-span-2 space-y-3">
                                 <p className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-wide">
-                                  Purchase History ({c.orders.length} orders · {inr(c.gmv)} total)
+                                  Purchase History ({c.orders.length} orders · {inr(c.deliveredValue)} delivered of {inr(c.gmv)})
                                 </p>
                                 <div className="overflow-x-auto rounded-xl border border-[#F3F4F6]">
                                   <table className="w-full">
@@ -496,8 +544,8 @@ export default function CustomersPage() {
                                           const cfg = STATUS_CFG[o.status] ?? STATUS_CFG.NEW;
                                           return (
                                             <tr key={o.id} className="hover:bg-[#FAFBFF]">
-                                              <td className="px-3 py-2 text-[12px] font-bold text-[#4361EE]">
-                                                #{o.externalOrderId}
+                                              <td className="px-3 py-2 text-[12px] font-bold">
+                                                <Link href={`/seller/orders/${o.id}`} className="text-[#4361EE] hover:underline">#{o.externalOrderId}</Link>
                                               </td>
                                               <td className="px-3 py-2 text-[11px] text-[#9CA3AF]">
                                                 {fmtDate(o.createdAt)}
@@ -527,7 +575,7 @@ export default function CustomersPage() {
                           </td>
                         </tr>
                       )}
-                    </>
+                    </Fragment>
                   );
                 })}
               </tbody>
@@ -539,7 +587,7 @@ export default function CustomersPage() {
         {!loading && filtered.length > 0 && (
           <div className="px-4 py-3 border-t border-[#F3F4F6]">
             <p className="text-[12px] text-[#9CA3AF]">
-              {filtered.length} customer{filtered.length !== 1 ? "s" : ""} · {inr(filtered.reduce((s, c) => s + c.gmv, 0))} combined GMV
+              {filtered.length} customer{filtered.length !== 1 ? "s" : ""} · {inr(filtered.reduce((s, c) => s + c.deliveredValue, 0))} delivered · {inr(filtered.reduce((s, c) => s + c.gmv, 0))} ordered
             </p>
           </div>
         )}

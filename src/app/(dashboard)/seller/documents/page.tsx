@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { FileText, Download, Printer, Search, Loader2, Receipt, Wallet, CalendarClock, ExternalLink } from "lucide-react";
+import { FileText, Download, Printer, Search, Loader2, Receipt, Wallet, ExternalLink } from "lucide-react";
+import { PlanPaymentsPanel } from "@/components/billing/plan-payments-panel";
 
 interface Row {
   id: string; number: string | null; status: "ISSUED" | "CANCELLED"; issueDate: string | null;
@@ -58,7 +59,7 @@ export default function DocumentsPage() {
         {([["invoices", "Tax invoices"], ["statements", "Payout statements"], ["plan", "Plan payments"]] as const).map(([k, l]) => (
           <button key={k} onClick={() => setTab(k)} className="px-4 py-2 rounded-lg text-[13px] font-semibold"
             style={{ background: tab === k ? "white" : "transparent", color: tab === k ? "#4361EE" : "#6B7280", boxShadow: tab === k ? "0 1px 4px rgba(67,97,238,0.15)" : "none" }}>
-            {l}{k === "plan" && <span className="ml-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-[#F3F4F6] text-[#6B7280] align-middle">SOON</span>}
+            {l}
           </button>
         ))}
       </div>
@@ -170,15 +171,7 @@ export default function DocumentsPage() {
         </div>
       )}
 
-      {tab === "plan" && (
-        <div className="bg-white rounded-xl border border-dashed border-[#E8EDF6] p-6 flex items-start gap-4 max-w-2xl">
-          <span className="w-11 h-11 rounded-xl bg-[#F3F4F6] flex items-center justify-center"><CalendarClock className="w-5 h-5 text-[#9CA3AF]" /></span>
-          <div>
-            <p className="text-[15px] font-bold text-[#9CA3AF]">Plan payments <span className="ml-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-[#F3F4F6] text-[#6B7280] align-middle">SOON</span></p>
-            <p className="text-[13px] text-[#9CA3AF] mt-1">Your plan amount, every payment the AXQEN team records against it, and what&apos;s still pending will show here.</p>
-          </div>
-        </div>
-      )}
+      {tab === "plan" && <PlanPaymentsPanel />}
     </div>
   );
 }

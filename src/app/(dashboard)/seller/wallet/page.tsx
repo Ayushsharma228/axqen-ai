@@ -13,6 +13,7 @@ interface Payout {
   id: string; status: "PAID" | "SCHEDULED"; date: string; bankRef: string | null; note: string | null;
   orders: number; gross: number | null; productCost: number | null; shipping: number | null; packing: number | null;
   credit: number; rtoOrders: number; rtoDeduction: number; net: number;
+  held: number; released: number;
 }
 interface Overview {
   pipeline: {
@@ -20,6 +21,7 @@ interface Overview {
     rtoPending: { count: number; amount: number };
     scheduled: { count: number; amount: number; nextDate: string | null };
     paid: { count: number; amount: number; lastDate: string | null };
+    onHold?: { amount: number };
   };
   payouts: Payout[];
   bank: { holder: string | null; account: string | null; ifsc: string | null };
@@ -28,7 +30,12 @@ interface StatementOrder {
   id: string; externalOrderId: string; customerName: string | null; paymentMode: string; createdAt: string;
   totalAmount: number; productCost: number | null; shippingCharge: number | null; packingCharge: number | null; rtoCharge: number | null;
 }
-interface Statement { payout: Payout; orders: StatementOrder[]; rtoOrders: StatementOrder[] }
+interface StatementPayout {
+  id: string; status: "PAID" | "SCHEDULED"; date: string; bankRef: string | null; note: string | null;
+  credit: number; rtoDeduction: number; net: number; held: number;
+  released: { amount: number; at: string | null; ref: string | null } | null;
+}
+interface Statement { payout: StatementPayout; orders: StatementOrder[]; rtoOrders: StatementOrder[] }
 interface Transaction { id: string; type: string; amount: number; note: string | null; remittanceDate: string | null; bankTxId: string | null; createdAt: string }
 
 const inr = (n: number) => (n < 0 ? "−₹" : "₹") + Math.abs(Math.round(n)).toLocaleString("en-IN");
@@ -141,6 +148,15 @@ export default function SellerWalletPage() {
         ))}
       </div>
 
+      {p?.onHold && p.onHold.amount > 0 && (
+        <div className="flex items-start gap-2 px-4 py-3 rounded-xl text-[12.5px] bg-[#FEF2F2] border border-[#FECACA] text-[#991B1B]">
+          <Info className="w-4 h-4 flex-shrink-0 mt-0.5 text-[#DC2626]" />
+          <span>
+            <b>{inr(p.onHold.amount)} of your payouts is on hold</b> because your plan payment is pending. Pay your plan due and the held amount is released in a payout.{" "}
+            <Link href="/seller/documents" className="font-semibold underline">See plan payments</Link>
+          </span>
+        </div>
+      )}
       {p && ((p.rtoPending.count > 0 && p.rtoPending.amount > 0) || negative) && (
         <div className="flex items-start gap-2 px-4 py-3 rounded-xl text-[12.5px] bg-[#FFFBEB] border border-[#FDE68A] text-[#92400E]">
           <Info className="w-4 h-4 flex-shrink-0 mt-0.5 text-[#D97706]" />
@@ -200,6 +216,8 @@ export default function SellerWalletPage() {
                         <div className="text-right">
                           <p className="text-[15px] font-black tabular-nums" style={{ color: po.net < 0 ? "#DC2626" : "#0C1220" }}>{inr(po.net)}</p>
                           {po.rtoDeduction > 0 && <p className="text-[11px] text-[#9CA3AF] tabular-nums">{inr(po.credit)} − {inr(po.rtoDeduction)}</p>}
+                          {po.held > 0 && <p className="text-[11px] font-semibold text-[#DC2626] tabular-nums">{inr(po.held)} on hold</p>}
+                          {po.released > 0 && <p className="text-[11px] font-semibold text-[#047857] tabular-nums">{inr(po.released)} released later</p>}
                         </div>
                         {isOpen ? <ChevronUp className="w-4 h-4 text-[#9CA3AF]" /> : <ChevronDown className="w-4 h-4 text-[#9CA3AF]" />}
                       </button>
@@ -309,7 +327,10 @@ function StatementView({ st, onDownload, copied, onCopy }: { st: Statement; onDo
       lines.push({ label: "RTO deduction", amount: -st.payout.rtoDeduction, to: "Supplier & courier" });
     }
   }
-  lines.push({ label: st.payout.status === "PAID" ? "Paid to you" : "To be paid to you", amount: st.payout.net, to: "You", strong: true });
+  if (st.payout.held > 0) lines.push({ label: "Held for pending plan due", amount: -st.payout.held, to: "On hold" });
+  if (st.payout.released) lines.push({ label: "Held for plan due (released later)", amount: -st.payout.released.amount, to: "Released" });
+  const heldTotal = st.payout.held + (st.payout.released?.amount ?? 0);
+  lines.push({ label: st.payout.status === "PAID" ? "Paid to you" : "To be paid to you", amount: st.payout.net - heldTotal, to: "You", strong: true });
 
   return (
     <div className="space-y-4 pt-3">
@@ -347,6 +368,11 @@ function StatementView({ st, onDownload, copied, onCopy }: { st: Statement; onDo
         </table>
       </div>
 
+      {st.payout.released && (
+        <p className="text-[12px] text-[#047857] bg-[#ECFDF5] rounded-lg px-3 py-2">
+          {inr(st.payout.released.amount)} that was held was sent to your bank{st.payout.released.at ? ` on ${fmtD(st.payout.released.at)}` : ""}{st.payout.released.ref ? ` (ref ${st.payout.released.ref})` : ""}.
+        </p>
+      )}
       {(st.orders.length > 0 || st.rtoOrders.length > 0) && (
         <div>
           <button onClick={() => setShowOrders(v => !v)} className="flex items-center gap-1 text-[12.5px] font-semibold text-[#4361EE]">

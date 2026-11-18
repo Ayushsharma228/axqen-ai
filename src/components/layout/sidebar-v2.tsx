@@ -45,6 +45,7 @@ const adminNav: NavItem[] = [
   { label: "Transactions",       href: "/admin/finance",           icon: Receipt,         section: "FINANCE" },
   { label: "Seller Settlements", href: "/admin/remittance",        icon: BadgeIndianRupee },
   { label: "Invoices",           href: "/admin/invoices",          icon: FileText },
+  { label: "Plan Billing",       href: "/admin/plan-billing",      icon: CreditCard },
   { label: "Supplier Payments",  href: "/admin/supplier-payables", icon: TrendingUp },
   { label: "Platform Revenue",   href: "/admin/analytics",         icon: BarChart },
   { label: "Reconciliation",     href: "/admin/reconciliation",    icon: CheckSquare },

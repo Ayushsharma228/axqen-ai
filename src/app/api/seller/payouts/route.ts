@@ -29,6 +29,8 @@ export async function GET(req: NextRequest) {
   ]);
 
   const floor = seller?.dataStartDate ?? null;
+  const holds = await prisma.payoutHold.findMany({ where: { sellerId } });
+  const holdByTx = new Map(holds.map(h => [h.walletTxId, h]));
   const { credits, pair } = pairRtoDebits(txns);
   const sums = await orderSumsByTx([...credits.map(c => c.id), ...[...pair.values()].map(d => d.id)]);
 
@@ -53,6 +55,8 @@ export async function GET(req: NextRequest) {
         rtoOrders: r?.count ?? 0,
         rtoDeduction: d?.amount ?? 0,
         net: c.amount - (d?.amount ?? 0),
+        held: holdByTx.get(c.id)?.status === "HELD" ? holdByTx.get(c.id)!.amount : 0,
+        released: holdByTx.get(c.id)?.status === "RELEASED" ? holdByTx.get(c.id)!.amount : 0,
       };
     })
     .sort((a, b) => b.date.localeCompare(a.date));
@@ -68,7 +72,8 @@ export async function GET(req: NextRequest) {
       awaiting: { count: deliveredOpen.length, amount: deliveredOpen.reduce((s, o) => s + est(o), 0), costsKnown: deliveredOpen.every(o => o.productCost != null) },
       rtoPending: { count: rtoOpen.length, amount: rtoOpen.reduce((s, o) => s + (o.productCost ?? 0) + (o.rtoCharge ?? 0) + (o.packingCharge ?? 0), 0) },
       scheduled: { count: scheduled.length, amount: scheduled.reduce((s, p) => s + p.net, 0), nextDate: nextDates[0] ?? null },
-      paid: { count: paid.length, amount: paid.reduce((s, p) => s + p.net, 0), lastDate: paid[0]?.date ?? null },
+      paid: { count: paid.length, amount: paid.reduce((s, p) => s + p.net - p.held, 0), lastDate: paid[0]?.date ?? null },
+      onHold: { amount: holds.filter(h => h.status === "HELD").reduce((s, h) => s + h.amount, 0) },
     },
     payouts,
     bank: { holder: seller?.bankHolder ?? null, account: seller?.bankAccount ? `••••${seller.bankAccount.slice(-4)}` : null, ifsc: seller?.bankIfsc ?? null },

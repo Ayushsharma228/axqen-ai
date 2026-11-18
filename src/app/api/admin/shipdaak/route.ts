@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { getCarrierTrackingUrl } from "@/lib/shipping-adapters";
+import { BLOCKED_MESSAGE, ordersBlockedFor } from "@/lib/plan-billing";
 import {
   SHIPDAAK_COURIER_PREFIX, createShipment, getCouriers, getLabel, listWarehouses, shipdaakConfigured,
 } from "@/lib/shipdaak";
@@ -47,6 +48,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (body.action !== "ship") return NextResponse.json({ error: "Unknown action" }, { status: 400 });
+  if (await ordersBlockedFor(order.sellerId)) return NextResponse.json({ error: BLOCKED_MESSAGE }, { status: 409 });
 
   if (order.awbNumber) return NextResponse.json({ error: `Order already has AWB ${order.awbNumber}` }, { status: 400 });
   if (["CANCELLED", "DELIVERED", "RTO", "HIDDEN"].includes(order.status)) {

@@ -1651,3 +1651,58 @@ model Invoice {
   @@map("invoices")
 }
 
+// Plan billing: one period for Dropshipping (one-time), one every 3 months for Marketplace.
+// Plan invoices are made in Tally; AXQEN tracks what is due, what was paid and what is pending.
+model PlanPeriod {
+  id          String    @id @default(cuid())
+  sellerId    String
+  plan        String    // DROPSHIPPING | MARKETPLACE
+  tier        String?
+  periodNo    Int       @default(1)
+  startDate   DateTime
+  endDate     DateTime? // null = one-time plan
+  amountDue   Float
+  dueDate     DateTime? // agreed with the seller, set by the AXQEN team
+  note        String?
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([sellerId, periodNo])
+  @@index([sellerId])
+  @@map("plan_periods")
+}
+
+model PlanPayment {
+  id            String   @id @default(cuid())
+  periodId      String
+  sellerId      String
+  amount        Float
+  paidAt        DateTime
+  transactionId String?
+  mode          String   // UPI | BANK | CASH | CHEQUE | OTHER
+  note          String?
+  recordedById  String?
+  createdAt     DateTime @default(now())
+
+  @@index([sellerId])
+  @@index([periodId])
+  @@map("plan_payments")
+}
+
+// Money held back from a Dropshipping payout because a plan due is pending.
+// Not used to pay the due: released to the seller once the due is cleared.
+model PayoutHold {
+  id          String    @id @default(cuid())
+  sellerId    String
+  walletTxId  String    // the remittance CREDIT it was held from
+  amount      Float
+  status      String    // HELD | RELEASED
+  releasedAt  DateTime?
+  releaseRef  String?   // bank/UPI reference of the release transfer
+  createdAt   DateTime  @default(now())
+
+  @@index([sellerId, status])
+  @@map("payout_holds")
+}
+

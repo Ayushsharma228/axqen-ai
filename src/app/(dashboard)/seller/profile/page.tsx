@@ -7,6 +7,7 @@ import {
   MessageCircle, ExternalLink, Store, Megaphone, ShoppingBag, Clock,
 } from "lucide-react";
 import { WA_LINK } from "@/components/landing/constants";
+import { PlanDueNotice, useBilling } from "@/components/billing/plan-payments-panel";
 
 type Tab = "account" | "business" | "bank" | "plan" | "connections" | "password";
 interface Profile {
@@ -39,6 +40,7 @@ const tierName = (t: string | null) => (t ? t.charAt(0) + t.slice(1).toLowerCase
 
 export default function ProfilePage() {
   const [tab, setTab] = useState<Tab>("account");
+  const { billing } = useBilling();
   const [data, setData] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -248,15 +250,20 @@ export default function ProfilePage() {
                   ))}
                   <div className="flex items-center justify-between px-4 py-3 text-[13px]">
                     <span className="text-[#6B7280]">Payment</span>
-                    {p.paymentConfirmed
-                      ? <span className="font-semibold text-[#047857] flex items-center gap-1"><CheckCircle2 className="w-4 h-4" /> Received</span>
-                      : <span className="font-semibold text-[#9CA3AF] flex items-center gap-1.5"><Clock className="w-4 h-4" /> Payment details <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-[#F3F4F6] text-[#6B7280]">SOON</span></span>}
+                    {billing && billing.periods.length > 0
+                      ? billing.totals.pending > 0
+                        ? <span className="font-semibold text-[#DC2626]">₹{Math.round(billing.totals.pending).toLocaleString("en-IN")} pending</span>
+                        : <span className="font-semibold text-[#047857] flex items-center gap-1"><CheckCircle2 className="w-4 h-4" /> Fully paid</span>
+                      : p.paymentConfirmed
+                        ? <span className="font-semibold text-[#047857] flex items-center gap-1"><CheckCircle2 className="w-4 h-4" /> Received</span>
+                        : <span className="font-semibold text-[#9CA3AF] flex items-center gap-1.5"><Clock className="w-4 h-4" /> Not recorded yet</span>}
                   </div>
                 </div>
               ) : (
                 <p className="text-[13px] text-[#6B7280]">No plan on your account yet.</p>
               )}
-              <p className="text-[12px] text-[#9CA3AF]">Invoices and part payments will show here and in Documents &amp; Invoices soon.</p>
+              <PlanDueNotice billing={billing} compact />
+              <Link href="/seller/documents" className="inline-flex text-[12.5px] font-semibold text-[#4361EE]">See every payment in Documents &amp; Invoices →</Link>
               <a href={`${WA_LINK}?text=${encodeURIComponent("Hi AXQEN team, I have a question about my plan.")}`} target="_blank" rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-[13px] font-bold text-white bg-[#16A34A]">
                 <MessageCircle className="w-4 h-4" /> Renew, upgrade or ask about your plan

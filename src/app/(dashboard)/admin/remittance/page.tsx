@@ -128,6 +128,24 @@ export default function AdminRemittancePage() {
   const [savingPaid, setSavingPaid] = useState<string | null>(null);
   const [resetting, setResetting] = useState<string | null>(null);
   const [bulkFill, setBulkFill] = useState({ productCost: "", shippingCharge: "", packingCharge: "", rtoCharge: "" });
+  // Plan dues → payout hold (src/lib/plan-billing.ts)
+  const [planDue, setPlanDue] = useState<{ pending: number; held: number } | null>(null);
+  const [holdPreview, setHoldPreview] = useState<Record<string, { hold: number; transfer: number }>>({});
+  const [holdNotice, setHoldNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPlanDue(null); setHoldNotice(null);
+    if (!sellerId) return;
+    fetch(`/api/admin/plan-billing?sellerId=${sellerId}`).then(r => r.json())
+      .then(d => { if (d.billing) setPlanDue({ pending: d.billing.totals.pending, held: d.billing.holds.held }); })
+      .catch(() => {});
+  }, [sellerId]);
+
+  async function previewHold(txId: string, amount: number) {
+    if (!sellerId) return;
+    const d = await fetch(`/api/admin/plan-billing/hold-preview?sellerId=${sellerId}&amount=${amount}`).then(r => r.json()).catch(() => null);
+    if (d && typeof d.hold === "number") setHoldPreview(p => ({ ...p, [txId]: { hold: d.hold, transfer: d.transfer } }));
+  }
 
   useEffect(() => {
     fetch("/api/admin/sellers").then((r) => r.json()).then((d) => setSellers(d.sellers ?? []));
@@ -225,6 +243,7 @@ export default function AdminRemittancePage() {
     const data = await res.json();
     if (res.ok) {
       setSuccess({ total: data.totalRemittance, paid: alreadyPaid });
+      if (data.held > 0) setHoldNotice(`₹${Math.round(data.held).toLocaleString("en-IN")} held for the seller's pending plan due. Transfer only ₹${Math.round(data.transfer).toLocaleString("en-IN")}.`);
       setNote(""); setRemittanceDate(""); setPaidBankTxId(""); setAlreadyPaid(false);
       await fetchPending(); await fetchHistory();
     } else alert(data.error || "Failed");
@@ -245,7 +264,12 @@ export default function AdminRemittancePage() {
     if (!bankTxId) return alert("Enter bank/UPI transaction ID");
     setSavingPaid(txId);
     const res = await fetch("/api/admin/remittance", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ txId, bankTxId }) });
-    if (res.ok) { setMarkingPaid(null); setBankTxInput((p) => { const n = { ...p }; delete n[txId]; return n; }); await fetchHistory(); }
+    if (res.ok) {
+      const d = await res.json().catch(() => ({}));
+      if (d.held > 0) setHoldNotice(`₹${Math.round(d.held).toLocaleString("en-IN")} held for the seller's pending plan due. Transfer only ₹${Math.round(d.transfer).toLocaleString("en-IN")}.`);
+      setMarkingPaid(null); setBankTxInput((p) => { const n = { ...p }; delete n[txId]; return n; }); await fetchHistory();
+      fetch(`/api/admin/plan-billing?sellerId=${sellerId}`).then(r => r.json()).then(x => { if (x.billing) setPlanDue({ pending: x.billing.totals.pending, held: x.billing.holds.held }); }).catch(() => {});
+    }
     else alert("Failed to mark as paid");
     setSavingPaid(null);
   }
@@ -293,6 +317,13 @@ export default function AdminRemittancePage() {
         {showMarkPaid && (
           <div className="border-t border-gray-100 px-5 py-3 bg-yellow-50/50">
             {markingPaid === entry.transaction.id ? (
+              <div className="space-y-2">
+              {holdPreview[entry.transaction.id]?.hold > 0 && (
+                <p className="text-xs font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  Plan due pending: transfer only ₹{Math.round(holdPreview[entry.transaction.id].transfer).toLocaleString("en-IN")} now.
+                  ₹{Math.round(holdPreview[entry.transaction.id].hold).toLocaleString("en-IN")} will be held and released once the seller pays their plan due.
+                </p>
+              )}
               <div className="flex items-center gap-2">
                 <input type="text" placeholder="Enter bank / UPI transaction ID"
                   value={bankTxInput[entry.transaction.id] ?? ""}
@@ -304,9 +335,10 @@ export default function AdminRemittancePage() {
                 </button>
                 <button onClick={() => setMarkingPaid(null)} className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700">Cancel</button>
               </div>
+              </div>
             ) : (
               <div className="flex items-center gap-4">
-                <button onClick={() => setMarkingPaid(entry.transaction.id)}
+                <button onClick={() => { setMarkingPaid(entry.transaction.id); previewHold(entry.transaction.id, entry.transaction.amount); }}
                   className="flex items-center gap-1.5 text-xs font-semibold text-green-700 hover:text-green-900">
                   <CheckCircle2 className="w-4 h-4" /> Mark as Paid — attach bank/UPI transaction ID
                 </button>
@@ -375,6 +407,21 @@ export default function AdminRemittancePage() {
       )}
 
       {/* ── Seller selected — show header + tabs ── */}
+      {sellerId && planDue && (planDue.pending > 0 || planDue.held > 0) && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {planDue.pending > 0
+            ? <>Plan due pending: <b>₹{Math.round(planDue.pending).toLocaleString("en-IN")}</b>. Payouts are held up to this amount until the seller pays.</>
+            : <>Plan due is cleared.</>}
+          {planDue.held > 0 && <> Currently held: <b>₹{Math.round(planDue.held).toLocaleString("en-IN")}</b>{planDue.pending <= 0 ? " (ready to release in Plan Billing)" : ""}.</>}
+          {" "}<a href="/admin/plan-billing" className="font-semibold underline">Open Plan Billing</a>
+        </div>
+      )}
+      {holdNotice && (
+        <div className="mb-4 rounded-xl border border-amber-300 bg-amber-100 px-4 py-3 text-sm font-semibold text-amber-900 flex items-center justify-between gap-3">
+          <span>{holdNotice}</span>
+          <button onClick={() => setHoldNotice(null)} className="text-xs underline">Dismiss</button>
+        </div>
+      )}
       {sellerId && (() => {
         const sel = sellers.find(s => s.id === sellerId);
         return (

@@ -31,6 +31,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     debit ? prisma.order.findMany({ where: { sellerId, remittanceTxId: debit.id }, select, orderBy: { createdAt: "asc" } }) : Promise.resolve([]),
   ]);
 
+  const hold = await prisma.payoutHold.findFirst({ where: { walletTxId: credit.id } });
   const iso = <T extends { createdAt: Date }>(o: T) => ({ ...o, createdAt: o.createdAt.toISOString() });
   return NextResponse.json({
     payout: {
@@ -42,6 +43,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       credit: credit.amount,
       rtoDeduction: debit?.amount ?? 0,
       net: credit.amount - (debit?.amount ?? 0),
+      held: hold?.status === "HELD" ? hold.amount : 0,
+      released: hold?.status === "RELEASED" ? { amount: hold.amount, at: hold.releasedAt?.toISOString() ?? null, ref: hold.releaseRef } : null,
     },
     orders: orders.map(iso),
     rtoOrders: rtoOrders.map(iso),

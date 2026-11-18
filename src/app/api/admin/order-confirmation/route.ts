@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
+import { BLOCKED_MESSAGE, ordersBlockedFor } from "@/lib/plan-billing";
 import {
   CONF_EVENT, CONF_EVENT_TYPES, MAX_ATTEMPTS, foldConfirmation, emptyConfirmation,
   outcomeMeta, finalMeta,
@@ -133,6 +134,9 @@ export async function POST(req: NextRequest) {
     const orderData: Record<string, unknown> = {};
 
     if (value === "ORDER_PLACE" || value === "ORDER_DISPATCH") {
+      if (await ordersBlockedFor(order.sellerId)) {
+        return NextResponse.json({ error: BLOCKED_MESSAGE }, { status: 409 });
+      }
       if (order.status === "CANCELLED") {
         return NextResponse.json({ error: "This order is already cancelled" }, { status: 400 });
       }

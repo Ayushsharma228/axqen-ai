@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
+import { applyHoldOnPaid } from "@/lib/plan-billing";
+import { pairRtoDebits } from "@/lib/payouts";
 import { calculateSettlement } from "@/lib/settlement-service";
 
 // GET: unremitted orders OR history
@@ -207,7 +209,12 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ success: true, transaction: tx, totalRemittance, rtoDeduction: totalRtoDeduction, rtoOrderCount: pendingRtoOrders.length });
+  // Paid straight away → apply any plan-due hold now
+  const hold = tx.bankTxId
+    ? await applyHoldOnPaid(sellerId, tx.id, Math.max(0, Math.abs(totalRemittance) - totalRtoDeduction))
+    : { held: 0, transfer: Math.max(0, Math.abs(totalRemittance) - totalRtoDeduction) };
+
+  return NextResponse.json({ success: true, transaction: tx, totalRemittance, rtoDeduction: totalRtoDeduction, rtoOrderCount: pendingRtoOrders.length, ...hold });
 }
 
 // DELETE: reset a remittance — un-remits linked orders so admin can recalculate
@@ -252,5 +259,16 @@ export async function PATCH(req: NextRequest) {
     data: { bankTxId: bankTxId.trim() },
   });
 
-  return NextResponse.json({ success: true, transaction: tx });
+  // Plan dues pending → part of this payout is held (see src/lib/plan-billing.ts)
+  let hold = { held: 0, transfer: tx.amount };
+  if (tx.type === "CREDIT") {
+    const nearby = await prisma.walletTransaction.findMany({
+      where: { sellerId: tx.sellerId, createdAt: { gte: new Date(tx.createdAt.getTime() - 5 * 60000), lte: new Date(tx.createdAt.getTime() + 5 * 60000) } },
+      select: { id: true, type: true, amount: true, note: true, remittanceDate: true, bankTxId: true, createdAt: true },
+    });
+    const rto = pairRtoDebits(nearby).pair.get(tx.id)?.amount ?? 0;
+    hold = await applyHoldOnPaid(tx.sellerId, tx.id, Math.max(0, tx.amount - rto));
+  }
+
+  return NextResponse.json({ success: true, transaction: tx, ...hold });
 }

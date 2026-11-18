@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
+import { PlanDueNotice, useBilling } from "@/components/billing/plan-payments-panel";
 import { useSession } from "next-auth/react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
@@ -63,6 +64,7 @@ function SectionTitle({ title, sub, right }: { title: string; sub?: string; righ
 // ── Main ──────────────────────────────────────────────────────────────────
 export default function SellerDashboard() {
   const { data: session } = useSession();
+  const { billing } = useBilling();
   const name = session?.user?.name?.split(" ")[0] ?? "Seller";
 
   const [allTime, setAllTime] = useState<Analytics | null>(null);
@@ -183,6 +185,8 @@ export default function SellerDashboard() {
           <span className="hidden sm:inline">Refresh</span>
         </button>
       </div>
+
+      <PlanDueNotice billing={billing} />
 
       {/* 2. Needs your attention */}
       <section>

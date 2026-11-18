@@ -1,549 +1,318 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useSession } from "next-auth/react";
-import { useSearchParams } from "next/navigation";
-import { User, Mail, Phone, Building2, FileText, CreditCard, Lock, Save, CheckCircle2, AlertCircle, Plug } from "lucide-react";
-import { PageHero } from "@/components/layout/page-hero";
+import Link from "next/link";
+import {
+  User, Building2, Landmark, Lock, Plug, BadgeCheck, Loader2, CheckCircle2, AlertCircle, ShieldCheck,
+  MessageCircle, ExternalLink, Store, Megaphone, ShoppingBag, Clock,
+} from "lucide-react";
+import { WA_LINK } from "@/components/landing/constants";
 
-const TABS = [
-  { id: "personal",     label: "Personal Info",    icon: User },
-  { id: "business",     label: "Business Details", icon: Building2 },
-  { id: "bank",         label: "Bank Details",     icon: CreditCard },
-  { id: "password",     label: "Password",         icon: Lock },
-  { id: "integrations", label: "Integrations",     icon: Plug },
-];
-
-export default function SellerProfilePage() {
-  const { data: session } = useSession();
-  const searchParams = useSearchParams();
-  const metaStatus = searchParams.get("meta");
-  const shopifyStatus = searchParams.get("shopify");
-  const [activeTab, setActiveTab] = useState(
-    metaStatus === "connected" || metaStatus === "denied" || metaStatus === "error" ||
-    shopifyStatus === "connected" || shopifyStatus === "denied" || shopifyStatus === "error"
-      ? "integrations"
-      : "personal"
-  );
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState("");
-
-  const [personal, setPersonal] = useState({ name: "", email: "", phone: "" });
-  const [business, setBusiness] = useState({ brandName: "", gst: "" });
-  const [bank, setBank] = useState({ accountHolder: "", accountNumber: "", ifsc: "", bankName: "" });
-  const [passwords, setPasswords] = useState({ current: "", newPass: "", confirm: "" });
-  const [metaConnected, setMetaConnected]   = useState(false);
-  const [metaLoading, setMetaLoading]       = useState(false);
-  const [metaSyncing, setMetaSyncing]       = useState(false);
-  const [metaSyncMsg, setMetaSyncMsg]       = useState("");
-  const [metaForm, setMetaForm]             = useState(false);
-  const [metaToken, setMetaToken]           = useState("");
-  const [metaAccountId, setMetaAccountId]   = useState("");
-  const [metaError, setMetaError]           = useState("");
-  const [metaSaving, setMetaSaving]         = useState(false);
-  const [shopifyConnected, setShopifyConnected] = useState(false);
-  const [shopifyStore, setShopifyStore] = useState<{ storeUrl: string; storeName: string } | null>(null);
-  const [shopifyLoading, setShopifyLoading] = useState(false);
-  const [shopifyInput, setShopifyInput]   = useState("");
-  const [shopifyToken, setShopifyToken]   = useState("");
-  const [shopifyClientId, setShopifyClientId]     = useState("");
-  const [shopifyClientSecret, setShopifyClientSecret] = useState("");
-  const [shopifyMode, setShopifyMode]     = useState<"token" | "oauth">("token");
-  const [shopifyError, setShopifyError]   = useState("");
-  const [showShopifyInput, setShowShopifyInput] = useState(false);
-
-  useEffect(() => {
-    fetch("/api/seller/profile").then((r) => r.json()).then((d) => {
-      if (d.user) {
-        setPersonal({ name: d.user.name ?? "", email: d.user.email ?? "", phone: d.user.phone ?? "" });
-        setBusiness({ brandName: d.user.brandName ?? "", gst: d.user.gstNumber ?? "" });
-        setBank({ accountHolder: d.user.bankHolder ?? "", accountNumber: d.user.bankAccount ?? "", ifsc: d.user.bankIfsc ?? "", bankName: d.user.bankName ?? "" });
-        setMetaConnected(!!d.user.metaAdAccountId);
-        if (d.user.shopifyStore) {
-          setShopifyConnected(true);
-          setShopifyStore(d.user.shopifyStore);
-        }
-      }
-    });
-  }, []);
-
-  async function handleMetaDisconnect() {
-    setMetaLoading(true);
-    await fetch("/api/seller/meta/disconnect", { method: "POST" });
-    setMetaConnected(false);
-    setMetaLoading(false);
-  }
-
-  async function handleMetaSync() {
-    setMetaSyncing(true);
-    setMetaSyncMsg("");
-    try {
-      const res = await fetch("/api/seller/meta/sync", { method: "POST" });
-      const d   = await res.json();
-      if (!res.ok) throw new Error(d.error || "Sync failed");
-      setMetaSyncMsg(`Synced ${d.synced} records`);
-    } catch (e) {
-      setMetaSyncMsg(e instanceof Error ? e.message : "Sync failed");
-    } finally {
-      setMetaSyncing(false);
-      setTimeout(() => setMetaSyncMsg(""), 4000);
-    }
-  }
-
-  async function handleMetaManualConnect() {
-    setMetaError("");
-    setMetaSaving(true);
-    const res = await fetch("/api/seller/meta/manual-connect", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ accessToken: metaToken, adAccountId: metaAccountId }),
-    });
-    const d = await res.json();
-    setMetaSaving(false);
-    if (!res.ok) { setMetaError(d.error || "Failed to connect"); return; }
-    setMetaConnected(true);
-    setMetaForm(false);
-    setMetaToken("");
-    setMetaAccountId("");
-  }
-
-  async function handleShopifyDisconnect() {
-    setShopifyLoading(true);
-    await fetch("/api/shopify/disconnect", { method: "POST" });
-    setShopifyConnected(false);
-    setShopifyStore(null);
-    setShopifyLoading(false);
-  }
-
-  async function handleShopifyConnect() {
-    const domain = shopifyInput.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
-    if (!domain) { setShopifyError("Enter your store URL."); return; }
-    const shopDomain = domain.includes(".myshopify.com") ? domain : `${domain}.myshopify.com`;
-    setShopifyLoading(true); setShopifyError("");
-
-    if (shopifyMode === "oauth") {
-      // OAuth with seller's own Client ID + Secret
-      const cid = shopifyClientId.trim();
-      const sec = shopifyClientSecret.trim();
-      if (!cid || !sec) { setShopifyError("Enter Client ID and Secret."); setShopifyLoading(false); return; }
-      const res  = await fetch("/api/seller/shopify/oauth-init", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ storeUrl: shopDomain, clientId: cid, clientSecret: sec }),
-      });
-      const data = await res.json() as { authUrl?: string; error?: string };
-      setShopifyLoading(false);
-      if (!res.ok || !data.authUrl) { setShopifyError(data.error || "Failed to initiate OAuth."); return; }
-      window.location.href = data.authUrl;
-    } else {
-      // Direct token
-      const token = shopifyToken.trim();
-      if (!token) { setShopifyError("Enter your access token."); setShopifyLoading(false); return; }
-      const res  = await fetch("/api/seller/shopify/connect", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ storeUrl: shopDomain, accessToken: token }),
-      });
-      const data = await res.json() as { store?: { storeUrl: string; storeName: string }; error?: string };
-      setShopifyLoading(false);
-      if (!res.ok) { setShopifyError(data.error || "Connection failed."); return; }
-      setShopifyConnected(true);
-      setShopifyStore({ storeUrl: data.store!.storeUrl, storeName: data.store!.storeName });
-      setShowShopifyInput(false);
-      setShopifyInput(""); setShopifyToken("");
-    }
-  }
-
-  async function handleSave() {
-    setSaving(true); setError(""); setSaved(false);
-    let body: Record<string, unknown> = {};
-    if (activeTab === "personal") body = { type: "personal", ...personal };
-    else if (activeTab === "business") body = { type: "business", ...business };
-    else if (activeTab === "bank") body = { type: "bank", ...bank };
-    else if (activeTab === "password") body = { type: "password", ...passwords };
-
-    const res = await fetch("/api/seller/profile", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json();
-    if (res.ok) {
-      setSaved(true);
-      if (activeTab === "password") setPasswords({ current: "", newPass: "", confirm: "" });
-      setTimeout(() => setSaved(false), 3000);
-    } else {
-      setError(data.error || "Failed to save");
-    }
-    setSaving(false);
-  }
-
-  const initial = (session?.user?.name?.[0] ?? "S").toUpperCase();
-
-  return (
-    <div className="min-h-screen" style={{ background: "var(--bg-page)" }}>
-      <PageHero title="My Profile" subtitle="Manage your personal, business and bank details" />
-
-      <div className="px-4 md:px-8 py-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          {/* Left — avatar + tabs */}
-          <div className="space-y-4">
-            <div className="card p-5 flex flex-col items-center text-center">
-              <div className="w-20 h-20 rounded-2xl flex items-center justify-center text-white text-3xl font-bold mb-3"
-                style={{ background: "var(--bg-sidebar)" }}>
-                {initial}
-              </div>
-              <p className="font-semibold text-sm" style={{ color: "var(--text-900)" }}>{session?.user?.name}</p>
-              <p className="text-xs mt-0.5" style={{ color: "var(--text-400)" }}>{session?.user?.email}</p>
-              <span className="mt-2 px-3 py-1 rounded-full text-xs font-semibold"
-                style={{ background: "#F0FDF4", color: "var(--green-500)" }}>Seller</span>
-            </div>
-
-            <div className="card overflow-hidden">
-              {TABS.map((t) => {
-                const Icon = t.icon;
-                return (
-                  <button key={t.id} onClick={() => { setActiveTab(t.id); setError(""); setSaved(false); }}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium transition-colors text-left"
-                    style={{
-                      background: activeTab === t.id ? "rgba(13,31,19,0.05)" : "transparent",
-                      color: activeTab === t.id ? "var(--bg-sidebar)" : "var(--text-400)",
-                      borderLeft: activeTab === t.id ? "3px solid var(--green-500)" : "3px solid transparent",
-                    }}>
-                    <Icon className="w-4 h-4 flex-shrink-0" />
-                    {t.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Right — form */}
-          <div className="md:col-span-3 card p-6">
-            {error && (
-              <div className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm mb-4"
-                style={{ background: "#FEF2F2", color: "#EF4444", border: "1px solid #FEE2E2" }}>
-                <AlertCircle className="w-4 h-4 flex-shrink-0" /> {error}
-              </div>
-            )}
-
-            {activeTab === "personal" && (
-              <div className="space-y-5">
-                <h2 className="text-base font-semibold" style={{ color: "var(--text-900)" }}>Personal Information</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Field icon={User} label="Full Name" value={personal.name} onChange={v => setPersonal(p => ({ ...p, name: v }))} />
-                  <Field icon={Mail} label="Email Address" value={personal.email} onChange={() => {}} type="email" disabled />
-                  <Field icon={Phone} label="Phone Number" value={personal.phone} onChange={v => setPersonal(p => ({ ...p, phone: v }))} type="tel" />
-                </div>
-              </div>
-            )}
-
-            {activeTab === "business" && (
-              <div className="space-y-5">
-                <h2 className="text-base font-semibold" style={{ color: "var(--text-900)" }}>Business Details</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Field icon={Building2} label="Brand / Business Name" value={business.brandName} onChange={v => setBusiness(p => ({ ...p, brandName: v }))} />
-                  <Field icon={FileText} label="GST Number (optional)" value={business.gst} onChange={v => setBusiness(p => ({ ...p, gst: v }))} />
-                </div>
-              </div>
-            )}
-
-            {activeTab === "bank" && (
-              <div className="space-y-5">
-                <h2 className="text-base font-semibold" style={{ color: "var(--text-900)" }}>Bank Details</h2>
-                <p className="text-xs" style={{ color: "var(--text-400)" }}>Used for remittance payouts</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Field icon={User} label="Account Holder Name" value={bank.accountHolder} onChange={v => setBank(p => ({ ...p, accountHolder: v }))} />
-                  <Field icon={CreditCard} label="Account Number" value={bank.accountNumber} onChange={v => setBank(p => ({ ...p, accountNumber: v }))} />
-                  <Field icon={Building2} label="IFSC Code" value={bank.ifsc} onChange={v => setBank(p => ({ ...p, ifsc: v }))} />
-                  <Field icon={Building2} label="Bank Name" value={bank.bankName} onChange={v => setBank(p => ({ ...p, bankName: v }))} />
-                </div>
-              </div>
-            )}
-
-            {activeTab === "integrations" && (
-              <div className="space-y-5">
-                <h2 className="text-base font-semibold" style={{ color: "var(--text-900)" }}>Integrations</h2>
-                <p className="text-xs" style={{ color: "var(--text-400)" }}>Connect third-party accounts to sync data automatically.</p>
-
-                {metaStatus === "connected" && (
-                  <div className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm"
-                    style={{ background: "#F0FDF4", color: "#16A34A", border: "1px solid #BBF7D0" }}>
-                    ✓ Meta Ads connected successfully. Your ad spend will sync daily.
-                  </div>
-                )}
-                {(metaStatus === "denied" || metaStatus === "error") && (
-                  <div className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm"
-                    style={{ background: "#FEF2F2", color: "#EF4444", border: "1px solid #FEE2E2" }}>
-                    ✗ Meta connection {metaStatus === "denied" ? "was cancelled" : "failed"}. Please try again.
-                  </div>
-                )}
-                {shopifyStatus === "connected" && (
-                  <div className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm"
-                    style={{ background: "#F0FDF4", color: "#16A34A", border: "1px solid #BBF7D0" }}>
-                    ✓ Shopify store connected successfully. Orders will sync automatically.
-                  </div>
-                )}
-                {(shopifyStatus === "denied" || shopifyStatus === "error") && (
-                  <div className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm"
-                    style={{ background: "#FEF2F2", color: "#EF4444", border: "1px solid #FEE2E2" }}>
-                    ✗ Shopify connection {shopifyStatus === "denied" ? "was cancelled" : "failed"}. Please try again.
-                  </div>
-                )}
-
-                {/* Meta Ads */}
-                <div className="rounded-xl p-5 flex items-center justify-between gap-4"
-                  style={{ border: "1px solid var(--border)", background: "var(--bg-page)" }}>
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white text-sm font-black flex-shrink-0"
-                      style={{ background: "#1877F2" }}>f</div>
-                    <div>
-                      <p className="text-sm font-semibold" style={{ color: "var(--text-900)" }}>Meta Ads</p>
-                      <p className="text-xs mt-0.5" style={{ color: "var(--text-400)" }}>
-                        {metaConnected ? "Ad account connected — spend syncs daily" : "Connect to sync your ad spend to the dashboard"}
-                      </p>
-                    </div>
-                  </div>
-
-                  {metaConnected ? (
-                    <div className="flex items-center gap-2 flex-wrap justify-end">
-                      <span className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full"
-                        style={{ background: "#F0FDF4", color: "#16A34A" }}>
-                        <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
-                        Connected
-                      </span>
-                      {metaSyncMsg && (
-                        <span className="text-xs px-3 py-1.5 rounded-xl font-medium"
-                          style={{ background: "#EFF6FF", color: "#2563EB" }}>
-                          {metaSyncMsg}
-                        </span>
-                      )}
-                      <button
-                        onClick={handleMetaSync}
-                        disabled={metaSyncing}
-                        className="text-xs font-semibold px-4 py-2 rounded-xl transition-colors disabled:opacity-50"
-                        style={{ background: "#EFF6FF", color: "#2563EB", border: "1px solid #BFDBFE" }}>
-                        {metaSyncing ? "Syncing..." : "Sync Now"}
-                      </button>
-                      <button
-                        onClick={handleMetaDisconnect}
-                        disabled={metaLoading}
-                        className="text-xs font-semibold px-4 py-2 rounded-xl transition-colors disabled:opacity-50"
-                        style={{ background: "#FEF2F2", color: "#EF4444", border: "1px solid #FEE2E2" }}>
-                        {metaLoading ? "Disconnecting..." : "Disconnect"}
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => { setMetaForm((p) => !p); setMetaError(""); }}
-                      className="text-xs font-semibold px-4 py-2 rounded-xl text-white transition-opacity hover:opacity-90"
-                      style={{ background: "#1877F2" }}>
-                      {metaForm ? "Cancel" : "Connect"}
-                    </button>
-                  )}
-                </div>
-
-                {/* Manual token entry form */}
-                {!metaConnected && metaForm && (
-                  <div className="rounded-xl p-4 flex flex-col gap-3"
-                    style={{ background: "#EFF6FF", border: "1px solid #BFDBFE" }}>
-                    <p className="text-xs font-semibold" style={{ color: "#1D4ED8" }}>
-                      How to get your token:
-                    </p>
-                    <ol className="text-xs flex flex-col gap-1 list-decimal list-inside" style={{ color: "#1e40af" }}>
-                      <li>Go to <strong>business.facebook.com</strong> → Settings → System Users</li>
-                      <li>Create a System User → Generate Token → select your Ad Account + <code>ads_read</code>, <code>ads_management</code></li>
-                      <li>Copy the token and your Ad Account ID (from Ads Manager URL: <code>act_XXXXXXXX</code>)</li>
-                    </ol>
-                    <div className="flex flex-col gap-2">
-                      <div>
-                        <label className="text-xs font-semibold mb-1 block" style={{ color: "var(--text-500)" }}>Access Token</label>
-                        <input
-                          type="password"
-                          value={metaToken}
-                          onChange={(e) => setMetaToken(e.target.value)}
-                          placeholder="Paste your Meta System User token"
-                          className="w-full px-3 py-2 text-xs rounded-lg border focus:outline-none focus:ring-2"
-                          style={{ border: "1px solid #BFDBFE", background: "#fff" }}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs font-semibold mb-1 block" style={{ color: "var(--text-500)" }}>Ad Account ID</label>
-                        <input
-                          type="text"
-                          value={metaAccountId}
-                          onChange={(e) => setMetaAccountId(e.target.value)}
-                          placeholder="e.g. act_123456789 or just 123456789"
-                          className="w-full px-3 py-2 text-xs rounded-lg border focus:outline-none focus:ring-2"
-                          style={{ border: "1px solid #BFDBFE", background: "#fff" }}
-                        />
-                      </div>
-                      {metaError && (
-                        <p className="text-xs" style={{ color: "#EF4444" }}>{metaError}</p>
-                      )}
-                      <button
-                        onClick={handleMetaManualConnect}
-                        disabled={metaSaving || !metaToken || !metaAccountId}
-                        className="text-xs font-semibold px-4 py-2.5 rounded-lg text-white disabled:opacity-50 transition-opacity hover:opacity-90"
-                        style={{ background: "#1877F2" }}>
-                        {metaSaving ? "Verifying & Connecting..." : "Connect Meta Ads"}
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Shopify */}
-                <div className="rounded-xl p-5 flex flex-col gap-4"
-                  style={{ border: "1px solid var(--border)", background: "var(--bg-page)" }}>
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                        style={{ background: "#96BF48" }}>
-                        <svg viewBox="0 0 24 24" className="w-6 h-6 fill-white">
-                          <path d="M15.337 23.979l6.15-1.33S18.769 7.823 18.75 7.706c-.019-.116-.116-.194-.213-.194s-1.922-.136-1.922-.136-.504-.503-1.272-.503c-.194 0-.388.019-.582.058.019.058.039.116.058.174.58.233.97.601.97.601s-.194-.097-.407-.097c-.194 0-.368.058-.503.155-.155-1.039-.911-1.786-1.942-1.786-.039 0-.077 0-.116.001-.291-.367-.678-.581-1.058-.581-.174 0-.349.039-.504.116C11.026 4.61 9.997 3.29 8.745 3.29c-.814 0-1.551.426-2.133 1.116-.407-.116-.834-.174-1.28-.174-1.59 0-2.754 1.01-3.23 2.522C1.319 7.609.892 9.054.892 10.519c0 1.961.891 3.019 2.406 3.019.387 0 .794-.077 1.2-.213v.058c0 1.513.814 2.367 2.036 2.367.116 0 .233-.01.349-.029.155.542.407 1.048.737 1.474-.58.155-1.085.407-1.494.737l4.868 5.786 4.343-1.745zM12 4.028c-.155.638-.407 1.687-.814 2.812-.717-.426-1.551-.639-2.406-.639.019-.029.039-.077.058-.116C9.453 4.61 10.5 4.028 12 4.028z"/>
-                        </svg>
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold" style={{ color: "var(--text-900)" }}>Shopify</p>
-                        <p className="text-xs mt-0.5" style={{ color: "var(--text-400)" }}>
-                          {shopifyConnected
-                            ? `${shopifyStore?.storeName} (${shopifyStore?.storeUrl})`
-                            : "Connect to auto-sync orders from your Shopify store"}
-                        </p>
-                      </div>
-                    </div>
-
-                    {shopifyConnected ? (
-                      <div className="flex items-center gap-3 flex-shrink-0">
-                        <span className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full"
-                          style={{ background: "#F0FDF4", color: "#16A34A" }}>
-                          <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
-                          Connected
-                        </span>
-                        <button onClick={handleShopifyDisconnect} disabled={shopifyLoading}
-                          className="text-xs font-semibold px-4 py-2 rounded-xl transition-colors disabled:opacity-50"
-                          style={{ background: "#FEF2F2", color: "#EF4444", border: "1px solid #FEE2E2" }}>
-                          {shopifyLoading ? "Disconnecting..." : "Disconnect"}
-                        </button>
-                      </div>
-                    ) : (
-                      <button onClick={() => setShowShopifyInput(v => !v)}
-                        className="text-xs font-semibold px-4 py-2 rounded-xl text-white flex-shrink-0 transition-opacity hover:opacity-90"
-                        style={{ background: "#96BF48" }}>
-                        Connect
-                      </button>
-                    )}
-                  </div>
-
-                  {showShopifyInput && !shopifyConnected && (
-                    <div className="space-y-3">
-                      {shopifyError && (
-                        <p className="text-xs px-3 py-2 rounded-lg" style={{ background: "#FEF2F2", color: "#EF4444" }}>{shopifyError}</p>
-                      )}
-
-                      {/* Mode toggle */}
-                      <div className="flex rounded-xl overflow-hidden text-xs font-semibold" style={{ border: "1px solid var(--border)" }}>
-                        {(["token", "oauth"] as const).map(m => (
-                          <button key={m} onClick={() => { setShopifyMode(m); setShopifyError(""); }}
-                            className="flex-1 py-2 transition-colors"
-                            style={{ background: shopifyMode === m ? "#96BF48" : "white", color: shopifyMode === m ? "white" : "var(--text-400)" }}>
-                            {m === "token" ? "Access Token (shpat_)" : "Client ID + Secret"}
-                          </button>
-                        ))}
-                      </div>
-
-                      <input type="text" placeholder="yourstore.myshopify.com"
-                        value={shopifyInput} onChange={e => { setShopifyInput(e.target.value); setShopifyError(""); }}
-                        className="w-full px-3 py-2 text-sm rounded-xl outline-none"
-                        style={{ border: "1px solid var(--border)", background: "white", color: "var(--text-900)" }}
-                        onFocus={e => e.currentTarget.style.border = "1px solid #96BF48"}
-                        onBlur={e => e.currentTarget.style.border = "1px solid var(--border)"}
-                      />
-
-                      {shopifyMode === "token" ? (
-                        <input type="password" placeholder="Admin API access token (shpat_...)"
-                          value={shopifyToken} onChange={e => setShopifyToken(e.target.value)}
-                          onKeyDown={e => e.key === "Enter" && handleShopifyConnect()}
-                          className="w-full px-3 py-2 text-sm rounded-xl outline-none font-mono"
-                          style={{ border: "1px solid var(--border)", background: "white", color: "var(--text-900)" }}
-                          onFocus={e => e.currentTarget.style.border = "1px solid #96BF48"}
-                          onBlur={e => e.currentTarget.style.border = "1px solid var(--border)"}
-                        />
-                      ) : (
-                        <>
-                          <input type="text" placeholder="Client ID"
-                            value={shopifyClientId} onChange={e => setShopifyClientId(e.target.value)}
-                            className="w-full px-3 py-2 text-sm rounded-xl outline-none font-mono"
-                            style={{ border: "1px solid var(--border)", background: "white", color: "var(--text-900)" }}
-                            onFocus={e => e.currentTarget.style.border = "1px solid #96BF48"}
-                            onBlur={e => e.currentTarget.style.border = "1px solid var(--border)"}
-                          />
-                          <input type="password" placeholder="Client Secret (shpss_...)"
-                            value={shopifyClientSecret} onChange={e => setShopifyClientSecret(e.target.value)}
-                            onKeyDown={e => e.key === "Enter" && handleShopifyConnect()}
-                            className="w-full px-3 py-2 text-sm rounded-xl outline-none font-mono"
-                            style={{ border: "1px solid var(--border)", background: "white", color: "var(--text-900)" }}
-                            onFocus={e => e.currentTarget.style.border = "1px solid #96BF48"}
-                            onBlur={e => e.currentTarget.style.border = "1px solid var(--border)"}
-                          />
-                          <p className="text-xs" style={{ color: "var(--text-400)" }}>
-                            You&apos;ll be redirected to Shopify to approve the connection.
-                          </p>
-                        </>
-                      )}
-
-                      <button onClick={handleShopifyConnect} disabled={shopifyLoading}
-                        className="w-full py-2.5 text-xs font-semibold rounded-xl text-white disabled:opacity-60"
-                        style={{ background: "#96BF48" }}>
-                        {shopifyLoading ? "Connecting..." : shopifyMode === "oauth" ? "Authorize with Shopify" : "Connect"}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {activeTab === "password" && (
-              <div className="space-y-5">
-                <h2 className="text-base font-semibold" style={{ color: "var(--text-900)" }}>Change Password</h2>
-                <div className="grid grid-cols-1 gap-4 max-w-sm">
-                  <Field icon={Lock} label="Current Password" value={passwords.current} onChange={v => setPasswords(p => ({ ...p, current: v }))} type="password" />
-                  <Field icon={Lock} label="New Password" value={passwords.newPass} onChange={v => setPasswords(p => ({ ...p, newPass: v }))} type="password" />
-                  <Field icon={Lock} label="Confirm New Password" value={passwords.confirm} onChange={v => setPasswords(p => ({ ...p, confirm: v }))} type="password" />
-                </div>
-              </div>
-            )}
-
-            {activeTab !== "integrations" && <div className="mt-6 pt-5 flex items-center gap-3" style={{ borderTop: "1px solid var(--border)" }}>
-              <button onClick={handleSave} disabled={saving}
-                className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold text-white transition-colors disabled:opacity-60"
-                style={{ background: saved ? "#16A34A" : "var(--green-500)" }}>
-                {saved ? <><CheckCircle2 className="w-4 h-4" /> Saved!</> : saving ? "Saving..." : <><Save className="w-4 h-4" /> Save Changes</>}
-              </button>
-            </div>}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+type Tab = "account" | "business" | "bank" | "plan" | "connections" | "password";
+interface Profile {
+  name: string | null; email: string; phone: string | null; phoneVerified: boolean;
+  brandName: string | null; gstNumber: string | null;
+  bankHolder: string | null; bankAccount: string | null; bankIfsc: string | null; bankName: string | null;
+  kycStatus: "NOT_SUBMITTED" | "SUBMITTED" | "APPROVED" | "REJECTED";
+  planInfo: { plan: "DROPSHIPPING" | "MARKETPLACE" | null; tier: string | null; price: number | null; paymentConfirmed: boolean; accountStatus: "PENDING" | "ACTIVE" | "SUSPENDED"; memberSince: string };
+  connections: { shopify: { name: string; url: string; problem: boolean } | null; amazon: boolean; meta: boolean };
 }
 
-function Field({ icon: Icon, label, value, onChange, type = "text", disabled = false }: {
-  icon: React.ElementType; label: string; value: string;
-  onChange: (v: string) => void; type?: string; disabled?: boolean;
-}) {
+const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
+  { id: "account",     label: "Account",      icon: User },
+  { id: "business",    label: "Business",     icon: Building2 },
+  { id: "bank",        label: "Bank account", icon: Landmark },
+  { id: "plan",        label: "Plan",         icon: BadgeCheck },
+  { id: "connections", label: "Connections",  icon: Plug },
+  { id: "password",    label: "Password",     icon: Lock },
+];
+
+const KYC: Record<Profile["kycStatus"], { label: string; bg: string; color: string; note: string }> = {
+  APPROVED:      { label: "Verified",      bg: "#ECFDF5", color: "#047857", note: "Your business documents are verified." },
+  SUBMITTED:     { label: "Under review",  bg: "#FFFBEB", color: "#B45309", note: "The AXQEN team is checking your documents." },
+  REJECTED:      { label: "Action needed", bg: "#FEF2F2", color: "#DC2626", note: "Something in your documents needs fixing. Message us and we'll guide you." },
+  NOT_SUBMITTED: { label: "Not submitted", bg: "#F3F4F6", color: "#6B7280", note: "Share your GST or PAN and ID with the AXQEN team to get verified." },
+};
+
+const PLAN_NAME: Record<string, string> = { DROPSHIPPING: "Dropshipping", MARKETPLACE: "Amazon Marketplace" };
+const tierName = (t: string | null) => (t ? t.charAt(0) + t.slice(1).toLowerCase() : "");
+
+export default function ProfilePage() {
+  const [tab, setTab] = useState<Tab>("account");
+  const [data, setData] = useState<Profile | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const [account, setAccount] = useState({ name: "", phone: "" });
+  const [business, setBusiness] = useState({ brandName: "", gst: "" });
+  const [bank, setBank] = useState({ accountHolder: "", accountNumber: "", confirmAccountNumber: "", ifsc: "", bankName: "", currentPassword: "" });
+  const [editingBank, setEditingBank] = useState(false);
+  const [pw, setPw] = useState({ current: "", newPass: "", confirm: "" });
+
+  function load() {
+    fetch("/api/seller/profile").then(r => r.json()).then((d: Profile) => {
+      setData(d);
+      setAccount({ name: d.name ?? "", phone: (d.phone ?? "").replace(/^\+91/, "") });
+      setBusiness({ brandName: d.brandName ?? "", gst: d.gstNumber ?? "" });
+    }).finally(() => setLoading(false));
+  }
+  useEffect(load, []);
+  useEffect(() => { setMsg(null); }, [tab]);
+
+  async function save(type: string, payload: Record<string, string>, after?: () => void) {
+    setSaving(true); setMsg(null);
+    const res = await fetch("/api/seller/profile", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type, ...payload }) });
+    const d = await res.json().catch(() => ({}));
+    setSaving(false);
+    if (!res.ok) { setMsg({ ok: false, text: d.error ?? "Couldn't save. Try again." }); return; }
+    setMsg({ ok: true, text: type === "bank" ? "Bank account saved. We've emailed you a confirmation." : type === "password" ? "Password changed." : "Saved." });
+    after?.();
+    load();
+  }
+
+  if (loading || !data) {
+    return <div className="flex items-center justify-center py-32"><Loader2 className="w-6 h-6 animate-spin text-[#4361EE]" /></div>;
+  }
+
+  const kyc = KYC[data.kycStatus] ?? KYC.NOT_SUBMITTED;
+  const p = data.planInfo;
+  const input = "w-full px-3 py-2.5 text-[13.5px] rounded-lg border border-[#E8EDF6] bg-white outline-none focus:border-[#4361EE] disabled:bg-[#F9FAFB] disabled:text-[#6B7280]";
+  const label = "block text-[12px] font-semibold text-[#374151] mb-1.5";
+  const saveBtn = "inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-[13px] font-bold text-white bg-[#4361EE] disabled:opacity-60";
+
   return (
-    <div>
-      <label className="block text-xs font-semibold mb-1.5" style={{ color: "var(--text-600)" }}>{label}</label>
-      <div className="relative">
-        <Icon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "var(--text-400)" }} />
-        <input type={type} value={value} onChange={e => onChange(e.target.value)} disabled={disabled}
-          className="w-full pl-9 pr-4 py-2.5 text-sm rounded-xl outline-none transition-all disabled:opacity-60 disabled:cursor-not-allowed"
-          style={{ border: "1px solid var(--border)", background: disabled ? "#F9FAFB" : "white", color: "var(--text-900)" }}
-          onFocus={e => { if (!disabled) e.currentTarget.style.border = "1px solid var(--green-500)"; }}
-          onBlur={e => { e.currentTarget.style.border = "1px solid var(--border)"; }}
-        />
+    <div className="px-3 py-4 md:p-8 space-y-5" style={{ background: "#F7F8FC", minHeight: "100vh" }}>
+      <div className="flex items-end justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-[22px] font-black text-[#0C1220]">Profile &amp; Settings</h1>
+          <p className="text-[12.5px] text-[#6B7280] mt-1">Your account, business, payout bank and plan.</p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[11.5px] font-bold px-2.5 py-1 rounded-full" style={{ background: kyc.bg, color: kyc.color }}>
+            <ShieldCheck className="w-3.5 h-3.5 inline -mt-0.5 mr-1" />{kyc.label}
+          </span>
+          {p.plan && <span className="text-[11.5px] font-bold px-2.5 py-1 rounded-full bg-[#EEF2FF] text-[#4361EE]">{PLAN_NAME[p.plan]}{p.tier && p.plan === "DROPSHIPPING" ? ` · ${tierName(p.tier)}` : ""}</span>}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)] gap-5 items-start">
+        {/* Section nav */}
+        <nav className="bg-white rounded-xl border border-[#E8EDF6] p-2 flex lg:flex-col gap-1 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
+          {TABS.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[13px] font-semibold whitespace-nowrap text-left"
+              style={{ background: tab === t.id ? "#EEF2FF" : "transparent", color: tab === t.id ? "#4361EE" : "#6B7280" }}>
+              <t.icon className="w-4 h-4" /> {t.label}
+              {t.id === "bank" && !data.bankAccount && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-[#EF4444]" />}
+            </button>
+          ))}
+        </nav>
+
+        <div className="bg-white rounded-xl border border-[#E8EDF6] p-5 md:p-6 space-y-5 max-w-2xl">
+          {msg && (
+            <div className="flex items-start gap-2 px-3.5 py-2.5 rounded-lg text-[13px]"
+              style={{ background: msg.ok ? "#ECFDF5" : "#FEF2F2", color: msg.ok ? "#047857" : "#B91C1C" }}>
+              {msg.ok ? <CheckCircle2 className="w-4 h-4 mt-0.5" /> : <AlertCircle className="w-4 h-4 mt-0.5" />} {msg.text}
+            </div>
+          )}
+
+          {tab === "account" && (
+            <form className="space-y-4" onSubmit={e => { e.preventDefault(); save("personal", account); }}>
+              <h2 className="text-[16px] font-bold text-[#0C1220]">Account</h2>
+              <div>
+                <label htmlFor="pf-name" className={label}>Full name</label>
+                <input id="pf-name" value={account.name} onChange={e => setAccount(a => ({ ...a, name: e.target.value }))} className={input} />
+              </div>
+              <div>
+                <label htmlFor="pf-email" className={label}>Email</label>
+                <input id="pf-email" value={data.email} disabled className={input} />
+                <p className="text-[11.5px] text-[#9CA3AF] mt-1">Your login email. To change it, message the AXQEN team.</p>
+              </div>
+              <div>
+                <label htmlFor="pf-phone" className={label}>Mobile number</label>
+                <div className="flex items-center border border-[#E8EDF6] rounded-lg overflow-hidden focus-within:border-[#4361EE]">
+                  <span className="px-3 py-2.5 text-[13.5px] text-[#6B7280] bg-[#FAFBFF] border-r border-[#E8EDF6]">+91</span>
+                  <input id="pf-phone" inputMode="numeric" maxLength={10} value={account.phone} onChange={e => setAccount(a => ({ ...a, phone: e.target.value.replace(/\D/g, "") }))}
+                    className="flex-1 px-3 py-2.5 text-[13.5px] outline-none" />
+                </div>
+              </div>
+              <button type="submit" disabled={saving} className={saveBtn}>{saving && <Loader2 className="w-4 h-4 animate-spin" />} Save</button>
+            </form>
+          )}
+
+          {tab === "business" && (
+            <form className="space-y-4" onSubmit={e => { e.preventDefault(); save("business", business); }}>
+              <h2 className="text-[16px] font-bold text-[#0C1220]">Business</h2>
+              <div className="rounded-lg px-3.5 py-3 flex items-start gap-2.5" style={{ background: kyc.bg }}>
+                <ShieldCheck className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: kyc.color }} />
+                <div className="text-[12.5px]">
+                  <p className="font-bold" style={{ color: kyc.color }}>Verification: {kyc.label}</p>
+                  <p className="text-[#374151] mt-0.5">{kyc.note}</p>
+                </div>
+                {(data.kycStatus === "REJECTED" || data.kycStatus === "NOT_SUBMITTED") && (
+                  <a href={`${WA_LINK}?text=${encodeURIComponent("Hi AXQEN team, I want to complete my business verification.")}`} target="_blank" rel="noopener noreferrer"
+                    className="ml-auto text-[12px] font-bold text-[#047857] whitespace-nowrap self-center">WhatsApp us</a>
+                )}
+              </div>
+              <div>
+                <label htmlFor="pf-brand" className={label}>Brand / business name</label>
+                <input id="pf-brand" value={business.brandName} onChange={e => setBusiness(b => ({ ...b, brandName: e.target.value }))} className={input} />
+              </div>
+              <div>
+                <label htmlFor="pf-gst" className={label}>GST number <span className="font-normal text-[#9CA3AF]">(optional)</span></label>
+                <input id="pf-gst" value={business.gst} maxLength={15} placeholder="e.g. 09ABCDE1234F1Z5"
+                  onChange={e => setBusiness(b => ({ ...b, gst: e.target.value.toUpperCase().replace(/\s/g, "") }))} className={`${input} font-mono`} />
+              </div>
+              <button type="submit" disabled={saving} className={saveBtn}>{saving && <Loader2 className="w-4 h-4 animate-spin" />} Save</button>
+            </form>
+          )}
+
+          {tab === "bank" && (
+            <div className="space-y-4">
+              <h2 className="text-[16px] font-bold text-[#0C1220]">Payout bank account</h2>
+              <p className="text-[12.5px] text-[#6B7280]">Your AXQEN payouts are sent here. For your safety, changing it needs your password, and we email you every time it changes.</p>
+
+              {data.bankAccount && !editingBank ? (
+                <div className="rounded-xl border border-[#E8EDF6] p-4 flex items-center gap-4 flex-wrap">
+                  <span className="w-10 h-10 rounded-xl bg-[#EEF2FF] flex items-center justify-center"><Landmark className="w-5 h-5 text-[#4361EE]" /></span>
+                  <div className="flex-1 min-w-[180px]">
+                    <p className="text-[14px] font-bold text-[#0C1220]">{data.bankHolder}</p>
+                    <p className="text-[12.5px] font-mono text-[#6B7280]">••••{data.bankAccount.slice(-4)} · {data.bankIfsc}{data.bankName ? ` · ${data.bankName}` : ""}</p>
+                  </div>
+                  <button onClick={() => { setEditingBank(true); setBank({ accountHolder: data.bankHolder ?? "", accountNumber: "", confirmAccountNumber: "", ifsc: data.bankIfsc ?? "", bankName: data.bankName ?? "", currentPassword: "" }); }}
+                    className="px-3.5 py-2 rounded-lg text-[13px] font-semibold bg-white border border-[#E8EDF6] text-[#374151] hover:text-[#0C1220]">Change</button>
+                </div>
+              ) : (
+                <form className="space-y-4" onSubmit={e => { e.preventDefault(); save("bank", bank, () => setEditingBank(false)); }}>
+                  {!data.bankAccount && (
+                    <p className="text-[12.5px] text-[#92400E] bg-[#FFFBEB] border border-[#FDE68A] rounded-lg px-3 py-2">No bank account yet. Add one so we can send your payouts.</p>
+                  )}
+                  <div>
+                    <label htmlFor="bk-holder" className={label}>Account holder name</label>
+                    <input id="bk-holder" value={bank.accountHolder} onChange={e => setBank(b => ({ ...b, accountHolder: e.target.value }))} className={input} placeholder="As printed on your passbook" />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label htmlFor="bk-acc" className={label}>Account number</label>
+                      <input id="bk-acc" inputMode="numeric" autoComplete="off" value={bank.accountNumber} onChange={e => setBank(b => ({ ...b, accountNumber: e.target.value.replace(/\D/g, "") }))} className={`${input} font-mono`} />
+                    </div>
+                    <div>
+                      <label htmlFor="bk-acc2" className={label}>Re-enter account number</label>
+                      <input id="bk-acc2" inputMode="numeric" autoComplete="off" value={bank.confirmAccountNumber} onPaste={e => e.preventDefault()}
+                        onChange={e => setBank(b => ({ ...b, confirmAccountNumber: e.target.value.replace(/\D/g, "") }))} className={`${input} font-mono`} />
+                      {bank.confirmAccountNumber && bank.confirmAccountNumber !== bank.accountNumber && <p className="text-[11.5px] text-[#DC2626] mt-1">Doesn&apos;t match yet</p>}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label htmlFor="bk-ifsc" className={label}>IFSC</label>
+                      <input id="bk-ifsc" maxLength={11} value={bank.ifsc} placeholder="HDFC0001234"
+                        onChange={e => setBank(b => ({ ...b, ifsc: e.target.value.toUpperCase().replace(/\s/g, "") }))} className={`${input} font-mono`} />
+                    </div>
+                    <div>
+                      <label htmlFor="bk-name" className={label}>Bank name</label>
+                      <input id="bk-name" value={bank.bankName} onChange={e => setBank(b => ({ ...b, bankName: e.target.value }))} className={input} />
+                    </div>
+                  </div>
+                  <div className="border-t border-[#F3F4F6] pt-4">
+                    <label htmlFor="bk-pw" className={label}>Your AXQEN password</label>
+                    <input id="bk-pw" type="password" autoComplete="current-password" value={bank.currentPassword} onChange={e => setBank(b => ({ ...b, currentPassword: e.target.value }))} className={input} />
+                    <p className="text-[11.5px] text-[#9CA3AF] mt-1">Needed to confirm it's really you. We'll email you and alert the AXQEN team about this change.</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button type="submit" disabled={saving || !bank.currentPassword} className={saveBtn}>{saving && <Loader2 className="w-4 h-4 animate-spin" />} Save bank account</button>
+                    {data.bankAccount && <button type="button" onClick={() => setEditingBank(false)} className="px-4 py-2.5 rounded-lg text-[13px] font-semibold text-[#6B7280] hover:bg-[#F3F4F6]">Cancel</button>}
+                  </div>
+                </form>
+              )}
+              <Link href="/seller/wallet" className="inline-flex items-center gap-1 text-[12.5px] font-semibold text-[#4361EE]">See your payouts <ExternalLink className="w-3.5 h-3.5" /></Link>
+            </div>
+          )}
+
+          {tab === "plan" && (
+            <div className="space-y-4">
+              <h2 className="text-[16px] font-bold text-[#0C1220]">Plan</h2>
+              {p.plan ? (
+                <div className="rounded-xl border border-[#E8EDF6] divide-y divide-[#F3F4F6]">
+                  {[
+                    ["Plan", `${PLAN_NAME[p.plan]}${p.plan === "DROPSHIPPING" && p.tier ? ` · ${tierName(p.tier)}` : ""}`],
+                    ["Price", p.price != null ? `₹${p.price.toLocaleString("en-IN")}${p.plan === "MARKETPLACE" ? " for 3 months" : ""}` : "—"],
+                    ["Account", p.accountStatus === "ACTIVE" ? "Active" : p.accountStatus === "PENDING" ? "Waiting for activation" : "Suspended"],
+                    ["Member since", new Date(p.memberSince).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })],
+                  ].map(([k, v]) => (
+                    <div key={k} className="flex items-center justify-between px-4 py-3 text-[13px]">
+                      <span className="text-[#6B7280]">{k}</span>
+                      <span className="font-semibold text-[#0C1220]">{v}</span>
+                    </div>
+                  ))}
+                  <div className="flex items-center justify-between px-4 py-3 text-[13px]">
+                    <span className="text-[#6B7280]">Payment</span>
+                    {p.paymentConfirmed
+                      ? <span className="font-semibold text-[#047857] flex items-center gap-1"><CheckCircle2 className="w-4 h-4" /> Received</span>
+                      : <span className="font-semibold text-[#9CA3AF] flex items-center gap-1.5"><Clock className="w-4 h-4" /> Payment details <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-[#F3F4F6] text-[#6B7280]">SOON</span></span>}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-[13px] text-[#6B7280]">No plan on your account yet.</p>
+              )}
+              <p className="text-[12px] text-[#9CA3AF]">Invoices and part payments will show here and in Documents &amp; Invoices soon.</p>
+              <a href={`${WA_LINK}?text=${encodeURIComponent("Hi AXQEN team, I have a question about my plan.")}`} target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-[13px] font-bold text-white bg-[#16A34A]">
+                <MessageCircle className="w-4 h-4" /> Renew, upgrade or ask about your plan
+              </a>
+            </div>
+          )}
+
+          {tab === "connections" && (
+            <div className="space-y-4">
+              <h2 className="text-[16px] font-bold text-[#0C1220]">Connections</h2>
+              <ul className="rounded-xl border border-[#E8EDF6] divide-y divide-[#F3F4F6]">
+                {[
+                  {
+                    icon: Store, color: "#16A34A", name: "Shopify",
+                    status: data.connections.shopify ? (data.connections.shopify.problem ? "Connection problem" : `Connected · ${data.connections.shopify.name}`) : "Not connected",
+                    tone: data.connections.shopify ? (data.connections.shopify.problem ? "warn" : "ok") : "off",
+                    href: "/seller/shopify", cta: data.connections.shopify ? "Manage" : "Connect",
+                  },
+                  {
+                    icon: ShoppingBag, color: "#EA580C", name: "Amazon",
+                    status: data.connections.amazon ? "Connected" : "Not connected",
+                    tone: data.connections.amazon ? "ok" : "off", href: "/seller/amazon", cta: data.connections.amazon ? "Manage" : "Learn more",
+                  },
+                  {
+                    icon: Megaphone, color: "#4361EE", name: "Meta ads",
+                    status: data.connections.meta ? "Managed by the AXQEN ads team" : "Linked by the AXQEN ads team when your ads start",
+                    tone: data.connections.meta ? "ok" : "off", href: "/seller/meta-ads", cta: "Ad Spend",
+                  },
+                ].map(c => (
+                  <li key={c.name} className="flex items-center gap-3 px-4 py-3.5">
+                    <span className="w-9 h-9 rounded-lg flex items-center justify-center bg-[#F5F7FB]"><c.icon className="w-4 h-4" style={{ color: c.color }} /></span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[13.5px] font-semibold text-[#0C1220]">{c.name}</p>
+                      <p className="text-[12px] truncate" style={{ color: c.tone === "ok" ? "#047857" : c.tone === "warn" ? "#B45309" : "#9CA3AF" }}>{c.status}</p>
+                    </div>
+                    <Link href={c.href} className="px-3 py-1.5 rounded-lg text-[12.5px] font-semibold bg-white border border-[#E8EDF6] text-[#374151] hover:text-[#4361EE]">{c.cta}</Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {tab === "password" && (
+            <form className="space-y-4" onSubmit={e => { e.preventDefault(); save("password", pw, () => setPw({ current: "", newPass: "", confirm: "" })); }}>
+              <h2 className="text-[16px] font-bold text-[#0C1220]">Password</h2>
+              {([["current", "Current password", "current-password"], ["newPass", "New password", "new-password"], ["confirm", "Confirm new password", "new-password"]] as const).map(([k, l, ac]) => (
+                <div key={k}>
+                  <label htmlFor={`pw-${k}`} className={label}>{l}</label>
+                  <input id={`pw-${k}`} type="password" autoComplete={ac} value={pw[k]} onChange={e => setPw(x => ({ ...x, [k]: e.target.value }))} className={input} />
+                </div>
+              ))}
+              <p className="text-[11.5px] text-[#9CA3AF]">At least 8 characters. A mix of letters, numbers and a symbol is safest.</p>
+              <button type="submit" disabled={saving || !pw.current || !pw.newPass} className={saveBtn}>{saving && <Loader2 className="w-4 h-4 animate-spin" />} Change password</button>
+            </form>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -295,3 +295,17 @@ export async function emailDigest(opts: {
     `),
   );
 }
+
+export async function emailBankDetailsChanged(opts: { to: string; name: string; holder: string; accountTail: string; ifsc: string; when: string }): Promise<void> {
+  await send(
+    opts.to,
+    "Your payout bank account was changed",
+    base(`
+      ${h2("Payout bank account changed")}
+      ${p(`Hi ${opts.name}, the bank account that receives your AXQEN payouts was just updated.`)}
+      ${kv([["Account holder", opts.holder], ["Account", `••••${opts.accountTail}`], ["IFSC", opts.ifsc], ["Changed on", opts.when]])}
+      ${hr()}
+      ${p("If you made this change, no action is needed. <b>If you didn't</b>, reply to this email or WhatsApp us right away so we can stop payouts to the new account.")}
+    `),
+  );
+}

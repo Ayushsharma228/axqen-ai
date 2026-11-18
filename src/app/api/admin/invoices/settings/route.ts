@@ -31,7 +31,7 @@ export async function PUT(req: NextRequest) {
     ...s,
     digits,
     shipping: { ...s.shipping, rate: Number(s.shipping.rate) },
-    packing: { ...s.packing, rate: Number(s.packing.rate) },
+    packing: { ...s.packing, rate: Number(s.packing.rate), amount: Math.max(0, Math.round((Number(s.packing.amount) || 0) * 100) / 100) },
     company: { ...s.company, addressLines: (s.company.addressLines ?? []).map(l => l.trim()).filter(Boolean) },
   });
   return NextResponse.json({ ok: true });

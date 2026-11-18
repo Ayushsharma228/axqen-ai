@@ -10,7 +10,7 @@ export interface InvoiceSettings {
   series: string;          // e.g. "AXP"
   digits: number;          // e.g. 5 → AXP/26-27/00001
   shipping: { label: string; sac: string; rate: number };
-  packing: { label: string; sac: string; rate: number };
+  packing: { label: string; sac: string; rate: number; amount: number }; // amount = per order, GST included
 }
 
 // ── Money helpers ───────────────────────────────────────────────────────────────────────────────────

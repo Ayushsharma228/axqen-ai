@@ -92,7 +92,7 @@ export default function InvoicePricingPage() {
                   <th className="px-4 py-2.5">Product</th>
                   <th className="px-2 py-2.5 w-[110px]">Price to seller ₹</th>
                   <th className="px-2 py-2.5 w-[100px]">Shipping ₹</th>
-                  <th className="px-2 py-2.5 w-[100px]">Packing ₹</th>
+                  <th className="px-2 py-2.5 w-[100px]" title="Leave empty to use the default packing per order from Invoice settings">Packing override ₹</th>
                   <th className="px-2 py-2.5 w-[110px]">HSN</th>
                   <th className="px-2 py-2.5 w-[80px]">GST %</th>
                   <th className="px-2 py-2.5 w-[120px] text-right">Taxable / GST</th>
@@ -121,7 +121,7 @@ export default function InvoicePricingPage() {
                       </td>
                       <td className="px-2 py-2"><input id={`pp-${p.id}`} aria-label="Price to seller" inputMode="decimal" className={input} value={d.invoicePrice} onChange={e => upd("invoicePrice", e.target.value)} /></td>
                       <td className="px-2 py-2"><input id={`ps-${p.id}`} aria-label="Shipping" inputMode="decimal" className={input} value={d.invoiceShipping} onChange={e => upd("invoiceShipping", e.target.value)} /></td>
-                      <td className="px-2 py-2"><input id={`pk-${p.id}`} aria-label="Packing" inputMode="decimal" className={input} value={d.invoicePacking} onChange={e => upd("invoicePacking", e.target.value)} /></td>
+                      <td className="px-2 py-2"><input id={`pk-${p.id}`} aria-label="Packing override" placeholder="Default" inputMode="decimal" className={input} value={d.invoicePacking} onChange={e => upd("invoicePacking", e.target.value)} /></td>
                       <td className="px-2 py-2"><input id={`ph-${p.id}`} aria-label="HSN" inputMode="numeric" maxLength={8} className={`${input} font-mono`} value={d.hsn} onChange={e => upd("hsn", e.target.value.replace(/\D/g, ""))} /></td>
                       <td className="px-2 py-2">
                         <select id={`pg-${p.id}`} aria-label="GST rate" className={input} value={d.gstRate} onChange={e => upd("gstRate", e.target.value)}>

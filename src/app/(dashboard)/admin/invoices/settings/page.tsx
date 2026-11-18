@@ -65,6 +65,13 @@ export default function InvoiceSettingsPage() {
 
       <section className="bg-white rounded-xl border border-[#E8EDF6] p-5 space-y-3">
         <h2 className="text-[14px] font-bold text-[#0C1220]">Shipping and packing lines</h2>
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <label htmlFor="packing-amount" className={label}>Packing per order ₹ (GST incl.)</label>
+            <input id="packing-amount" inputMode="decimal" className={input} value={s.packing.amount ?? 0} onChange={e => set(x => ({ ...x, packing: { ...x.packing, amount: Number(e.target.value) || 0 } }))} />
+          </div>
+          <p className="col-span-2 text-[12px] text-[#6B7280] self-end pb-2">Added once to every invoice. A product&apos;s own packing amount in Product pricing replaces it for orders containing that product.</p>
+        </div>
         {(["shipping", "packing"] as const).map(k => (
           <div key={k} className="grid grid-cols-3 gap-3">
             <div><label htmlFor={`${k}-label`} className={label}>{k === "shipping" ? "Shipping label" : "Packing label"}</label><input id={`${k}-label`} className={input} value={s[k].label} onChange={e => set(x => ({ ...x, [k]: { ...x[k], label: e.target.value } }))} /></div>

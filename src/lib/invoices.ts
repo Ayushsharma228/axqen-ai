@@ -1,5 +1,6 @@
 // AXP tax invoices — Vrinandya Ventures Pvt. Ltd. bills the seller for each delivered order:
-// product (its HSN + GST rate), shipping and packing, all priced GST-inclusive per unit in the catalogue.
+// product (its HSN + GST rate) and shipping priced GST-inclusive per unit in the catalogue, plus packing per order
+// (Invoice settings default, ₹5; a product's own packing amount overrides it).
 // The taxable value and tax are worked backwards; CGST+SGST inside Uttar Pradesh (09), IGST elsewhere.
 import { prisma } from "@/lib/prisma";
 import { COURIER_SCAN } from "@/lib/courier-scans";
@@ -23,7 +24,7 @@ export const DEFAULT_SETTINGS: InvoiceSettings = {
   series: "AXP",
   digits: 5,
   shipping: { label: "Shipping Charges", sac: "996812", rate: 18 },
-  packing: { label: "Packing Charges", sac: "998540", rate: 18 },
+  packing: { label: "Packing Charges", sac: "998540", rate: 18, amount: 5 },
 };
 
 const SETTINGS_KEY = "INVOICE_SETTINGS";
@@ -173,7 +174,7 @@ export async function issueInvoiceForOrder(orderId: string): Promise<IssueResult
     lines.push({ kind: "PRODUCT", description: p.name, hsn: p.hsn, gstRate: p.gstRate, qty, unit: "Pcs", rate: r2(taxable / qty), taxable, tax, amount });
     productTotal += amount;
     shippingTotal += (p.invoiceShipping ?? 0) * qty;
-    packingTotal += (p.invoicePacking ?? 0) * qty;
+    if (p.invoicePacking != null) packingTotal = Math.max(packingTotal, p.invoicePacking); // per order: highest product override
   }
 
   if (reasons.length) {
@@ -186,6 +187,8 @@ export async function issueInvoiceForOrder(orderId: string): Promise<IssueResult
     return { status: "HELD", reason };
   }
 
+  // Packing is charged once per order: a product override if set, else the default from Invoice settings
+  if (packingTotal <= 0) packingTotal = Number(settings.packing.amount ?? 0) || 0;
   shippingTotal = r2(shippingTotal); packingTotal = r2(packingTotal); productTotal = r2(productTotal);
   if (shippingTotal > 0) {
     const { taxable, tax } = splitInclusive(shippingTotal, settings.shipping.rate);

@@ -37,6 +37,7 @@ export async function GET(req: NextRequest) {
       },
       select: {
         id: true, totalAmount: true, status: true, utmCampaign: true,
+        productCost: true, shippingCharge: true, packingCharge: true, rtoCharge: true,
         items: { select: { name: true, quantity: true, price: true } },
       },
     }),
@@ -57,6 +58,9 @@ export async function GET(req: NextRequest) {
     revenue:      number;           // delivered orders only
     allRevenue:   number;           // all non-cancelled orders
     rtoCount:     number;
+    deliveredCosts: number;         // product + shipping + packing on delivered orders
+    rtoCosts:     number;           // product + return shipping + packing on RTO orders
+    costsMissing: number;           // delivered/RTO orders with no product cost yet
     products:     Record<string, { name: string; quantity: number; revenue: number }>;
   }
 
@@ -71,6 +75,7 @@ export async function GET(req: NextRequest) {
         totalSpend: 0, totalClicks: 0, totalImpressions: 0,
         orderCount: 0, deliveredCount: 0,
         revenue: 0, allRevenue: 0, rtoCount: 0,
+        deliveredCosts: 0, rtoCosts: 0, costsMissing: 0,
         products: {},
       };
     }
@@ -96,6 +101,7 @@ export async function GET(req: NextRequest) {
           totalSpend: 0, totalClicks: 0, totalImpressions: 0,
           orderCount: 0, deliveredCount: 0,
           revenue: 0, allRevenue: 0, rtoCount: 0,
+          deliveredCosts: 0, rtoCosts: 0, costsMissing: 0,
           products: {},
         };
       }
@@ -106,8 +112,16 @@ export async function GET(req: NextRequest) {
     const isDelivered = order.status === "DELIVERED";
     const isRTO       = order.status === "RTO";
 
-    if (isRTO)       matched.rtoCount += 1;
-    if (isDelivered) { matched.deliveredCount += 1; matched.revenue += order.totalAmount; }
+    if (isRTO) {
+      matched.rtoCount += 1;
+      matched.rtoCosts += (order.productCost ?? 0) + (order.rtoCharge ?? 0) + (order.packingCharge ?? 0);
+      if (order.productCost == null) matched.costsMissing += 1;
+    }
+    if (isDelivered) {
+      matched.deliveredCount += 1; matched.revenue += order.totalAmount;
+      matched.deliveredCosts += (order.productCost ?? 0) + (order.shippingCharge ?? 0) + (order.packingCharge ?? 0);
+      if (order.productCost == null) matched.costsMissing += 1;
+    }
     if (!isRTO)       matched.allRevenue += order.totalAmount;
 
     for (const item of order.items) {
@@ -140,6 +154,13 @@ export async function GET(req: NextRequest) {
         allRevenue:      Math.round(c.allRevenue * 100) / 100,
         rtoCount:        c.rtoCount,
         roas, cpc, cpr, roi,
+        // COD-true metrics (delivered only; RTO costs counted against the campaign)
+        deliveredRoas:    c.totalSpend > 0 ? Math.round((c.revenue / c.totalSpend) * 100) / 100 : null,
+        rtoPct:           c.deliveredCount + c.rtoCount > 0 ? Math.round((c.rtoCount / (c.deliveredCount + c.rtoCount)) * 100) : null,
+        costPerDelivered: c.deliveredCount > 0 ? Math.round(c.totalSpend / c.deliveredCount) : null,
+        profitAfterAds:   Math.round(c.revenue - c.deliveredCosts - c.rtoCosts - c.totalSpend),
+        costsMissing:     c.costsMissing,
+        verdict:          verdictFor(c),
         products:        Object.values(c.products).sort((a, b) => b.revenue - a.revenue),
       };
     })
@@ -159,8 +180,45 @@ export async function GET(req: NextRequest) {
   const totalRecharged  = recharges.reduce((s, r) => s + r.amount, 0);
   const rechargeBalance = Math.round((totalRecharged - totalSpend) * 100) / 100;
 
+  // Store-level (all orders, tagged or not) for the COD-true tiles
+  const [storeOrders, allRecharges, allSpend, spend7] = await Promise.all([
+    prisma.order.findMany({
+      where: { sellerId, createdAt: { gte: dateGte, lte: dateLte }, status: { notIn: ["CANCELLED", "HIDDEN"] as never[] } },
+      select: { status: true, totalAmount: true, utmCampaign: true, productCost: true, shippingCharge: true, packingCharge: true, rtoCharge: true },
+    }),
+    prisma.metaRecharge.aggregate({ where: { sellerId }, _sum: { amount: true } }),
+    prisma.adSpend.aggregate({ where: { sellerId }, _sum: { amount: true } }),
+    prisma.adSpend.aggregate({ where: { sellerId, date: { gte: new Date(Date.now() - 7 * 86400000) } }, _sum: { amount: true } }),
+  ]);
+  const del = storeOrders.filter(o => o.status === "DELIVERED");
+  const rto = storeOrders.filter(o => o.status === "RTO");
+  const storeDeliveredRevenue = del.reduce((s, o) => s + o.totalAmount, 0);
+  const storeCosts = del.reduce((s, o) => s + (o.productCost ?? 0) + (o.shippingCharge ?? 0) + (o.packingCharge ?? 0), 0)
+    + rto.reduce((s, o) => s + (o.productCost ?? 0) + (o.rtoCharge ?? 0) + (o.packingCharge ?? 0), 0);
+  const walletBalance = (allRecharges._sum.amount ?? 0) - (allSpend._sum.amount ?? 0);
+  const dailyBurn = (spend7._sum.amount ?? 0) / 7;
+
   return NextResponse.json({
     campaigns,
+    store: {
+      orders: storeOrders.length,
+      taggedOrders: storeOrders.filter(o => o.utmCampaign).length,
+      delivered: del.length,
+      rto: rto.length,
+      inTransit: storeOrders.filter(o => !["DELIVERED", "RTO"].includes(o.status)).length,
+      deliveredRevenue: storeDeliveredRevenue,
+      deliveredRoas: totalSpend > 0 ? Math.round((storeDeliveredRevenue / totalSpend) * 100) / 100 : null,
+      costPerDelivered: del.length > 0 ? Math.round(totalSpend / del.length) : null,
+      profitAfterAds: Math.round(storeDeliveredRevenue - storeCosts - totalSpend),
+      costsMissing: [...del, ...rto].filter(o => o.productCost == null).length,
+    },
+    wallet: {
+      recharged: allRecharges._sum.amount ?? 0,
+      spent: allSpend._sum.amount ?? 0,
+      balance: walletBalance,
+      dailyBurn: Math.round(dailyBurn),
+      daysLeft: dailyBurn > 0 && walletBalance > 0 ? Math.floor(walletBalance / dailyBurn) : null,
+    },
     summary: {
       totalSpend, totalRevenue, totalOrders, totalDelivered,
       totalClicks, overallRoas, overallCpc, overallCpr, overallRoi,
@@ -169,4 +227,15 @@ export async function GET(req: NextRequest) {
     recharges,
     adAccountId: seller?.metaAdAccountId ?? null,
   });
+}
+
+// Scale / Watch / Losing for a campaign, from delivered results (needs a few completed orders to judge).
+function verdictFor(c: { totalSpend: number; deliveredCount: number; rtoCount: number; revenue: number; deliveredCosts: number; rtoCosts: number }) {
+  if (c.totalSpend <= 0) return null;
+  const done = c.deliveredCount + c.rtoCount;
+  if (done < 3) return "LEARNING";
+  const profit = c.revenue - c.deliveredCosts - c.rtoCosts - c.totalSpend;
+  if (profit < 0) return "LOSING";
+  if (c.rtoCount / done >= 0.3) return "WATCH";
+  return "SCALE";
 }

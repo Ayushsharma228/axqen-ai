@@ -52,7 +52,7 @@ const SECTIONS: NavSection[] = [
 ];
 
 const FOOTER: NavItem[] = [
-  { label: "Documents & Invoices", href: "/seller/documents", icon: FileText, soon: true },
+  { label: "Documents & Invoices", href: "/seller/documents", icon: FileText },
   { label: "Profile & Settings",   href: "/seller/profile",   icon: UserCog },
   { label: "Help & Support",       href: "/seller/support",   icon: HelpCircle },
 ];

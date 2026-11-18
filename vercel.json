@@ -35,6 +35,10 @@
     {
       "path": "/api/cron/track-shipdaak",
       "schedule": "15 */2 * * *"
+    },
+    {
+      "path": "/api/cron/issue-invoices",
+      "schedule": "40 * * * *"
     }
   ]
 }

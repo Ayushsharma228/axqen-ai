@@ -612,6 +612,10 @@ model Product {
   moq            Int?
   hsn            String?
   gstRate        Float?
+  // What Vrinandya charges the seller per unit, GST included (used on AXP invoices + payout costs)
+  invoicePrice    Float?
+  invoiceShipping Float?
+  invoicePacking  Float?
   videoUrls      String[]
   documents      Json?
   createdAt      DateTime      @default(now())
@@ -1615,3 +1619,35 @@ model TicketMessage {
   @@index([ticketId, createdAt])
   @@map("ticket_messages")
 }
+
+// AXP tax invoices: Vrinandya Ventures -> seller, one per delivered order.
+// HELD rows have no number yet (missing KYC address or product price); numbers are only given on issue, so the series has no gaps.
+model Invoice {
+  id            String    @id @default(cuid())
+  number        String?   @unique
+  series        String
+  fy            String
+  seq           Int?
+  sellerId      String
+  orderId       String    @unique
+  status        String    // ISSUED | HELD | CANCELLED | EXEMPT (delivered before invoicing started)
+  heldReason    String?
+  cancelReason  String?
+  issueDate     DateTime?
+  buyer         Json?
+  lines         Json?
+  placeOfSupply String?
+  taxableTotal  Float     @default(0)
+  cgst          Float     @default(0)
+  sgst          Float     @default(0)
+  igst          Float     @default(0)
+  total         Float     @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([series, fy, seq])
+  @@index([sellerId, issueDate])
+  @@index([status])
+  @@map("invoices")
+}
+

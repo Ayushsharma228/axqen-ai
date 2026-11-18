@@ -93,7 +93,7 @@ export default function SellerOrdersPage() {
   const [tab,     setTab]     = useState(searchParams.get("tab")?.toUpperCase() ?? "ALL");
   const [range,   setRange]   = useState("30");
   const [payment, setPayment] = useState("");
-  const [source,  setSource]  = useState("");
+  const [source,  setSource]  = useState(searchParams.get("source")?.toUpperCase() ?? "");
   const [product, setProduct] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [search,  setSearch]  = useState("");

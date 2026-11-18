@@ -1,389 +1,292 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { RefreshCw, Link2, Link2Off, ShoppingCart, Package, CheckCircle, AlertCircle, Loader2, ExternalLink, HelpCircle, Zap, ChevronDown } from "lucide-react";
-import { PageHero } from "@/components/layout/page-hero";
+import Link from "next/link";
+import { useSession } from "next-auth/react";
+import {
+  RefreshCw, Link2Off, ShoppingCart, CheckCircle, AlertCircle, Loader2, ExternalLink, MessageCircle,
+  ListChecks, Clock, ShieldCheck, Sparkles, BarChart3, Wallet,
+} from "lucide-react";
 import { MARKETPLACE_IDS } from "@/lib/amazon-sp";
+import { WA_LINK } from "@/components/landing/constants";
 
-interface Order { id: string; externalOrderId: string; status: string; totalAmount: number; createdAt: string; }
+// Self-serve "Connect with Amazon" stays off until Amazon approves AXQEN as a public app.
+// Turn it on by setting NEXT_PUBLIC_AMAZON_SELF_CONNECT=1 in Vercel.
+const SELF_CONNECT = process.env.NEXT_PUBLIC_AMAZON_SELF_CONNECT === "1";
+
+interface Order { id: string; externalOrderId: string; status: string; totalAmount: number; createdAt: string }
 interface StatusData {
-  connected:           boolean;
-  amazonSellerId?:     string;
+  connected: boolean;
+  amazonSellerId?: string;
   marketplaceCountry?: string;
-  connectedAt?:        string;
-  lastSyncAt?:         string | null;
-  orderCount?:         number;
-  recentOrders?:       Order[];
+  connectedAt?: string;
+  lastSyncAt?: string | null;
+  orderCount?: number;
+  recentOrders?: Order[];
 }
 
-const STATUS_CONFIG: Record<string, { color: string; bg: string; label: string }> = {
-  NEW:        { label: "New",        color: "#3B82F6", bg: "#EFF6FF" },
-  PROCESSING: { label: "Processing", color: "#F59E0B", bg: "#FFF7ED" },
+const STATUS: Record<string, { color: string; bg: string; label: string }> = {
+  NEW:        { label: "New",        color: "#4361EE", bg: "#EEF2FF" },
+  PROCESSING: { label: "Confirmed",  color: "#D97706", bg: "#FFF7ED" },
   SHIPPED:    { label: "Shipped",    color: "#7C3AED", bg: "#F5F3FF" },
-  IN_TRANSIT: { label: "In Transit", color: "#025864", bg: "#ECFDF5" },
-  DELIVERED:  { label: "Delivered",  color: "#16A34A", bg: "#F0FDF4" },
-  RTO:        { label: "RTO",        color: "#EF4444", bg: "#FEF2F2" },
-  CANCELLED:  { label: "Cancelled",  color: "#6B7280", bg: "#F9FAFB" },
+  IN_TRANSIT: { label: "In transit", color: "#0369A1", bg: "#E0F2FE" },
+  DELIVERED:  { label: "Delivered",  color: "#047857", bg: "#ECFDF5" },
+  RTO:        { label: "RTO",        color: "#DC2626", bg: "#FEF2F2" },
+  CANCELLED:  { label: "Cancelled",  color: "#6B7280", bg: "#F3F4F6" },
 };
 
-function fmt(n: number) { return new Intl.NumberFormat("en-IN").format(n); }
+const SC_URL: Record<string, string> = {
+  IN: "https://sellercentral.amazon.in", US: "https://sellercentral.amazon.com", UK: "https://sellercentral.amazon.co.uk",
+  DE: "https://sellercentral.amazon.de", AE: "https://sellercentral.amazon.ae", JP: "https://sellercentral.amazon.co.jp",
+};
 
-export default function AmazonConnectPage() {
-  const [status, setStatus]           = useState<StatusData | null>(null);
-  const [loading, setLoading]         = useState(true);
-  const [syncing, setSyncing]         = useState(false);
+const inr = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
+const when = (d: string) => new Date(d).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+
+export default function AmazonPage() {
+  const { data: session } = useSession();
+  const plan = (session?.user as { plan?: string } | undefined)?.plan;
+
+  const [status, setStatus] = useState<StatusData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
-  const [error, setError]             = useState("");
-  const [success, setSuccess]         = useState("");
-
-  // OAuth connect
-  const [marketplace, setMarketplace]   = useState("IN");
-  const [showHelp, setShowHelp]         = useState(false);
-  const [showManual, setShowManual]     = useState(false);
-
-  // Manual fallback form
-  const [manualSellerId, setManualSellerId]     = useState("");
-  const [manualToken, setManualToken]           = useState("");
-  const [manualMarket, setManualMarket]         = useState("IN");
-  const [connecting, setConnecting]             = useState(false);
-  const didReadParams                 = useRef(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [marketplace, setMarketplace] = useState("IN");
+  const didReadParams = useRef(false);
 
   useEffect(() => {
     fetchStatus();
-    if (!didReadParams.current) {
-      didReadParams.current = true;
-      const params = new URLSearchParams(window.location.search);
-      const conn   = params.get("connected");
-      const err    = params.get("error");
-      if (conn === "oauth") setSuccess("Amazon account connected successfully!");
-      else if (err) {
-        const MAP: Record<string, string> = {
-          missing_params:       "Authorization was cancelled or parameters were missing.",
-          no_state_cookie:      "Session expired. Please try again.",
-          state_mismatch:       "Security check failed. Please try again.",
-          token_exchange_failed:"Amazon rejected the authorization. Please try again.",
-          no_refresh_token:     "Amazon did not return a refresh token.",
-        };
-        setError(MAP[err] ?? `Connection failed: ${err}`);
-      }
-      if (conn || err) {
-        const clean = new URL(window.location.href);
-        clean.searchParams.delete("connected");
-        clean.searchParams.delete("error");
-        window.history.replaceState({}, "", clean.toString());
-      }
+    if (didReadParams.current) return;
+    didReadParams.current = true;
+    const params = new URLSearchParams(window.location.search);
+    const conn = params.get("connected");
+    const err = params.get("error");
+    if (conn === "oauth") setSuccess("Amazon account connected.");
+    else if (err) {
+      const MAP: Record<string, string> = {
+        missing_params: "Authorization was cancelled on Amazon.",
+        no_state_cookie: "The connection took too long. Please try again.",
+        state_mismatch: "Security check failed. Please try again.",
+        token_exchange_failed: "Amazon didn't confirm the connection. Please try again.",
+        no_refresh_token: "Amazon didn't return access. Please try again.",
+      };
+      setError(MAP[err] ?? `Connection failed: ${err}`);
     }
+    if (conn || err) window.history.replaceState({}, "", "/seller/amazon");
   }, []);
 
   async function fetchStatus() {
     setLoading(true);
-    const res  = await fetch("/api/seller/amazon/status");
-    const data = await res.json() as StatusData;
+    const data = await fetch("/api/seller/amazon/status").then(r => r.json()).catch(() => ({ connected: false })) as StatusData;
     setStatus(data);
     setLoading(false);
   }
 
-  function handleOAuthConnect() {
-    window.location.href = `/api/seller/amazon/auth?marketplace=${marketplace}`;
-  }
-
-  async function handleManualConnect(e: React.FormEvent) {
-    e.preventDefault();
-    setError(""); setSuccess("");
-    if (!manualSellerId.trim() || !manualToken.trim()) { setError("All fields are required."); return; }
-    setConnecting(true);
-    const res  = await fetch("/api/seller/amazon/connect", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sellerId: manualSellerId.trim(), marketplaceCountry: manualMarket, refreshToken: manualToken.trim() }),
-    });
-    const data = await res.json() as { ok?: boolean; error?: string; orderCount?: number };
-    if (!res.ok || !data.ok) { setError(data.error || "Connection failed"); setConnecting(false); return; }
-    setSuccess(`Connected! Found ${data.orderCount ?? 0} recent orders.`);
-    setConnecting(false);
-    setManualSellerId(""); setManualToken(""); setShowManual(false);
-    await fetchStatus();
-  }
-
   async function handleSync() {
     setSyncing(true); setError(""); setSuccess("");
-    const res  = await fetch("/api/seller/amazon/sync-orders", { method: "POST" });
-    const data = await res.json() as { ok?: boolean; created?: number; updated?: number; errors?: number; error?: string };
-    if (!res.ok) { setError(data.error || "Sync failed"); }
-    else setSuccess(`Sync complete — ${data.created} new, ${data.updated} updated${data.errors ? `, ${data.errors} errors` : ""}.`);
+    const res = await fetch("/api/seller/amazon/sync-orders", { method: "POST" });
+    const data = await res.json().catch(() => ({})) as { created?: number; updated?: number; errors?: number; error?: string };
+    if (!res.ok) setError(data.error || "Sync failed. Try again in a few minutes.");
+    else setSuccess(`Synced: ${data.created ?? 0} new, ${data.updated ?? 0} updated${data.errors ? `, ${data.errors} could not be read` : ""}.`);
     setSyncing(false);
-    await fetchStatus();
+    fetchStatus();
   }
 
   async function handleDisconnect() {
-    if (!confirm("Disconnect your Amazon account? Orders already synced will remain.")) return;
+    if (!confirm("Disconnect your Amazon account? Orders already synced stay in AXQEN, but new ones stop coming in.")) return;
     setDisconnecting(true);
     await fetch("/api/seller/amazon/disconnect", { method: "DELETE" });
     setStatus({ connected: false });
     setDisconnecting(false);
   }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: "var(--bg-page)" }}>
-        <Loader2 className="w-6 h-6 animate-spin" style={{ color: "var(--accent)" }} />
-      </div>
-    );
-  }
+  const onMarketplace = plan === "MARKETPLACE";
+  const country = status?.marketplaceCountry ?? "IN";
 
   return (
-    <div className="min-h-screen" style={{ background: "var(--bg-page)" }}>
-      <PageHero
-        title="Amazon Seller Central"
-        subtitle="Connect your Amazon store to sync orders, manage listings, and track settlements"
-      />
+    <div className="px-3 py-4 md:p-8 space-y-5" style={{ background: "#F7F8FC", minHeight: "100vh" }}>
+      <div>
+        <h1 className="text-[22px] font-black text-[#0C1220]">Amazon</h1>
+        <p className="text-[12.5px] text-[#6B7280] mt-1">Your Amazon orders, listings and account in one place, managed with your AXQEN account manager.</p>
+      </div>
 
-      <div className="px-4 md:px-8 py-6 max-w-3xl space-y-5">
+      {error && (
+        <div className="flex items-start gap-2 px-4 py-3 rounded-xl text-[13px] bg-[#FEF2F2] border border-[#FECACA] text-[#B91C1C]">
+          <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" /> {error}
+        </div>
+      )}
+      {success && (
+        <div className="flex items-start gap-2 px-4 py-3 rounded-xl text-[13px] bg-[#ECFDF5] border border-[#BBF7D0] text-[#047857]">
+          <CheckCircle className="w-4 h-4 mt-0.5 flex-shrink-0" /> {success}
+        </div>
+      )}
 
-        {/* Alerts */}
-        {error && (
-          <div className="flex items-start gap-3 px-4 py-3 rounded-xl text-sm"
-            style={{ background: "#FEF2F2", border: "1px solid rgba(239,68,68,0.2)", color: "#EF4444" }}>
-            <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
-        {success && (
-          <div className="flex items-start gap-3 px-4 py-3 rounded-xl text-sm"
-            style={{ background: "#F0FDF4", border: "1px solid rgba(22,163,74,0.2)", color: "#16A34A" }}>
-            <CheckCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-            <span>{success}</span>
-          </div>
-        )}
-
-        {status?.connected ? (
-          <>
-            {/* Connected state */}
-            <div className="rounded-2xl p-5" style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white text-base font-bold"
-                    style={{ background: "#FF9900" }}>A</div>
-                  <div>
-                    <p className="font-semibold text-sm" style={{ color: "var(--text-primary)" }}>Amazon Connected</p>
-                    <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
-                      Seller ID: {status.amazonSellerId} &middot; {MARKETPLACE_IDS[status.marketplaceCountry ?? "IN"]?.name ?? status.marketplaceCountry}
-                    </p>
-                  </div>
+      {loading ? (
+        <div className="flex items-center justify-center py-16"><Loader2 className="w-7 h-7 animate-spin text-[#4361EE]" /></div>
+      ) : status?.connected ? (
+        /* ── Connected ── */
+        <>
+          <div className="bg-white rounded-xl border border-[#E8EDF6] overflow-hidden">
+            <div className="px-5 py-4 flex items-start gap-4 flex-wrap">
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center text-white text-[18px] font-black flex-shrink-0" style={{ background: "#FF9900" }}>a</div>
+              <div className="flex-1 min-w-[220px]">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-[17px] font-bold text-[#0C1220]">Amazon {MARKETPLACE_IDS[country]?.name ?? country}</h2>
+                  <span className="flex items-center gap-1.5 text-[11px] font-bold px-2 py-0.5 rounded-full bg-[#ECFDF5] text-[#047857]">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-500" /> Connected
+                  </span>
                 </div>
-                <span className="px-2.5 py-1 rounded-full text-xs font-semibold"
-                  style={{ background: "#F0FDF4", color: "#16A34A" }}>Active</span>
-              </div>
-
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-5">
-                {[
-                  { label: "Amazon Orders", value: status.orderCount ?? 0, icon: ShoppingCart },
-                  { label: "Connected On", value: status.connectedAt ? new Date(status.connectedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—", icon: Link2 },
-                  { label: "Last Sync", value: status.lastSyncAt ? new Date(status.lastSyncAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) + " " + new Date(status.lastSyncAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "Never", icon: RefreshCw },
-                ].map((s) => (
-                  <div key={s.label} className="rounded-xl px-4 py-3" style={{ background: "var(--bg-muted)", border: "1px solid var(--border)" }}>
-                    <p className="text-xs font-medium mb-1" style={{ color: "var(--text-muted)" }}>{s.label}</p>
-                    <p className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
-                      {typeof s.value === "number" ? fmt(s.value) : s.value}
-                    </p>
-                  </div>
-                ))}
-              </div>
-
-              <div className="flex items-center gap-2 mt-4">
-                <button onClick={handleSync} disabled={syncing}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
-                  style={{ background: "var(--accent)" }}>
-                  <RefreshCw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} />
-                  {syncing ? "Syncing..." : "Sync Orders Now"}
-                </button>
-                <button onClick={handleDisconnect} disabled={disconnecting}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium"
-                  style={{ background: "var(--bg-muted)", color: "#EF4444", border: "1px solid rgba(239,68,68,0.2)" }}>
-                  <Link2Off className="w-4 h-4" />
-                  {disconnecting ? "Disconnecting..." : "Disconnect"}
-                </button>
-              </div>
-            </div>
-
-            {/* Recent Amazon orders */}
-            {(status.recentOrders?.length ?? 0) > 0 && (
-              <div className="rounded-2xl overflow-hidden" style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
-                <div className="px-5 py-4" style={{ borderBottom: "1px solid var(--border)" }}>
-                  <p className="font-semibold text-sm" style={{ color: "var(--text-primary)" }}>Recent Amazon Orders</p>
-                </div>
-                <div className="divide-y" style={{ borderColor: "var(--border)" }}>
-                  {status.recentOrders!.map((o) => {
-                    const cfg = STATUS_CONFIG[o.status] ?? STATUS_CONFIG.NEW;
-                    return (
-                      <div key={o.id} className="flex items-center justify-between px-5 py-3">
-                        <div>
-                          <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
-                            #{o.externalOrderId}
-                          </p>
-                          <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                            {new Date(o.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>₹{fmt(o.totalAmount)}</span>
-                          <span className="px-2 py-0.5 rounded-full text-xs font-medium"
-                            style={{ background: cfg.bg, color: cfg.color }}>{cfg.label}</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </>
-        ) : (
-          <>
-            {/* OAuth connect card */}
-            <div className="rounded-2xl p-5" style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
-              <div className="flex items-center gap-3 mb-5">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white text-base font-bold"
-                  style={{ background: "#FF9900" }}>A</div>
-                <div>
-                  <p className="font-semibold text-sm" style={{ color: "var(--text-primary)" }}>Connect Amazon Seller Central</p>
-                  <p className="text-xs" style={{ color: "var(--text-muted)" }}>Authorize with Amazon to sync orders, listings &amp; settlements</p>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold mb-1.5" style={{ color: "var(--text-secondary)" }}>
-                    Marketplace
-                  </label>
-                  <select value={marketplace} onChange={(e) => setMarketplace(e.target.value)}
-                    className="w-full px-3 py-2.5 text-sm rounded-xl outline-none"
-                    style={{ background: "var(--bg-muted)", border: "1px solid var(--border)", color: "var(--text-primary)" }}>
-                    {Object.entries(MARKETPLACE_IDS).map(([code, mp]) => (
-                      <option key={code} value={code}>{mp.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <button onClick={handleOAuthConnect}
-                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold text-white"
-                  style={{ background: "#FF9900" }}>
-                  <Zap className="w-4 h-4" />
-                  Connect with Amazon
-                </button>
-
-                <p className="text-xs text-center" style={{ color: "var(--text-muted)" }}>
-                  You&apos;ll be redirected to Amazon Seller Central to authorize access. No passwords stored.
+                <p className="text-[12.5px] text-[#6B7280] mt-0.5">Seller ID <span className="font-mono">{status.amazonSellerId ?? "—"}</span></p>
+                <p className="text-[12px] text-[#6B7280] mt-1.5 flex items-center gap-x-3 gap-y-1 flex-wrap">
+                  <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5 text-[#9CA3AF]" />{status.lastSyncAt ? `Last synced ${when(status.lastSyncAt)}` : "Not synced yet"}</span>
+                  {status.connectedAt && <span className="text-[#9CA3AF]">Connected since {new Date(status.connectedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</span>}
                 </p>
               </div>
             </div>
-
-            {/* Manual fallback */}
-            <div className="rounded-2xl overflow-hidden" style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
-              <button onClick={() => setShowManual(p => !p)}
-                className="w-full flex items-center justify-between px-5 py-3.5 text-xs font-medium text-left"
-                style={{ color: "var(--text-muted)" }}>
-                <span>Connect manually with refresh token</span>
-                <ChevronDown className={`w-4 h-4 transition-transform ${showManual ? "rotate-180" : ""}`} />
+            <div className="px-5 py-3.5 border-t border-[#F3F4F6] bg-[#FAFBFF] flex items-center gap-2 flex-wrap">
+              <button onClick={handleSync} disabled={syncing}
+                className="flex items-center gap-1.5 px-3.5 py-2 text-[13px] font-semibold text-white bg-[#4361EE] rounded-lg disabled:opacity-60">
+                <RefreshCw className={`w-3.5 h-3.5 ${syncing ? "animate-spin" : ""}`} /> {syncing ? "Syncing orders…" : "Sync orders now"}
               </button>
-              {showManual && (
-                <form onSubmit={handleManualConnect} className="px-5 pb-5 space-y-3"
-                  style={{ borderTop: "1px solid var(--border)" }}>
-                  <p className="text-xs pt-3" style={{ color: "var(--text-muted)" }}>
-                    Use this if you have a refresh token from self-authorization in Seller Central.
-                  </p>
-                  <div>
-                    <label className="block text-xs font-semibold mb-1" style={{ color: "var(--text-secondary)" }}>Marketplace</label>
-                    <select value={manualMarket} onChange={e => setManualMarket(e.target.value)}
-                      className="w-full px-3 py-2 text-sm rounded-xl outline-none"
-                      style={{ background: "var(--bg-muted)", border: "1px solid var(--border)", color: "var(--text-primary)" }}>
-                      {Object.entries(MARKETPLACE_IDS).map(([code, mp]) => (
-                        <option key={code} value={code}>{mp.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold mb-1" style={{ color: "var(--text-secondary)" }}>Amazon Seller ID</label>
-                    <input value={manualSellerId} onChange={e => setManualSellerId(e.target.value)}
-                      placeholder="e.g. A39NXH3LQVCZIK"
-                      className="w-full px-3 py-2 text-sm rounded-xl outline-none"
-                      style={{ background: "var(--bg-muted)", border: "1px solid var(--border)", color: "var(--text-primary)" }} />
-                    <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>Seller Central → Settings → Account Info → Merchant Token</p>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold mb-1" style={{ color: "var(--text-secondary)" }}>LWA Refresh Token</label>
-                    <textarea value={manualToken} onChange={e => setManualToken(e.target.value)}
-                      rows={3} placeholder="Atzr|IwEB..."
-                      className="w-full px-3 py-2 text-sm rounded-xl outline-none resize-none font-mono"
-                      style={{ background: "var(--bg-muted)", border: "1px solid var(--border)", color: "var(--text-primary)" }} />
-                  </div>
-                  <button type="submit" disabled={connecting}
-                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60"
-                    style={{ background: "var(--accent)" }}>
-                    {connecting ? <><Loader2 className="w-4 h-4 animate-spin" /> Connecting...</> : <><Link2 className="w-4 h-4" /> Connect Manually</>}
-                  </button>
-                </form>
-              )}
-            </div>
-
-            {/* How it works */}
-            <div className="rounded-2xl overflow-hidden" style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
-              <button
-                onClick={() => setShowHelp((p) => !p)}
-                className="w-full flex items-center justify-between px-5 py-4 text-sm font-semibold text-left"
-                style={{ color: "var(--text-primary)" }}>
-                <span className="flex items-center gap-2">
-                  <HelpCircle className="w-4 h-4" style={{ color: "var(--accent)" }} />
-                  How the connection works
-                </span>
-                <span style={{ color: "var(--text-muted)" }}>{showHelp ? "▲" : "▼"}</span>
+              <a href={SC_URL[country] ?? SC_URL.IN} target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-3.5 py-2 text-[13px] font-semibold text-[#374151] bg-white border border-[#E8EDF6] rounded-lg hover:text-[#0C1220]">
+                <ExternalLink className="w-3.5 h-3.5" /> Open Seller Central
+              </a>
+              <button onClick={handleDisconnect} disabled={disconnecting}
+                className="flex items-center gap-1.5 px-3.5 py-2 text-[13px] font-semibold text-[#DC2626] bg-white border border-[#FECACA] rounded-lg hover:bg-[#FEF2F2] disabled:opacity-50 sm:ml-auto">
+                <Link2Off className="w-3.5 h-3.5" /> {disconnecting ? "Disconnecting…" : "Disconnect"}
               </button>
-              {showHelp && (
-                <div className="px-5 pb-5 space-y-3 text-sm" style={{ color: "var(--text-secondary)", borderTop: "1px solid var(--border)" }}>
-                  {[
-                    ["1. Click Connect with Amazon", "You'll be redirected to your Amazon Seller Central account."],
-                    ["2. Authorize the AXQEN app", "Click 'Confirm' on the Amazon authorization page."],
-                    ["3. Automatic redirect", "Amazon sends you back here with a secure token — no copying needed."],
-                    ["4. Start syncing", "Your orders and listings are now accessible from the dashboard."],
-                  ].map(([title, desc]) => (
-                    <div key={title as string} className="flex gap-3 pt-2">
-                      <p className="font-semibold flex-shrink-0 text-xs" style={{ color: "var(--text-primary)" }}>{title as string}</p>
-                      <p className="text-xs">{desc as string}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
+          </div>
 
-            {/* What gets synced */}
-            <div className="rounded-2xl p-5" style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
-              <p className="font-semibold text-sm mb-4" style={{ color: "var(--text-primary)" }}>What gets synced</p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {[
-                  { icon: ShoppingCart, title: "Orders",       desc: "All Amazon orders synced automatically (last 30 days)" },
-                  { icon: Package,      title: "Order Items",  desc: "SKUs, quantities, and prices per order" },
-                  { icon: Link2,        title: "Status Updates", desc: "Order statuses kept in sync with Seller Central" },
-                  { icon: RefreshCw,    title: "Auto Refresh", desc: "Sync on demand or schedule via admin" },
-                ].map((item) => {
-                  const Icon = item.icon;
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <Link href="/seller/orders?source=AMAZON" className="bg-white rounded-xl border border-[#E8EDF6] px-4 py-3.5 hover:border-[#C7D2FE]">
+              <div className="flex items-center justify-between mb-1.5">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-[#9CA3AF]">Amazon orders</p>
+                <ShoppingCart className="w-3.5 h-3.5 text-[#FF9900]" />
+              </div>
+              <p className="text-[24px] font-black leading-none tabular-nums text-[#0C1220]">{(status.orderCount ?? 0).toLocaleString("en-IN")}</p>
+              <p className="text-[11.5px] text-[#4361EE] font-semibold mt-1.5">View all →</p>
+            </Link>
+            <Link href="/seller/listings" className="bg-white rounded-xl border border-[#E8EDF6] px-4 py-3.5 hover:border-[#C7D2FE]">
+              <div className="flex items-center justify-between mb-1.5">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-[#9CA3AF]">Listings</p>
+                <ListChecks className="w-3.5 h-3.5 text-[#16A34A]" />
+              </div>
+              <p className="text-[14px] font-bold text-[#0C1220] leading-tight">Live listings &amp; health check</p>
+              <p className="text-[11.5px] text-[#4361EE] font-semibold mt-1.5">Open My Listings → Amazon →</p>
+            </Link>
+            <div className="bg-white rounded-xl border border-dashed border-[#E8EDF6] px-4 py-3.5">
+              <div className="flex items-center justify-between mb-1.5">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-[#9CA3AF]">Amazon payouts</p>
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-[#F3F4F6] text-[#6B7280]">SOON</span>
+              </div>
+              <p className="text-[12.5px] text-[#9CA3AF] leading-snug">Every payout with Amazon fees, refunds and tax withheld, order by order.</p>
+            </div>
+          </div>
+
+          {(status.recentOrders?.length ?? 0) > 0 && (
+            <div className="bg-white rounded-xl border border-[#E8EDF6] overflow-hidden">
+              <div className="px-5 py-3.5 border-b border-[#F3F4F6] flex items-center justify-between">
+                <p className="text-[14px] font-bold text-[#0C1220]">Recent Amazon orders</p>
+                <Link href="/seller/orders?source=AMAZON" className="text-[12px] font-semibold text-[#4361EE]">View all</Link>
+              </div>
+              <ul className="divide-y divide-[#F3F4F6]">
+                {status.recentOrders!.map(o => {
+                  const st = STATUS[o.status] ?? STATUS.NEW;
                   return (
-                    <div key={item.title} className="flex items-start gap-3 p-3 rounded-xl"
-                      style={{ background: "var(--bg-muted)" }}>
-                      <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                        style={{ background: "rgba(67,97,238,0.1)" }}>
-                        <Icon className="w-3.5 h-3.5" style={{ color: "var(--accent)" }} />
-                      </div>
-                      <div>
-                        <p className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>{item.title}</p>
-                        <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>{item.desc}</p>
-                      </div>
-                    </div>
+                    <li key={o.id}>
+                      <Link href={`/seller/orders/${o.id}`} className="flex items-center justify-between gap-3 px-5 py-3 hover:bg-[#FAFBFF]">
+                        <div>
+                          <p className="text-[13px] font-semibold text-[#0C1220]">#{o.externalOrderId}</p>
+                          <p className="text-[11.5px] text-[#9CA3AF]">{new Date(o.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-[13px] font-bold tabular-nums text-[#0C1220]">{inr(o.totalAmount)}</span>
+                          <span className="px-2 py-0.5 rounded-full text-[11px] font-bold" style={{ background: st.bg, color: st.color }}>{st.label}</span>
+                        </div>
+                      </Link>
+                    </li>
                   );
                 })}
+              </ul>
+            </div>
+          )}
+        </>
+      ) : onMarketplace ? (
+        /* ── Marketplace plan, not connected yet ── */
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)] gap-4 items-start">
+          <div className="bg-white rounded-xl border border-[#E8EDF6] p-6 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-11 h-11 rounded-xl flex items-center justify-center text-white text-[18px] font-black flex-shrink-0" style={{ background: "#FF9900" }}>a</div>
+              <div>
+                <p className="text-[15px] font-bold text-[#0C1220]">Your account manager connects your Amazon account</p>
+                <p className="text-[13px] text-[#6B7280] mt-1">
+                  As part of your Marketplace plan, the AXQEN team links your Amazon Seller Central account for you. Message us and we&apos;ll set it up, usually the same day.
+                </p>
               </div>
             </div>
-          </>
-        )}
-      </div>
+            <a href={`${WA_LINK}?text=${encodeURIComponent("Hi AXQEN team, please connect my Amazon seller account.")}`} target="_blank" rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-[13px] font-bold text-white bg-[#16A34A]">
+              <MessageCircle className="w-4 h-4" /> Ask us to connect Amazon
+            </a>
+
+            {SELF_CONNECT && (
+              <div className="border-t border-[#F3F4F6] pt-4 space-y-3">
+                <p className="text-[12.5px] font-semibold text-[#374151]">Or connect it yourself</p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <select id="amazon-marketplace" aria-label="Marketplace" value={marketplace} onChange={e => setMarketplace(e.target.value)}
+                    className="px-3 py-2 text-[13px] rounded-lg border border-[#E8EDF6] bg-white outline-none focus:border-[#4361EE]">
+                    {Object.entries(MARKETPLACE_IDS).map(([code, mp]) => <option key={code} value={code}>{mp.name}</option>)}
+                  </select>
+                  <a href={`/api/seller/amazon/auth?marketplace=${marketplace}`}
+                    className="px-4 py-2 rounded-lg text-[13px] font-bold text-white" style={{ background: "#FF9900" }}>
+                    Connect with Amazon
+                  </a>
+                </div>
+                <p className="text-[11.5px] text-[#9CA3AF]">You approve AXQEN on Amazon and come straight back. We never see your Amazon password.</p>
+              </div>
+            )}
+          </div>
+
+          <div className="bg-white rounded-xl border border-[#E8EDF6] p-5">
+            <p className="text-[12px] font-bold uppercase tracking-wide text-[#9CA3AF] mb-4">What you get once it&apos;s connected</p>
+            <ul className="space-y-3.5">
+              {[
+                { icon: ShoppingCart, text: "Amazon orders show up in AXQEN next to your other channels" },
+                { icon: ListChecks, text: "Live listings with an AI health check and better titles" },
+                { icon: BarChart3, text: "Delivered, returned and RTO numbers per product" },
+                { icon: Wallet, text: "Soon: every Amazon payout with fees and tax withheld" },
+                { icon: ShieldCheck, text: "Read-only access approved through Amazon. No password shared" },
+              ].map(r => (
+                <li key={r.text} className="flex gap-3 text-[12.5px] text-[#374151]">
+                  <span className="w-7 h-7 rounded-lg bg-[#FFF7ED] flex items-center justify-center flex-shrink-0"><r.icon className="w-3.5 h-3.5 text-[#EA580C]" /></span>
+                  <span className="pt-1">{r.text}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      ) : (
+        /* ── Other plans ── */
+        <div className="bg-white rounded-xl border border-[#E8EDF6] p-6 max-w-3xl flex items-start gap-4 flex-wrap">
+          <div className="w-11 h-11 rounded-xl bg-[#FFF7ED] flex items-center justify-center flex-shrink-0">
+            <Sparkles className="w-5 h-5 text-[#EA580C]" />
+          </div>
+          <div className="flex-1 min-w-[240px]">
+            <p className="text-[15px] font-bold text-[#0C1220]">Sell on Amazon with AXQEN</p>
+            <p className="text-[13px] text-[#6B7280] mt-1">
+              The Marketplace plan gives you an account manager who sets up and runs your Amazon store: listings, orders and account health, all visible here in AXQEN. ₹8,999 for 3 months.
+            </p>
+          </div>
+          <a href={`${WA_LINK}?text=${encodeURIComponent("Hi AXQEN team, I want to start selling on Amazon.")}`} target="_blank" rel="noopener noreferrer"
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-[13px] font-bold text-white bg-[#16A34A]">
+            <MessageCircle className="w-4 h-4" /> Talk to us
+          </a>
+        </div>
+      )}
     </div>
   );
 }

@@ -64,6 +64,7 @@ export function SellerSidebar({ plan, userName }: { plan?: string; userName?: st
   const [mini, setMini] = useState(false);
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [flyout, setFlyout] = useState<string | null>(null);
+  const [flyTop, setFlyTop] = useState(0);
   const [unread, setUnread] = useState(0);
   const [counts, setCounts] = useState<Record<BadgeKey, number>>({ cod: 0, ndr: 0 });
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -187,15 +188,15 @@ export function SellerSidebar({ plan, userName }: { plan?: string; userName?: st
                   );
                   return (
                     <div key={e.id} className="relative flex justify-center"
-                      onMouseEnter={() => (e.children ? showFlyout(e.id) : showFlyout(`tip-${e.id}`))} onMouseLeave={hideFlyout}>
+                      onMouseEnter={ev => { const r = ev.currentTarget.getBoundingClientRect(); setFlyTop(Math.max(8, Math.min(r.top, window.innerHeight - (e.children ? 64 + e.children.length * 40 : 52)))); showFlyout(e.children ? e.id : `tip-${e.id}`); }} onMouseLeave={hideFlyout}>
                       {e.href
                         ? <Link href={e.href} aria-label={e.label} aria-current={active ? "page" : undefined}>{inner}</Link>
                         : <button type="button" aria-label={e.label} aria-expanded={flyout === e.id} onClick={() => setFlyout(f => (f === e.id ? null : e.id))}>{inner}</button>}
 
                       {/* Flyout: sub-pages, or just the label */}
                       {(flyout === e.id || flyout === `tip-${e.id}`) && (
-                        <div className="absolute left-[56px] top-0 z-50 min-w-[196px] rounded-xl bg-white p-1.5"
-                          style={{ border: "1px solid #E6EBF7", boxShadow: "0 12px 32px rgba(12,18,32,0.12)" }}
+                        <div className="fixed z-[60] min-w-[196px] rounded-xl bg-white p-1.5"
+                          style={{ left: W_MINI - 6, top: flyTop, border: "1px solid #E6EBF7", boxShadow: "0 12px 32px rgba(12,18,32,0.12)" }}
                           onMouseEnter={() => showFlyout(flyout!)} onMouseLeave={hideFlyout}>
                           {e.children ? (
                             <>

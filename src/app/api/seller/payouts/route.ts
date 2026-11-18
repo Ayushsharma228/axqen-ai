@@ -9,19 +9,21 @@ export async function GET(req: NextRequest) {
   if (!session || session.user.role !== "SELLER") return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const sellerId = session.user.id;
 
-  const [txns, seller, deliveredOpen, rtoOpen] = await Promise.all([
+  const seller = await prisma.user.findUnique({ where: { id: sellerId }, select: { bankHolder: true, bankAccount: true, bankIfsc: true, dataStartDate: true } });
+  const floorWhere = seller?.dataStartDate ? { createdAt: { gte: seller.dataStartDate } } : {};
+
+  const [txns, deliveredOpen, rtoOpen] = await Promise.all([
     prisma.walletTransaction.findMany({
       where: { sellerId },
       select: { id: true, type: true, amount: true, note: true, remittanceDate: true, bankTxId: true, createdAt: true },
       orderBy: { createdAt: "desc" },
     }),
-    prisma.user.findUnique({ where: { id: sellerId }, select: { bankHolder: true, bankAccount: true, bankIfsc: true, dataStartDate: true } }),
     prisma.order.findMany({
-      where: { sellerId, status: "DELIVERED", remittedAt: null },
+      where: { sellerId, status: "DELIVERED", remittedAt: null, ...floorWhere },
       select: { totalAmount: true, productCost: true, shippingCharge: true, packingCharge: true, paymentMode: true },
     }),
     prisma.order.findMany({
-      where: { sellerId, status: "RTO", remittedAt: null },
+      where: { sellerId, status: "RTO", remittedAt: null, ...floorWhere },
       select: { productCost: true, rtoCharge: true, packingCharge: true },
     }),
   ]);

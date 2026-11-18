@@ -117,7 +117,9 @@ export default function SellerWalletPage() {
           {
             icon: CalendarClock, color: "#4361EE", label: "Next payout",
             value: p ? inr(p.scheduled.amount) : "…",
-            sub: p ? (p.scheduled.nextDate ? `Expected ${fmtD(p.scheduled.nextDate)}` : p.scheduled.count ? "Date to be confirmed" : "Nothing scheduled yet") : "",
+            sub: p ? (p.scheduled.nextDate
+              ? (new Date(p.scheduled.nextDate).getTime() < Date.now() - 86400000 ? `Overdue since ${fmtD(p.scheduled.nextDate)}` : `Expected ${fmtD(p.scheduled.nextDate)}`)
+              : p.scheduled.count ? "Date to be confirmed" : "Nothing scheduled yet") : "",
           },
           null,
           {
@@ -132,18 +134,18 @@ export default function SellerWalletPage() {
               <c.icon className="w-4 h-4" style={{ color: c.color }} />
             </div>
             <p className="text-[24px] font-black leading-none tabular-nums" style={{ color: c.label === "Next payout" && negative ? "#DC2626" : "#0C1220" }}>{loading ? "…" : c.value}</p>
-            <p className="text-[11.5px] text-[#9CA3AF] mt-1.5">{c.sub}</p>
+            <p className="text-[11.5px] mt-1.5" style={{ color: c.sub.startsWith("Overdue") ? "#B45309" : "#9CA3AF", fontWeight: c.sub.startsWith("Overdue") ? 600 : 400 }}>{c.sub}</p>
           </div>
         ) : (
           <div key={i} className="hidden md:flex items-center justify-center text-[#C4C9D4]"><ChevronRight className="w-5 h-5" /></div>
         ))}
       </div>
 
-      {p && (p.rtoPending.count > 0 || negative) && (
+      {p && ((p.rtoPending.count > 0 && p.rtoPending.amount > 0) || negative) && (
         <div className="flex items-start gap-2 px-4 py-3 rounded-xl text-[12.5px] bg-[#FFFBEB] border border-[#FDE68A] text-[#92400E]">
           <Info className="w-4 h-4 flex-shrink-0 mt-0.5 text-[#D97706]" />
           <span>
-            {p.rtoPending.count > 0 && <>{p.rtoPending.count} returned (RTO) order{p.rtoPending.count === 1 ? "" : "s"} worth about <b>{inr(p.rtoPending.amount)}</b> (product cost, return shipping and packing) will be deducted in your next payout. </>}
+            {p.rtoPending.count > 0 && p.rtoPending.amount > 0 && <>{p.rtoPending.count} returned (RTO) order{p.rtoPending.count === 1 ? "" : "s"} worth about <b>{inr(p.rtoPending.amount)}</b> (product cost, return shipping and packing) will be deducted in your next payout. </>}
             {negative && <>Your next payout is negative: returns cost more than this cycle&apos;s deliveries. The difference is adjusted from your following payouts.</>}
           </span>
         </div>

@@ -17,6 +17,7 @@ interface NavItem {
   icon: React.ElementType;
   exact?: boolean;
   soon?: boolean;              // page not built yet — shown, not clickable
+  badge?: "cod" | "ndr";       // live count shown on the right
 }
 interface NavSection { title: string; items: NavItem[] }
 
@@ -25,13 +26,13 @@ const DASHBOARD: NavItem = { label: "Dashboard", href: "/seller", icon: LayoutDa
 
 const SECTIONS: NavSection[] = [
   { title: "Orders", items: [
-    { label: "COD Confirmation", href: "/seller/order-confirmation", icon: ClipboardCheck },
+    { label: "COD Confirmation", href: "/seller/order-confirmation", icon: ClipboardCheck, badge: "cod" },
     { label: "All Orders",       href: "/seller/orders",             icon: ShoppingCart },
     { label: "Customers",        href: "/seller/customers",          icon: Users },
   ]},
   { title: "Shipping", items: [
     { label: "Shipments", href: "/seller/deliveries", icon: Truck },
-    { label: "NDR",       href: "/seller/ndr",        icon: AlertTriangle },
+    { label: "NDR",       href: "/seller/ndr",        icon: AlertTriangle, badge: "ndr" },
     { label: "RTO",       href: "/seller/rto",        icon: RotateCcw },
   ]},
   { title: "Products & Store", items: [
@@ -67,6 +68,7 @@ export function SellerSidebar({ plan, userName }: {
   const initial  = userName?.[0]?.toUpperCase() || "U";
 
   const [unreadCount, setUnreadCount] = useState(0);
+  const [counts, setCounts] = useState<{ cod: number; ndr: number }>({ cod: 0, ndr: 0 });
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -74,10 +76,17 @@ export function SellerSidebar({ plan, userName }: {
       .then(r => r.json())
       .then(d => setUnreadCount(d.unreadCount ?? 0))
       .catch(() => {});
+    const loadCounts = () => fetch("/api/seller/nav-counts")
+      .then(r => r.json())
+      .then(d => setCounts({ cod: d.codBeingCalled ?? 0, ndr: d.ndrOpen ?? 0 }))
+      .catch(() => {});
+    loadCounts();
+    const timer = setInterval(loadCounts, 120_000);
     try {
       const saved = localStorage.getItem(COLLAPSED_KEY);
       if (saved) setCollapsed(JSON.parse(saved));
     } catch {}
+    return () => clearInterval(timer);
   }, []);
 
   const isActive = (item: NavItem) =>
@@ -116,6 +125,15 @@ export function SellerSidebar({ plan, userName }: {
       >
         <Icon className="w-[17px] h-[17px] flex-shrink-0" style={{ color: active ? "#4361EE" : "#9CA3AF" }} />
         <span className="flex-1">{item.label}</span>
+        {item.badge && counts[item.badge] > 0 && (
+          <span
+            title={item.badge === "cod" ? "Orders being confirmed by the AXQEN team" : "Failed deliveries waiting for action"}
+            className="text-[10.5px] font-bold min-w-[20px] h-[18px] px-1.5 rounded-full flex items-center justify-center tabular-nums"
+            style={item.badge === "ndr" ? { background: "#FEE2E2", color: "#DC2626" } : { background: "#FEF3C7", color: "#B45309" }}
+          >
+            {counts[item.badge] > 99 ? "99+" : counts[item.badge]}
+          </span>
+        )}
       </Link>
     );
   }
@@ -164,7 +182,12 @@ export function SellerSidebar({ plan, userName }: {
                 aria-expanded={isOpen}
                 className="w-full flex items-center justify-between px-3 py-1 text-[10.5px] font-bold uppercase tracking-[0.08em] text-[#9CA3AF] hover:text-[#6B7280]"
               >
-                {section.title}
+                <span className="flex items-center gap-1.5">
+                  {section.title}
+                  {!isOpen && items.some(i => i.badge && counts[i.badge] > 0) && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#EF4444]" />
+                  )}
+                </span>
                 <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", isOpen ? "" : "-rotate-90")} />
               </button>
               {isOpen && (

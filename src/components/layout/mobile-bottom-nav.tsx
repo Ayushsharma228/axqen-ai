@@ -18,11 +18,11 @@ const PRIMARY: { label: string; href: string; icon: React.ElementType; exact?: b
 ];
 
 // Same order as the desktop sidebar; pages still being built are left out on mobile.
-const MORE: { label: string; href: string; icon: React.ElementType; badge?: "notifications" }[] = [
+const MORE: { label: string; href: string; icon: React.ElementType; badge?: "notifications" | "cod" | "ndr" }[] = [
   { label: "Notifications",    href: "/seller/notifications",      icon: Bell, badge: "notifications" },
-  { label: "COD Confirm",      href: "/seller/order-confirmation", icon: ClipboardCheck },
+  { label: "COD Confirm",      href: "/seller/order-confirmation", icon: ClipboardCheck, badge: "cod" },
   { label: "Customers",        href: "/seller/customers",          icon: Users },
-  { label: "NDR",              href: "/seller/ndr",                icon: AlertTriangle },
+  { label: "NDR",              href: "/seller/ndr",                icon: AlertTriangle, badge: "ndr" },
   { label: "RTO",              href: "/seller/rto",                icon: RotateCcw },
   { label: "Catalogue",        href: "/seller/catalog",            icon: Package },
   { label: "My Listings",      href: "/seller/listings",           icon: ListChecks },
@@ -39,10 +39,16 @@ export function MobileBottomNav({ userName, plan }: { userName?: string; plan?: 
   const pathname = usePathname();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [cod, setCod] = useState(0);
+  const [ndr, setNdr] = useState(0);
 
   useEffect(() => {
     fetch("/api/seller/notifications").then(r => r.json()).then(d => setUnreadCount(d.unreadCount ?? 0)).catch(() => {});
+    fetch("/api/seller/nav-counts").then(r => r.json()).then(d => { setCod(d.codBeingCalled ?? 0); setNdr(d.ndrOpen ?? 0); }).catch(() => {});
   }, []);
+
+  const badgeCount = (b?: "notifications" | "cod" | "ndr") =>
+    b === "notifications" ? unreadCount : b === "cod" ? cod : b === "ndr" ? ndr : 0;
 
   function isActive(href: string, exact?: boolean) {
     return exact ? pathname === href : pathname === href || pathname.startsWith(href + "/");
@@ -106,9 +112,10 @@ export function MobileBottomNav({ userName, plan }: { userName?: string; plan?: 
                   style={{ background: active ? "#4361EE" : "#F5F7FB" }}
                 >
                   <Icon className="w-5 h-5" style={{ color: active ? "white" : "#6B7280" }} />
-                  {item.badge === "notifications" && unreadCount > 0 && (
-                    <span className="absolute -top-1 -right-1 text-[9px] font-bold min-w-[16px] h-[16px] px-1 rounded-full flex items-center justify-center bg-[#EF4444] text-white ring-2 ring-white">
-                      {unreadCount > 99 ? "99+" : unreadCount}
+                  {badgeCount(item.badge) > 0 && (
+                    <span className="absolute -top-1 -right-1 text-[9px] font-bold min-w-[16px] h-[16px] px-1 rounded-full flex items-center justify-center text-white ring-2 ring-white"
+                      style={{ background: item.badge === "cod" ? "#D97706" : "#EF4444" }}>
+                      {badgeCount(item.badge) > 99 ? "99+" : badgeCount(item.badge)}
                     </span>
                   )}
                 </div>
@@ -202,7 +209,7 @@ export function MobileBottomNav({ userName, plan }: { userName?: string; plan?: 
               className="w-7 h-7 rounded-lg flex items-center justify-center"
               style={{ background: moreIsActive || sheetOpen ? "#EEF2FF" : "transparent", position: "relative" }}
             >
-              {unreadCount > 0 && !sheetOpen && (
+              {(unreadCount > 0 || ndr > 0) && !sheetOpen && (
                 <span className="absolute top-0 right-0 w-2 h-2 rounded-full bg-[#EF4444] ring-2 ring-white" />
               )}
               <MoreHorizontal

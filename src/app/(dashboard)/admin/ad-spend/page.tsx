@@ -1,7 +1,8 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect } from "react";
 import { Megaphone, Plus, Trash2, Loader2, IndianRupee, RefreshCw, ChevronDown, ChevronUp, Check } from "lucide-react";
+import { AdRechargesPanel } from "@/components/admin/ad-recharges-panel";
 
 interface Seller { id: string; name: string | null; email: string; brandName: string | null; }
 interface Entry {
@@ -398,6 +399,8 @@ export default function AdminAdSpendPage() {
           </table>
         )}
       </div>
+
+      <AdRechargesPanel sellers={sellers} />
     </div>
   );
 }

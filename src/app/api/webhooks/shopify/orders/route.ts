@@ -155,6 +155,7 @@ export async function POST(req: NextRequest) {
     : undefined;
 
   const totalAmount = parseFloat((shopifyOrder.total_price as string) ?? "0");
+  const utm = utmFromLandingSite(shopifyOrder.landing_site as string | undefined);
   const lineItems = (shopifyOrder.line_items as Array<Record<string, unknown>>) ?? [];
 
   // Create order + items in one transaction
@@ -170,6 +171,7 @@ export async function POST(req: NextRequest) {
       customerAddress: customerAddress ?? undefined,
       totalAmount,
       currency: (shopifyOrder.currency as string) ?? "INR",
+      ...utm,
       rawData: shopifyOrder as never,
       items: {
         create: lineItems.map(item => ({
@@ -387,4 +389,16 @@ async function handleExistingOrder(
   });
 
   return NextResponse.json({ ok: true, updated: true, orderId: existing.id });
+}
+
+// Campaign tags (utm_*) from the page the shopper landed on, so ad spend can be matched to orders.
+function utmFromLandingSite(landingSite: string | null | undefined) {
+  if (!landingSite) return {};
+  try {
+    const url = new URL(landingSite.startsWith("http") ? landingSite : `https://x.com${landingSite}`);
+    const pick = (k: string) => url.searchParams.get(k) || undefined;
+    return { utmSource: pick("utm_source"), utmMedium: pick("utm_medium"), utmCampaign: pick("utm_campaign") };
+  } catch {
+    return {};
+  }
 }

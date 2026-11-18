@@ -20,8 +20,9 @@ export async function GET(req: NextRequest) {
 
   const seller = await prisma.user.findUnique({
     where:  { id: sellerId },
-    select: { metaAdAccountId: true },
+    select: { metaAdAccountId: true, dataStartDate: true },
   });
+  const storeFrom = seller?.dataStartDate && seller.dataStartDate > dateGte ? seller.dataStartDate : dateGte;
 
   const [spendRows, orders, recharges] = await Promise.all([
     prisma.adSpend.findMany({
@@ -183,7 +184,7 @@ export async function GET(req: NextRequest) {
   // Store-level (all orders, tagged or not) for the COD-true tiles
   const [storeOrders, allRecharges, allSpend, spend7] = await Promise.all([
     prisma.order.findMany({
-      where: { sellerId, createdAt: { gte: dateGte, lte: dateLte }, status: { notIn: ["CANCELLED", "HIDDEN"] as never[] } },
+      where: { sellerId, createdAt: { gte: storeFrom, lte: dateLte }, status: { notIn: ["CANCELLED", "HIDDEN"] as never[] } },
       select: { status: true, totalAmount: true, utmCampaign: true, productCost: true, shippingCharge: true, packingCharge: true, rtoCharge: true },
     }),
     prisma.metaRecharge.aggregate({ where: { sellerId }, _sum: { amount: true } }),

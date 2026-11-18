@@ -74,6 +74,7 @@ interface Recharge { amount: number; date: string; note: string | null; }
 // ── Helpers ────────────────────────────────────────────────────────────────
 const inr = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
 const num = (n: number) => Math.round(n).toLocaleString("en-IN");
+const axisInr = (v: number) => v >= 1000 ? `₹${(v / 1000).toFixed(v % 1000 === 0 ? 0 : 1)}k` : `₹${Math.round(v)}`;
 const money = (n: number) => `${n < 0 ? "−" : ""}${inr(Math.abs(n))}`;
 // Show "—" for null OR zero (zero ROAS/ROI means no attribution, not 0x)
 const showRoas = (n: number | null) => (n !== null && n > 0) ? `${n}x` : "—";
@@ -246,9 +247,9 @@ export default function MetaAdsPage() {
               },
               {
                 label: "Profit after ads",
-                value: store ? money(store.profitAfterAds) : "—",
-                color: store && store.profitAfterAds >= 0 ? "#047857" : "#DC2626",
-                sub: store?.costsMissing ? `Costs missing on ${store.costsMissing} orders` : "Delivered − costs − RTO − ads",
+                value: store ? (store.costsMissing ? `≈ ${money(store.profitAfterAds)}` : money(store.profitAfterAds)) : "—",
+                color: store?.costsMissing ? "#B45309" : store && store.profitAfterAds >= 0 ? "#047857" : "#DC2626",
+                sub: store?.costsMissing ? `Incomplete: costs not entered on ${store.costsMissing} orders` : "Delivered − costs − RTO − ads",
               },
               {
                 label: "Orders tracked",
@@ -258,10 +259,11 @@ export default function MetaAdsPage() {
               },
               {
                 label: "Ad wallet",
-                value: adWallet ? money(adWallet.balance) : "—",
-                color: adWallet && adWallet.balance > 0 && (adWallet.daysLeft ?? 99) > 3 ? "#047857" : "#DC2626",
+                value: adWallet ? (adWallet.recharged === 0 ? "—" : money(adWallet.balance)) : "—",
+                color: adWallet && adWallet.recharged === 0 ? "#9CA3AF" : adWallet && adWallet.balance > 0 && (adWallet.daysLeft ?? 99) > 3 ? "#047857" : "#DC2626",
                 sub: adWallet
-                  ? adWallet.balance <= 0 ? "Recharge to keep ads running"
+                  ? adWallet.recharged === 0 ? "No recharges recorded yet"
+                  : adWallet.balance <= 0 ? "Recharge to keep ads running"
                     : adWallet.daysLeft != null ? `About ${adWallet.daysLeft} day${adWallet.daysLeft === 1 ? "" : "s"} left`
                     : "No spend in the last 7 days"
                   : "",
@@ -285,7 +287,7 @@ export default function MetaAdsPage() {
             <div className="flex items-start gap-3 bg-[#FFFBEB] border border-[#FEF3C7] rounded-xl px-4 py-3.5">
               <AlertCircle className="w-4 h-4 text-[#D97706] flex-shrink-0 mt-0.5" />
               <p className="text-[12px] text-[#92400E]">
-                <strong>No campaign attribution found.</strong> The Revenue and ROAS shown above are blended (all store orders vs. ad spend). For per-campaign attribution, add UTM parameters to your Meta Ads — AXQEN matches orders by the <code className="bg-[#FEF3C7] px-1 rounded">utm_campaign</code> parameter.
+                <strong>No orders are linked to a campaign yet.</strong> The tiles above compare all delivered orders with total ad spend. To see results per campaign, the ads need campaign tags: in Meta Ads Manager, open each ad and set <b>URL parameters</b> to <code className="bg-[#FEF3C7] px-1 rounded">utm_source=facebook&amp;utm_medium=paid&amp;utm_campaign={"{{campaign.name}}"}</code>. New orders are matched automatically.
               </p>
             </div>
           )}
@@ -293,19 +295,22 @@ export default function MetaAdsPage() {
           {/* ── Ad wallet ── */}
           {adWallet && (
             <div className="bg-white rounded-xl border px-5 py-4 flex items-center gap-4 flex-wrap"
-              style={{ borderColor: adWallet.balance <= 0 || (adWallet.daysLeft ?? 99) <= 3 ? "#FECACA" : "#E8EDF6" }}>
+              style={{ borderColor: adWallet.recharged > 0 && (adWallet.balance <= 0 || (adWallet.daysLeft ?? 99) <= 3) ? "#FECACA" : "#E8EDF6" }}>
               <div className="w-10 h-10 rounded-xl bg-[#EEF2FF] flex items-center justify-center flex-shrink-0">
                 <Wallet className="w-5 h-5 text-[#4361EE]" />
               </div>
               <div className="flex-1 min-w-[220px]">
                 <p className="text-[13px] font-bold text-[#0C1220]">
-                  Ad wallet: {money(adWallet.balance)} {adWallet.balance < 0 ? "overspent" : "left"}
+                  {adWallet.recharged === 0 ? `Ad wallet: ${inr(adWallet.spent)} spent, no recharges recorded yet` : `Ad wallet: ${money(adWallet.balance)} ${adWallet.balance < 0 ? "overspent" : "left"}`}
                 </p>
                 <p className="text-[12px] text-[#6B7280] mt-0.5">
                   {inr(adWallet.recharged)} recharged · {inr(adWallet.spent)} spent by the AXQEN ads team
                   {adWallet.dailyBurn > 0 && <> · spending about {inr(adWallet.dailyBurn)} a day</>}
                 </p>
-                {(adWallet.balance <= 0 || (adWallet.daysLeft ?? 99) <= 3) && (
+                {adWallet.recharged === 0 && (
+                  <p className="text-[12px] text-[#6B7280] mt-1">Your recharges appear here once the AXQEN team records them.</p>
+                )}
+                {adWallet.recharged > 0 && (adWallet.balance <= 0 || (adWallet.daysLeft ?? 99) <= 3) && (
                   <p className="text-[12px] font-semibold text-[#DC2626] mt-1">
                     {adWallet.balance <= 0
                       ? "Your ad wallet is empty. Ads may pause until you recharge."
@@ -333,7 +338,7 @@ export default function MetaAdsPage() {
                     <CartesianGrid strokeDasharray="2 4" stroke="#F3F4F6" vertical={false} />
                     <XAxis dataKey="day" tick={{ fontSize: 11, fill: "#9CA3AF" }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fontSize: 11, fill: "#9CA3AF" }} axisLine={false} tickLine={false}
-                      tickFormatter={v => `₹${(v/1000).toFixed(0)}k`} />
+                      tickFormatter={axisInr} />
                     <Tooltip {...TOOLTIP_STYLE} formatter={(v: unknown) => [inr(Number(v)), "Spend"]} />
                     <Bar dataKey="Spend" fill="#4361EE" radius={[3,3,0,0]} maxBarSize={28} />
                   </BarChart>
@@ -355,7 +360,7 @@ export default function MetaAdsPage() {
                     <CartesianGrid strokeDasharray="2 4" stroke="#F3F4F6" vertical={false} />
                     <XAxis dataKey="name" tick={{ fontSize: 10, fill: "#9CA3AF" }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fontSize: 11, fill: "#9CA3AF" }} axisLine={false} tickLine={false}
-                      tickFormatter={v => `₹${(v/1000).toFixed(0)}k`} />
+                      tickFormatter={axisInr} />
                     <Tooltip {...TOOLTIP_STYLE} formatter={(v: unknown) => [inr(Number(v))]} />
                     <Bar dataKey="Spend"   fill="#EF4444" radius={[3,3,0,0]} maxBarSize={22} />
                     <Bar dataKey="Revenue" fill="#059669" radius={[3,3,0,0]} maxBarSize={22} />

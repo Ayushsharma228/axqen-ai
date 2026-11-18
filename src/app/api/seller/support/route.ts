@@ -54,5 +54,19 @@ export async function POST(req: NextRequest) {
     include: { messages: true },
   });
 
+  // Let the team know a seller needs help.
+  const [admins, seller] = await Promise.all([
+    prisma.user.findMany({ where: { role: "ADMIN" }, select: { id: true } }),
+    prisma.user.findUnique({ where: { id: session.user.id }, select: { brandName: true, name: true } }),
+  ]);
+  await Promise.all(admins.map(a => prisma.notification.create({
+    data: {
+      userId: a.id, type: "ORDER_UPDATE",
+      title: `New support ticket #${ticket.ticketNumber}${ticket.priority === "URGENT" || ticket.priority === "HIGH" ? ` (${ticket.priority.toLowerCase()})` : ""}`,
+      message: `${seller?.brandName || seller?.name || "A seller"}: ${ticket.subject}${ticket.relatedOrderId ? ` · order ${ticket.relatedOrderId}` : ""}`,
+      data: { ticketId: ticket.id, kind: "SUPPORT_TICKET" },
+    },
+  }).catch(() => null)));
+
   return NextResponse.json({ ticket });
 }

@@ -1,12 +1,14 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import {
   ListChecks, Clock, CheckCircle, XCircle, Loader2,
   Package, ExternalLink, RefreshCw, AlertCircle,
   Sparkles, Upload, ChevronDown, ChevronUp, Copy, Check, AlertTriangle,
+  Search, RotateCcw, MessageCircle,
 } from "lucide-react";
-import { PageHero } from "@/components/layout/page-hero";
+import { WA_LINK } from "@/components/landing/constants";
 
 // ─── Amazon Live Listings ─────────────────────────────────────────────────────
 
@@ -306,6 +308,8 @@ function AmazonListingsTab() {
   );
 }
 
+// ─── Listing requests (Shopify pushes + marketplace requests) ────────────────
+
 interface Listing {
   id: string;
   platform: string;
@@ -315,237 +319,287 @@ interface Listing {
   createdAt: string;
   product: { id: string; name: string; sku: string | null; images: string[]; price: number };
 }
-
-interface Stats {
-  total: number; pending: number; inProgress: number; listed: number; failed: number;
-}
+type Row = Listing & { attempts: number };
 
 const STATUS_CONFIG: Record<string, { label: string; bg: string; color: string }> = {
   PENDING:     { label: "Pending",     bg: "#FFF7ED", color: "#D97706" },
-  IN_PROGRESS: { label: "In Progress", bg: "#EFF6FF", color: "#3B82F6" },
-  LISTED:      { label: "Listed",      bg: "#F0FDF4", color: "#16A34A" },
+  IN_PROGRESS: { label: "In progress", bg: "#EFF6FF", color: "#2563EB" },
+  LISTED:      { label: "Live",        bg: "#ECFDF5", color: "#047857" },
   FAILED:      { label: "Failed",      bg: "#FEF2F2", color: "#DC2626" },
 };
-
-const PLATFORM_CONFIG: Record<string, { bg: string; color: string }> = {
-  AMAZON:  { bg: "#FFF7ED", color: "#EA580C" },
-  EBAY:    { bg: "#EFF6FF", color: "#3B82F6" },
-  ETSY:    { bg: "#FDF2F8", color: "#DB2777" },
-  WALMART: { bg: "#F0F9FF", color: "#0284C7" },
-  SHOPIFY: { bg: "#F0FDF4", color: "#16A34A" },
-  OTHER:   { bg: "#F9FAFB", color: "#6B7280" },
+const PLATFORM_CONFIG: Record<string, { label: string; bg: string; color: string }> = {
+  SHOPIFY:  { label: "Shopify",  bg: "#ECFDF5", color: "#047857" },
+  AMAZON:   { label: "Amazon",   bg: "#FFF7ED", color: "#EA580C" },
+  FLIPKART: { label: "Flipkart", bg: "#EFF6FF", color: "#2563EB" },
+  MEESHO:   { label: "Meesho",   bg: "#FDF2F8", color: "#DB2777" },
+  EBAY:     { label: "eBay",     bg: "#EFF6FF", color: "#3B82F6" },
+  ETSY:     { label: "Etsy",     bg: "#FDF2F8", color: "#DB2777" },
+  WALMART:  { label: "Walmart",  bg: "#F0F9FF", color: "#0284C7" },
+  OTHER:    { label: "Other",    bg: "#F3F4F6", color: "#6B7280" },
 };
-
-const FILTERS = ["ALL", "PENDING", "IN_PROGRESS", "LISTED", "FAILED"];
+const STATUS_FILTERS = ["ALL", "LISTED", "PENDING", "IN_PROGRESS", "FAILED"] as const;
 
 export default function SellerListingsPage() {
-  const [listings, setListings] = useState<Listing[]>([]);
-  const [stats, setStats] = useState<Stats>({ total: 0, pending: 0, inProgress: 0, listed: 0, failed: 0 });
-  const [filter, setFilter] = useState("ALL");
+  const [raw, setRaw] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"requests" | "amazon">("requests");
+  const [tab, setTab] = useState<"SHOPIFY" | "AMAZON" | "ALL">("SHOPIFY");
+  const [status, setStatus] = useState<(typeof STATUS_FILTERS)[number]>("ALL");
+  const [search, setSearch] = useState("");
+  const [amazonConnected, setAmazonConnected] = useState<boolean | null>(null);
+  const [retrying, setRetrying] = useState<string | null>(null);
+  const [flash, setFlash] = useState<{ ok: boolean; text: string } | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    setLoading(true);
     fetch("/api/seller/listings")
       .then(r => r.json())
-      .then(d => {
-        setListings(d.listings ?? []);
-        if (d.stats) setStats(d.stats);
-      })
-      .catch(() => setListings([]))
+      .then(d => setRaw(d.listings ?? []))
+      .catch(() => setRaw([]))
       .finally(() => setLoading(false));
   }, []);
 
-  const filtered = filter === "ALL" ? listings : listings.filter(l => l.status === filter);
+  useEffect(() => {
+    load();
+    fetch("/api/seller/amazon/status")
+      .then(r => r.json())
+      .then(d => setAmazonConnected(!!d.connected))
+      .catch(() => setAmazonConnected(false));
+  }, [load]);
+
+  // One row per product + platform: the latest attempt wins, older ones are counted.
+  const rows: Row[] = (() => {
+    const map = new Map<string, Row>();
+    for (const l of [...raw].sort((a, b) => b.createdAt.localeCompare(a.createdAt))) {
+      const k = `${l.product.id}|${l.platform}`;
+      const cur = map.get(k);
+      if (cur) cur.attempts++;
+      else map.set(k, { ...l, attempts: 1 });
+    }
+    return [...map.values()];
+  })();
+
+  const inTab = rows.filter(r => tab === "ALL" || r.platform === tab);
+  const q = search.trim().toLowerCase();
+  const shown = inTab
+    .filter(r => status === "ALL" || r.status === status)
+    .filter(r => !q || r.product.name.toLowerCase().includes(q) || (r.product.sku ?? "").toLowerCase().includes(q));
+  const count = (s: string) => inTab.filter(r => r.status === s).length;
+  const tabCount = (t: string) => rows.filter(r => t === "ALL" || r.platform === t).length;
+
+  async function retry(r: Row) {
+    setRetrying(r.id); setFlash(null);
+    const isShopify = r.platform === "SHOPIFY";
+    const res = await fetch(isShopify ? "/api/seller/push-shopify" : "/api/seller/list-marketplace", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(isShopify ? { productId: r.product.id } : { productId: r.product.id, platform: r.platform }),
+    });
+    const d = await res.json().catch(() => ({}));
+    setRetrying(null);
+    if (!res.ok) { setFlash({ ok: false, text: d.error ?? "Couldn't retry. Check your store connection." }); return; }
+    setFlash({ ok: true, text: d.message ?? "Sent again" });
+    load();
+  }
+
+  const tiles = [
+    { key: "LISTED" as const,      label: "Live",        color: "#047857", icon: CheckCircle },
+    { key: "PENDING" as const,     label: "Pending",     color: "#D97706", icon: Clock },
+    { key: "IN_PROGRESS" as const, label: "In progress", color: "#2563EB", icon: Loader2 },
+    { key: "FAILED" as const,      label: "Failed",      color: "#DC2626", icon: XCircle },
+  ];
 
   return (
-    <div className="min-h-screen" style={{ background: "var(--bg-page)" }}>
-      <PageHero
-        title="My Listings"
-        subtitle="Track your marketplace listing requests and their status"
-        cards={
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            {[
-              { label: "Total",       value: stats.total,      icon: ListChecks,  color: "#7C3AED" },
-              { label: "Pending",     value: stats.pending,    icon: Clock,       color: "#D97706" },
-              { label: "In Progress", value: stats.inProgress, icon: Loader2,     color: "#3B82F6" },
-              { label: "Listed",      value: stats.listed,     icon: CheckCircle, color: "#16A34A" },
-              { label: "Failed",      value: stats.failed,     icon: XCircle,     color: "#DC2626" },
-            ].map(({ label, value, icon: Icon, color }) => (
-              <div key={label} className="rounded-2xl px-4 py-4 flex items-center gap-3"
-                style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                  style={{ background: "var(--bg-muted)" }}>
-                  <Icon className="w-4 h-4" style={{ color }} />
-                </div>
-                <div>
-                  <p className="text-xs" style={{ color: "var(--text-muted)" }}>{label}</p>
-                  <p className="text-xl font-bold" style={{ color: "var(--text-primary)" }}>{value}</p>
-                </div>
+    <div className="px-3 py-4 md:p-8 space-y-5" style={{ background: "#F7F8FC", minHeight: "100vh" }}>
+      <div className="flex items-end justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-[22px] font-black text-[#0C1220]">My Listings</h1>
+          <p className="text-[12.5px] text-[#6B7280] mt-1">Products you have put on your Shopify store or asked us to list on a marketplace.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Link href="/seller/catalog" className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[13px] font-bold text-white bg-[#4361EE]">
+            <Package className="w-3.5 h-3.5" /> List a product
+          </Link>
+          <button onClick={load} aria-label="Refresh" className="p-2 rounded-lg bg-white border border-[#E8EDF6] text-[#6B7280] hover:text-[#0C1220]">
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+          </button>
+        </div>
+      </div>
+
+      {/* Platform tabs */}
+      <div className="flex gap-1 p-1 rounded-xl w-fit bg-[#E8EBFF]">
+        {(["SHOPIFY", "AMAZON", "ALL"] as const).map(t => (
+          <button key={t} onClick={() => { setTab(t); setStatus("ALL"); }}
+            className="px-4 py-2 rounded-lg text-[13px] font-semibold transition-all"
+            style={{ background: tab === t ? "white" : "transparent", color: tab === t ? "#4361EE" : "#6B7280", boxShadow: tab === t ? "0 1px 4px rgba(67,97,238,0.15)" : "none" }}>
+            {t === "ALL" ? "All" : PLATFORM_CONFIG[t].label}
+            <span className="ml-1.5 text-[11px] font-bold opacity-70 tabular-nums">{tabCount(t)}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Status tiles for the current tab */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {tiles.map(t => {
+          const Icon = t.icon;
+          const active = status === t.key;
+          return (
+            <button key={t.key} onClick={() => setStatus(active ? "ALL" : t.key)}
+              className="text-left bg-white rounded-xl border px-4 py-3.5"
+              style={{ borderColor: active ? t.color : "#E8EDF6", boxShadow: active ? `inset 0 0 0 1px ${t.color}` : "none" }}>
+              <div className="flex items-center justify-between mb-1.5">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-[#9CA3AF]">{t.label}</p>
+                <Icon className="w-3.5 h-3.5" style={{ color: t.color }} />
               </div>
+              <p className="text-[22px] font-black leading-none tabular-nums" style={{ color: t.key === "FAILED" && count("FAILED") > 0 ? "#DC2626" : "#0C1220" }}>
+                {loading ? "…" : count(t.key)}
+              </p>
+            </button>
+          );
+        })}
+      </div>
+
+      {flash && (
+        <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-medium"
+          style={{ background: flash.ok ? "#ECFDF5" : "#FEF2F2", color: flash.ok ? "#047857" : "#B91C1C", border: `1px solid ${flash.ok ? "#BBF7D0" : "#FECACA"}` }}>
+          {flash.ok ? <CheckCircle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />} {flash.text}
+        </div>
+      )}
+
+      {/* Listing list */}
+      <div className="bg-white rounded-xl border border-[#E8EDF6] overflow-hidden">
+        <div className="flex items-center gap-2 flex-wrap px-4 py-3 border-b border-[#F3F4F6] bg-[#FAFBFF]">
+          <div className="flex items-center gap-1 flex-wrap">
+            {STATUS_FILTERS.map(f => (
+              <button key={f} onClick={() => setStatus(f)}
+                className="px-3 py-1 rounded-full text-[12px] font-semibold"
+                style={status === f
+                  ? { background: "#4361EE", color: "white" }
+                  : { background: "white", color: "#6B7280", border: "1px solid #E8EDF6" }}>
+                {f === "ALL" ? "All" : STATUS_CONFIG[f].label}
+              </button>
             ))}
           </div>
-        }
-      />
-
-      <div className="px-4 md:px-8 py-6 space-y-5">
-
-        {/* Tab switcher */}
-        <div className="flex gap-1 p-1 rounded-xl w-fit" style={{ background: "#E8EBFF" }}>
-          {([["requests", "Listing Requests"], ["amazon", "Amazon Live"]] as const).map(([key, label]) => (
-            <button key={key} onClick={() => setTab(key)}
-              className="px-5 py-2 rounded-lg text-sm font-semibold transition-all"
-              style={{
-                background: tab === key ? "white" : "transparent",
-                color:      tab === key ? "#4361EE" : "#6B7280",
-                boxShadow:  tab === key ? "0 1px 4px rgba(67,97,238,0.15)" : "none",
-              }}>
-              {label}
-            </button>
-          ))}
+          <div className="relative flex-1 min-w-[180px] md:max-w-[260px] md:ml-auto">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#9CA3AF]" />
+            <input id="listing-search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Product name or SKU"
+              className="pl-8 pr-3 py-1.5 text-[13px] rounded-lg border border-[#E8EDF6] bg-white outline-none focus:border-[#4361EE] w-full" />
+          </div>
         </div>
 
-        {tab === "amazon" && <AmazonListingsTab />}
-
-        {tab === "requests" && <>
-
-        {/* Failed alert */}
-        {stats.failed > 0 && (
-          <div className="flex items-center gap-3 px-5 py-3.5 rounded-2xl"
-            style={{ background: "#FEF2F2", border: "1px solid #FECACA" }}>
-            <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
-            <p className="text-sm text-red-700 font-medium">
-              {stats.failed} listing{stats.failed > 1 ? "s" : ""} failed — check admin notes below for details.
+        {loading ? (
+          <div className="py-16 flex items-center justify-center gap-2 text-[13px] text-[#9CA3AF]">
+            <Loader2 className="w-5 h-5 animate-spin text-[#4361EE]" /> Loading listings…
+          </div>
+        ) : shown.length === 0 ? (
+          <div className="py-16 flex flex-col items-center gap-2 px-4 text-center">
+            <ListChecks className="w-10 h-10 text-[#E8EDF6]" />
+            <p className="text-[13px] font-semibold text-[#6B7280]">
+              {inTab.length === 0
+                ? (tab === "SHOPIFY" ? "Nothing pushed to Shopify yet" : tab === "AMAZON" ? "No Amazon listing requests yet" : "No listings yet")
+                : "Nothing matches these filters"}
             </p>
-          </div>
-        )}
-
-        {/* Status filter pills */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {FILTERS.map(f => {
-            const cfg = STATUS_CONFIG[f];
-            const isActive = filter === f;
-            return (
-              <button key={f} onClick={() => setFilter(f)}
-                className="px-4 py-1.5 rounded-full text-xs font-semibold transition-all"
-                style={isActive
-                  ? { background: cfg ? cfg.color : "var(--bg-sidebar)", color: "var(--text-primary)" }
-                  : { background: cfg ? cfg.bg : "#F3F4F6", color: cfg ? cfg.color : "var(--text-600)" }}>
-                {f === "ALL" ? "All" : STATUS_CONFIG[f]?.label ?? f}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Listings */}
-        <div className="card overflow-hidden">
-          <div className="px-5 py-3.5 flex items-center justify-between"
-            style={{ borderBottom: "1px solid var(--border)" }}>
-            <div className="flex items-center gap-2">
-              <ListChecks className="w-4 h-4" style={{ color: "var(--text-400)" }} />
-              <h2 className="text-sm font-semibold" style={{ color: "var(--text-900)" }}>
-                Listing Requests ({filtered.length})
-              </h2>
-            </div>
-          </div>
-
-          {loading ? (
-            <div className="py-16 flex items-center justify-center">
-              <RefreshCw className="w-6 h-6 animate-spin" style={{ color: "var(--text-400)" }} />
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="py-16 flex flex-col items-center gap-3">
-              <ListChecks className="w-10 h-10" style={{ color: "var(--border)" }} />
-              <p className="text-sm" style={{ color: "var(--text-400)" }}>
-                {filter === "ALL" ? "No listing requests yet" : `No ${STATUS_CONFIG[filter]?.label.toLowerCase()} listings`}
+            {inTab.length === 0 && (
+              <p className="text-[12px] text-[#9CA3AF] max-w-sm">
+                Open the <Link href="/seller/catalog" className="text-[#4361EE] font-semibold">Product Catalogue</Link> and use
+                {tab === "AMAZON" ? " “List on Marketplace” " : " “Push to Shopify” "}on any product.
               </p>
-              <p className="text-xs text-center max-w-xs" style={{ color: "var(--text-400)" }}>
-                To list a product on a marketplace, go to your Product Catalog and click &quot;List on Marketplace&quot;.
-              </p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto"><table className="w-full text-sm">
+            )}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px]">
               <thead>
-                <tr style={{ borderBottom: "1px solid var(--border)", background: "#FAFAFA" }}>
-                  {["Product", "Platform", "Status", "Admin Note", "Requested"].map(h => (
-                    <th key={h} className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide"
-                      style={{ color: "var(--text-400)" }}>{h}</th>
-                  ))}
+                <tr className="bg-[#FAFBFF] border-b border-[#F3F4F6] text-left text-[11px] font-bold uppercase tracking-wide text-[#9CA3AF]">
+                  <th className="px-4 py-3">Product</th>
+                  <th className="px-3 py-3">Platform</th>
+                  <th className="px-3 py-3">Status</th>
+                  <th className="px-3 py-3">Note from AXQEN</th>
+                  <th className="px-3 py-3">Date</th>
+                  <th className="px-3 py-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
-                {filtered.map(l => {
-                  const statusCfg = STATUS_CONFIG[l.status] ?? { label: l.status, bg: "#F9FAFB", color: "#6B7280" };
-                  const platformCfg = PLATFORM_CONFIG[l.platform] ?? PLATFORM_CONFIG.OTHER;
+              <tbody className="divide-y divide-[#F3F4F6]">
+                {shown.map(r => {
+                  const st = STATUS_CONFIG[r.status] ?? { label: r.status, bg: "#F3F4F6", color: "#6B7280" };
+                  const pf = PLATFORM_CONFIG[r.platform] ?? PLATFORM_CONFIG.OTHER;
                   return (
-                    <tr key={l.id} className="hover:bg-gray-50/50 transition-colors">
-                      <td className="px-5 py-3.5">
+                    <tr key={r.id} className="hover:bg-[#FAFBFF] align-top">
+                      <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-lg bg-gray-100 flex-shrink-0 overflow-hidden">
-                            {l.product.images?.[0] ? (
-                              <img src={l.product.images[0]} alt="" className="w-full h-full object-cover" />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center">
-                                <Package className="w-4 h-4 text-gray-300" />
-                              </div>
-                            )}
+                          <div className="w-10 h-10 rounded-lg bg-[#F3F4F6] flex-shrink-0 overflow-hidden">
+                            {r.product.images?.[0]
+                              ? <img src={r.product.images[0]} alt="" className="w-full h-full object-cover" />
+                              : <div className="w-full h-full flex items-center justify-center"><Package className="w-4 h-4 text-[#D1D5DB]" /></div>}
                           </div>
                           <div className="min-w-0">
-                            <p className="font-medium text-sm truncate max-w-[180px]"
-                              style={{ color: "var(--text-900)" }}>{l.product.name}</p>
-                            <p className="text-xs mt-0.5" style={{ color: "var(--text-400)" }}>
-                              {l.product.sku ?? "—"} · ₹{l.product.price.toLocaleString()}
-                            </p>
+                            <p className="text-[13px] font-semibold text-[#0C1220] truncate max-w-[240px]">{r.product.name}</p>
+                            <p className="text-[11.5px] text-[#9CA3AF]">{r.product.sku ?? "—"} · ₹{Math.round(r.product.price).toLocaleString("en-IN")}</p>
                           </div>
                         </div>
                       </td>
-
-                      <td className="px-5 py-3.5">
-                        <span className="px-2.5 py-1 rounded-full text-xs font-semibold"
-                          style={{ background: platformCfg.bg, color: platformCfg.color }}>
-                          {l.platform}
-                        </span>
+                      <td className="px-3 py-3">
+                        <span className="px-2.5 py-1 rounded-full text-[11px] font-bold" style={{ background: pf.bg, color: pf.color }}>{pf.label}</span>
                       </td>
-
-                      <td className="px-5 py-3.5">
-                        <span className="px-2.5 py-1 rounded-full text-xs font-semibold"
-                          style={{ background: statusCfg.bg, color: statusCfg.color }}>
-                          {statusCfg.label}
-                        </span>
-                        {l.listedUrl && (
-                          <a href={l.listedUrl} target="_blank" rel="noopener noreferrer"
-                            className="flex items-center gap-1 text-xs mt-1"
-                            style={{ color: "var(--green-500)" }}>
-                            <ExternalLink className="w-3 h-3" /> View listing
-                          </a>
-                        )}
+                      <td className="px-3 py-3">
+                        <span className="px-2.5 py-1 rounded-full text-[11px] font-bold" style={{ background: st.bg, color: st.color }}>{st.label}</span>
+                        {r.attempts > 1 && <p className="text-[10.5px] text-[#9CA3AF] mt-1">{r.attempts} attempts</p>}
                       </td>
-
-                      <td className="px-5 py-3.5 max-w-[220px]">
-                        {l.adminNote ? (
-                          <p className="text-xs leading-relaxed"
-                            style={{ color: l.status === "FAILED" ? "#DC2626" : "var(--text-600)" }}>
-                            {l.adminNote}
-                          </p>
-                        ) : (
-                          <span className="text-xs" style={{ color: "var(--text-400)" }}>—</span>
-                        )}
+                      <td className="px-3 py-3 max-w-[240px] text-[12px]" style={{ color: r.status === "FAILED" ? "#B91C1C" : "#374151" }}>
+                        {r.adminNote || (r.status === "FAILED" && r.platform === "SHOPIFY" ? "Shopify rejected the product. Check your store connection, then retry." : "—")}
                       </td>
-
-                      <td className="px-5 py-3.5 text-xs whitespace-nowrap" style={{ color: "var(--text-400)" }}>
-                        {new Date(l.createdAt).toLocaleDateString("en-IN", {
-                          day: "numeric", month: "short", year: "numeric",
-                        })}
+                      <td className="px-3 py-3 text-[12px] text-[#9CA3AF] whitespace-nowrap">
+                        {new Date(r.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                      </td>
+                      <td className="px-3 py-3">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {r.listedUrl && (
+                            <a href={r.listedUrl} target="_blank" rel="noopener noreferrer"
+                              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[12px] font-semibold bg-[#EEF2FF] text-[#4361EE] hover:bg-[#4361EE] hover:text-white">
+                              <ExternalLink className="w-3.5 h-3.5" /> View on store
+                            </a>
+                          )}
+                          {r.status === "FAILED" && (
+                            <button onClick={() => retry(r)} disabled={retrying === r.id}
+                              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[12px] font-semibold bg-[#FEF2F2] text-[#DC2626] hover:bg-[#DC2626] hover:text-white disabled:opacity-50">
+                              {retrying === r.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />} Retry
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
                 })}
               </tbody>
-            </table></div>
-          )}
-        </div>
-        </>}
+            </table>
+          </div>
+        )}
       </div>
+
+      {/* Amazon live listings */}
+      {tab === "AMAZON" && (
+        amazonConnected ? (
+          <section className="space-y-3">
+            <div>
+              <h2 className="text-[15px] font-bold text-[#0C1220]">Live on your Amazon account</h2>
+              <p className="text-[12px] text-[#9CA3AF] mt-0.5">Pulled from Amazon, with an AI health check and title suggestions for each listing.</p>
+            </div>
+            <AmazonListingsTab />
+          </section>
+        ) : amazonConnected === false ? (
+          <div className="bg-white rounded-xl border border-[#E8EDF6] p-5 flex items-start gap-4 flex-wrap">
+            <div className="w-10 h-10 rounded-xl bg-[#FFF7ED] flex items-center justify-center flex-shrink-0">
+              <Sparkles className="w-5 h-5 text-[#EA580C]" />
+            </div>
+            <div className="flex-1 min-w-[220px]">
+              <p className="text-[14px] font-bold text-[#0C1220]">Sell on Amazon with AXQEN</p>
+              <p className="text-[12.5px] text-[#6B7280] mt-1">Amazon is not connected on your account. Our Marketplace plan handles your Amazon account, listings and orders. Talk to us to get started.</p>
+            </div>
+            <a href={WA_LINK} target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-[13px] font-bold text-white bg-[#16A34A]">
+              <MessageCircle className="w-4 h-4" /> Talk to us
+            </a>
+          </div>
+        ) : null
+      )}
     </div>
   );
 }

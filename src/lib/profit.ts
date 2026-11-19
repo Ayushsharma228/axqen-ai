@@ -2,7 +2,7 @@
 // Delivered-only revenue, RTO counted as a loss, ads and the AXQEN fee deducted.
 import { prisma } from "@/lib/prisma";
 
-async function platformFeePerOrder() {
+export async function platformFeePerOrder() {
   try {
     const cfg = await prisma.platformConfig.findUnique({ where: { key: "PLATFORM_FEE" } });
     if (cfg) return parseFloat(cfg.value) || 20;

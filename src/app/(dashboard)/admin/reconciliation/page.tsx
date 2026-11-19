@@ -5,7 +5,6 @@ import {
   Upload, FileText, CheckCircle2, AlertTriangle, HelpCircle,
   ChevronLeft, ChevronRight, RefreshCw, Play, X, Filter,
 } from "lucide-react";
-import { PageHero } from "@/components/layout/page-hero";
 
 interface Report {
   id: string; marketplace: string; filename: string; status: string;
@@ -130,26 +129,24 @@ export default function ReconciliationPage() {
 
   return (
     <div className="min-h-screen" style={{ background: "var(--bg-page)" }}>
-      <PageHero
-        title="Reconciliation Engine"
-        subtitle="Import marketplace settlement CSVs, match orders, flag discrepancies"
-        cards={
-          <div className="grid grid-cols-3 gap-4">
-            {[
-              { label: "Total Reports",   value: total },
-              { label: "Marketplaces",    value: "Amazon · Flipkart · Meesho" },
-              { label: "Direct Settlement", value: "Marketplace → Seller → AXQEN" },
-            ].map(({ label, value }) => (
-              <div key={label} className="rounded-2xl px-5 py-4"
-                style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
-                <p className="text-xs font-medium uppercase tracking-wide mb-2"
-                  style={{ color: "var(--text-muted)" }}>{label}</p>
-                <p className="text-xl font-bold" style={{ color: "var(--text-primary)" }}>{value}</p>
-              </div>
-            ))}
-          </div>
-        }
-      />
+      <div className="px-4 pt-5 md:px-8 md:pt-8 space-y-4">
+        <div>
+          <h1 className="text-[22px] font-black text-[#0C1220]">Reconciliation</h1>
+          <p className="text-[12.5px] text-[#6B7280] mt-1">Upload a marketplace settlement CSV (Amazon, Flipkart, Meesho), match it to orders and flag amounts that don&apos;t add up.</p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {[
+            { label: "Settlement reports", value: String(total) },
+            { label: "Marketplaces", value: "Amazon · Flipkart · Meesho" },
+            { label: "Money flow", value: "Marketplace → Seller → AXQEN" },
+          ].map(({ label, value }) => (
+            <div key={label} className="bg-white rounded-xl border border-[#E8EDF6] p-4">
+              <p className="text-[11.5px] font-semibold text-[#6B7280]">{label}</p>
+              <p className="text-[18px] font-black text-[#0C1220] mt-1">{value}</p>
+            </div>
+          ))}
+        </div>
+      </div>
 
       <div className="px-4 md:px-8 py-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left: Upload + Reports list */}

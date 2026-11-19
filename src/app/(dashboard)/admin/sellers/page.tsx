@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Loader2, Search, Store, ArrowUpDown, ChevronUp, ChevronDown, CheckCircle2 } from "lucide-react";
+import { Loader2, Search, Store, ArrowUpDown, ChevronUp, ChevronDown, CheckCircle2, Plus } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { AddSellerModal } from "@/components/admin/add-seller-modal";
 
 interface Row {
   id: string; name: string | null; email: string; phone: string | null; brand: string | null;
@@ -48,6 +50,8 @@ export default function AdminSellersPage() {
   const [kyc, setKyc] = useState("");
   const [planState, setPlanState] = useState("");
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "joined", dir: -1 });
+  const [adding, setAdding] = useState(false);
+  const router = useRouter();
 
   useEffect(() => {
     fetch("/api/admin/sellers/overview").then(r => r.json())
@@ -94,10 +98,14 @@ export default function AdminSellersPage() {
 
   return (
     <div className="px-4 py-5 md:p-8 space-y-5" style={{ background: "var(--bg-page)", minHeight: "100vh" }}>
-      <div>
-        <h1 className="text-[22px] font-black text-[#0C1220]">Sellers</h1>
-        <p className="text-[12.5px] text-[#6B7280] mt-1">Every seller with their last 30 days of orders, unpaid delivered value and plan status. Open a seller for the full picture.</p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-[22px] font-black text-[#0C1220]">Sellers</h1>
+          <p className="text-[12.5px] text-[#6B7280] mt-1">Every seller with their last 30 days of orders, unpaid delivered value and plan status. Open a seller for the full picture.</p>
+        </div>
+        <button onClick={() => setAdding(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12.5px] font-bold text-white bg-[#4361EE]"><Plus className="w-3.5 h-3.5" /> Add seller</button>
       </div>
+      {adding && <AddSellerModal onClose={() => setAdding(false)} onAdded={id => { setAdding(false); if (id) router.push(`/admin/sellers/${id}`); }} />}
 
       {loading ? (
         <div className="flex items-center justify-center gap-2 py-24 text-[13px] text-[#9CA3AF]"><Loader2 className="w-5 h-5 animate-spin" /> Loading sellers…</div>

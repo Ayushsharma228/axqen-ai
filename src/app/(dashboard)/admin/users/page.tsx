@@ -1,357 +1,210 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { Search, Plus, Trash2, RefreshCw, Users, Store, Package, Eye, EyeOff } from "lucide-react";
-import { PageHero } from "@/components/layout/page-hero";
+import { useCallback, useEffect, useState } from "react";
+import { Loader2, Plus, X, KeyRound, UserX, UserCheck, Eye, EyeOff, ShieldCheck, Headphones, Package, Wand2 } from "lucide-react";
 
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-  plan: string | null;
-  createdAt: string;
+type Role = "ADMIN" | "SALES" | "SUPPLIER";
+interface Member {
+  id: string; name: string | null; email: string; phone: string | null; role: Role; accountStatus: "ACTIVE" | "PENDING" | "SUSPENDED";
+  createdAt: string; updatedAt: string; products: number; openTickets: number;
 }
 
-const ROLE_COLOR: Record<string, string> = {
-  SELLER: "bg-blue-50 text-blue-700 border-blue-200",
-  SUPPLIER: "bg-green-50 text-green-700 border-green-200",
+const ROLES: Record<Role, { label: string; icon: React.ElementType; bg: string; fg: string; can: string }> = {
+  ADMIN: { label: "Admin", icon: ShieldCheck, bg: "#E8EDFF", fg: "#4361EE", can: "Full admin panel: sellers, orders, money, settings and this page." },
+  SALES: { label: "Sales", icon: Headphones, bg: "#FEF3C7", fg: "#B45309", can: "The sales panel only (their own leads). No admin panel access." },
+  SUPPLIER: { label: "Supplier account", icon: Package, bg: "#F3E8FF", fg: "#7E22CE", can: "The supplier panel. Used as the account your catalogue products belong to." },
 };
+const fmt = (s: string) => new Date(s).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+function strongPassword() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+  const a = new Uint32Array(12); crypto.getRandomValues(a);
+  const p = Array.from(a, n => chars[n % chars.length]).join("");
+  return /\d/.test(p) ? p : p.slice(0, 11) + "7";
+}
 
-const PLAN_COLOR: Record<string, string> = {
-  DROPSHIPPING: "bg-indigo-50 text-indigo-700",
-  MARKETPLACE: "bg-purple-50 text-purple-700",
-};
+export default function TeamRolesPage() {
+  const [team, setTeam] = useState<Member[] | null>(null);
+  const [me, setMe] = useState("");
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [pw, setPw] = useState<{ m: Member; mode: "resetPassword" | "restoreAccess" } | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
 
-export default function AdminUsersPage() {
-  const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [search, setSearch] = useState("");
-  const [roleFilter, setRoleFilter] = useState("ALL");
-  const [showModal, setShowModal] = useState(false);
-  const [deleting, setDeleting] = useState<string | null>(null);
-  const [showPassword, setShowPassword] = useState(false);
+  const load = useCallback(() => fetch("/api/admin/team").then(r => r.json()).then(d => { setTeam(d.team ?? []); setMe(d.me ?? ""); }), []);
+  useEffect(() => { load(); }, [load]);
 
-  const [form, setForm] = useState({
-    name: "",
-    email: "",
-    password: "",
-    role: "SELLER",
-    plan: "DROPSHIPPING",
-  });
-  const [formError, setFormError] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-
-  const fetchUsers = useCallback(async (showRefreshing = false) => {
-    if (showRefreshing) setRefreshing(true);
-    else setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (search) params.set("search", search);
-      if (roleFilter !== "ALL") params.set("role", roleFilter);
-      const res = await fetch(`/api/admin/users?${params}`);
-      const data = await res.json();
-      setUsers(data.users ?? []);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [search, roleFilter]);
-
-  useEffect(() => { fetchUsers(); }, [fetchUsers]);
-
-  async function handleCreate(e: React.FormEvent) {
-    e.preventDefault();
-    setFormError("");
-    if (form.password.length < 6) {
-      setFormError("Password must be at least 6 characters");
-      return;
-    }
-    setSubmitting(true);
-    const res = await fetch("/api/admin/users", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...form,
-        plan: form.role === "SELLER" ? form.plan : null,
-      }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      setFormError(data.error || "Something went wrong");
-      setSubmitting(false);
-      return;
-    }
-    setShowModal(false);
-    setForm({ name: "", email: "", password: "", role: "SELLER", plan: "DROPSHIPPING" });
-    fetchUsers(true);
-    setSubmitting(false);
+  async function patch(m: Member, body: Record<string, unknown>, ok: string) {
+    setBusy(m.id); setMsg(null);
+    const res = await fetch("/api/admin/team", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: m.id, ...body }) });
+    const d = await res.json().catch(() => ({}));
+    setBusy(null);
+    setMsg(res.ok ? { ok: true, text: ok } : { ok: false, text: d.error ?? "Couldn't save" });
+    if (res.ok) load();
+    return res.ok;
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm("Delete this user? This cannot be undone.")) return;
-    setDeleting(id);
-    await fetch("/api/admin/users", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
-    });
-    setDeleting(null);
-    fetchUsers(true);
-  }
-
-  const sellers = users.filter((u) => u.role === "SELLER").length;
-  const suppliers = users.filter((u) => u.role === "SUPPLIER").length;
+  const groups = (["ADMIN", "SALES", "SUPPLIER"] as Role[]).map(r => ({ role: r, members: (team ?? []).filter(m => m.role === r) }));
 
   return (
-    <div className="min-h-screen" style={{ background: "var(--bg-page)" }}>
-      <PageHero
-        title="User Management"
-        subtitle="Create and manage sellers & suppliers"
-        searchValue={search}
-        searchPlaceholder="Search by name or email..."
-        onSearchChange={setSearch}
-        onSearchSubmit={() => fetchUsers()}
-        actions={
-          <div className="flex items-center gap-2">
-            <button onClick={() => fetchUsers(true)} disabled={refreshing}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-50"
-              style={{ background: "var(--bg-muted)", color: "var(--text-primary)", border: "1px solid var(--border)" }}>
-              <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
-              Refresh
-            </button>
-            <button onClick={() => setShowModal(true)}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white"
-              style={{ background: "var(--green-500)" }}>
-              <Plus className="w-4 h-4" /> Create User
-            </button>
-          </div>
-        }
-        filters={
-          <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}
-            className="px-3 py-2 text-sm rounded-xl outline-none" style={{ color: "var(--text-primary)", background: "var(--bg-muted)", border: "1px solid var(--border)" }}>
-            <option value="ALL" className="text-gray-900 bg-white">All Roles</option>
-            <option value="SELLER" className="text-gray-900 bg-white">Sellers</option>
-            <option value="SUPPLIER" className="text-gray-900 bg-white">Suppliers</option>
-          </select>
-        }
-        cards={
-          <div className="grid grid-cols-3 gap-4">
-            {[
-              { label: "Total Users", value: users.length, icon: Users,   color: "#7C3AED" },
-              { label: "Sellers",     value: sellers,      icon: Store,   color: "#3B82F6" },
-              { label: "Suppliers",   value: suppliers,    icon: Package, color: "#16A34A" },
-            ].map(({ label, value, icon: Icon, color }) => (
-              <div key={label} className="rounded-2xl px-5 py-4"
-                style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
-                <div className="flex items-center justify-between mb-3">
-                  <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>{label}</p>
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "var(--bg-muted)" }}>
-                    <Icon className="w-4 h-4" style={{ color }} />
-                  </div>
-                </div>
-                <p className="text-2xl font-bold" style={{ color: "var(--text-primary)" }}>{value}</p>
-              </div>
-            ))}
-          </div>
-        }
-      />
-
-      <div className="px-8 py-6">
-      {/* Table */}
-      <div className="card overflow-hidden">
-        <div className="px-5 py-3.5" style={{ borderBottom: "1px solid var(--border)" }}>
-          <h2 className="font-semibold text-sm" style={{ color: "var(--text-900)" }}>Users ({users.length})</h2>
+    <div className="px-4 py-5 md:p-8 space-y-5" style={{ background: "var(--bg-page)", minHeight: "100vh" }}>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-[22px] font-black text-[#0C1220]">Team &amp; Roles</h1>
+          <p className="text-[12.5px] text-[#6B7280] mt-1">Who on the AXQEN team can log in, and what they can reach. Sellers are managed in Sellers.</p>
         </div>
-
-        {loading ? (
-          <div className="py-16 text-center text-gray-400 text-sm">Loading...</div>
-        ) : users.length === 0 ? (
-          <div className="py-16 text-center space-y-2">
-            <Users className="w-12 h-12 text-gray-200 mx-auto" />
-            <p className="text-sm text-gray-400">No users found. Create one to get started.</p>
-          </div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-100 bg-gray-50">
-                {["Name", "Email", "Role", "Plan", "Created", "Actions"].map((h) => (
-                  <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {users.map((user) => (
-                <tr key={user.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-5 py-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-purple-100 flex items-center justify-center text-purple-700 font-bold text-sm flex-shrink-0">
-                        {user.name?.[0]?.toUpperCase() ?? "U"}
-                      </div>
-                      <span className="font-medium text-gray-900">{user.name}</span>
-                    </div>
-                  </td>
-                  <td className="px-5 py-3 text-gray-500">{user.email}</td>
-                  <td className="px-5 py-3">
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${ROLE_COLOR[user.role] ?? "bg-gray-100 text-gray-600"}`}>
-                      {user.role}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3">
-                    {user.plan ? (
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${PLAN_COLOR[user.plan] ?? "bg-gray-100 text-gray-600"}`}>
-                        {user.plan}
-                      </span>
-                    ) : (
-                      <span className="text-gray-400 text-xs">—</span>
-                    )}
-                  </td>
-                  <td className="px-5 py-3 text-gray-500 text-xs">
-                    {new Date(user.createdAt).toLocaleDateString("en-IN", {
-                      day: "2-digit", month: "short", year: "numeric",
-                    })}
-                  </td>
-                  <td className="px-5 py-3">
-                    <button
-                      onClick={() => handleDelete(user.id)}
-                      disabled={deleting === user.id}
-                      className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        <button onClick={() => { setAdding(true); setMsg(null); }} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12.5px] font-bold text-white bg-[#4361EE]"><Plus className="w-3.5 h-3.5" /> Add team member</button>
       </div>
 
-      {/* Create User Modal */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl">
-            <h3 className="text-lg font-bold text-gray-900 mb-1">Create New User</h3>
-            <p className="text-sm text-gray-400 mb-5">Add a new seller or supplier to the platform</p>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {(Object.keys(ROLES) as Role[]).map(r => {
+          const R = ROLES[r], Icon = R.icon;
+          return (
+            <div key={r} className="bg-white rounded-xl border border-[#E8EDF6] p-4 flex gap-3">
+              <span className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: R.bg, color: R.fg }}><Icon className="w-4 h-4" /></span>
+              <div><p className="text-[13px] font-bold text-[#0C1220]">{R.label} <span className="text-[#9CA3AF] font-semibold">· {(team ?? []).filter(m => m.role === r && m.accountStatus !== "SUSPENDED").length}</span></p><p className="text-[12px] text-[#6B7280] mt-0.5">{R.can}</p></div>
+            </div>
+          );
+        })}
+      </div>
 
-            {formError && (
-              <div className="bg-red-50 border border-red-200 text-red-600 text-sm px-4 py-2.5 rounded-lg mb-4">
-                {formError}
-              </div>
-            )}
+      {msg && <div className="px-4 py-2.5 rounded-xl text-[13px]" style={{ background: msg.ok ? "#ECFDF5" : "#FEF2F2", color: msg.ok ? "#047857" : "#B91C1C" }}>{msg.text}</div>}
 
-            <form onSubmit={handleCreate} className="space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">Full Name</label>
-                <input
-                  type="text"
-                  required
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder="Enter full name"
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">Email Address</label>
-                <input
-                  type="email"
-                  required
-                  value={form.email}
-                  onChange={(e) => setForm({ ...form, email: e.target.value })}
-                  placeholder="email@example.com"
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">Password</label>
-                <div className="relative">
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    required
-                    value={form.password}
-                    onChange={(e) => setForm({ ...form, password: e.target.value })}
-                    placeholder="Min. 6 characters"
-                    className="w-full px-3 py-2.5 pr-10 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">Role</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {["SELLER", "SUPPLIER"].map((r) => (
-                    <button
-                      key={r}
-                      type="button"
-                      onClick={() => setForm({ ...form, role: r })}
-                      className={`py-2.5 rounded-xl border-2 text-sm font-semibold transition-all ${
-                        form.role === r
-                          ? "border-purple-500 bg-purple-50 text-purple-700"
-                          : "border-gray-200 text-gray-500 hover:border-gray-300"
-                      }`}
-                    >
-                      {r}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Plan — only for sellers */}
-              {form.role === "SELLER" && (
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Plan</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {["DROPSHIPPING", "MARKETPLACE"].map((p) => (
-                      <button
-                        key={p}
-                        type="button"
-                        onClick={() => setForm({ ...form, plan: p })}
-                        className={`py-2.5 rounded-xl border-2 text-xs font-semibold transition-all ${
-                          form.plan === p
-                            ? "border-purple-500 bg-purple-50 text-purple-700"
-                            : "border-gray-200 text-gray-500 hover:border-gray-300"
-                        }`}
-                      >
-                        {p}
-                      </button>
-                    ))}
+      {!team ? <div className="flex items-center justify-center gap-2 py-20 text-[13px] text-[#9CA3AF]"><Loader2 className="w-5 h-5 animate-spin" /> Loading team…</div> : groups.map(g => g.members.length > 0 && (
+        <section key={g.role} className="bg-white rounded-xl border border-[#E8EDF6] overflow-hidden">
+          <p className="px-5 py-3 border-b border-[#F3F4F6] text-[13px] font-bold text-[#0C1220]">{ROLES[g.role].label}{g.role === "SUPPLIER" ? " accounts" : "s"}</p>
+          <div className="divide-y divide-[#F3F4F6]">
+            {g.members.map(m => {
+              const removed = m.accountStatus === "SUSPENDED", self = m.id === me;
+              return (
+                <div key={m.id} className={`px-5 py-3.5 flex items-center gap-3 flex-wrap ${removed ? "bg-[#FAFAFA]" : ""}`}>
+                  <span className={`w-9 h-9 rounded-full flex items-center justify-center text-[13px] font-bold flex-shrink-0 ${removed ? "bg-[#F3F4F6] text-[#9CA3AF]" : "bg-[#E8EDFF] text-[#4361EE]"}`}>{(m.name ?? m.email)[0]?.toUpperCase()}</span>
+                  <div className="flex-1 min-w-[200px]">
+                    <p className={`text-[13px] font-semibold ${removed ? "text-[#9CA3AF] line-through" : "text-[#0C1220]"}`}>{m.name ?? m.email}{self && <span className="ml-1.5 text-[11px] font-bold text-[#4361EE] no-underline">· You</span>}</p>
+                    <p className="text-[11.5px] text-[#9CA3AF]">{m.email}{m.phone ? ` · ${m.phone}` : ""} · added {fmt(m.createdAt)}</p>
+                    {removed && <p className="text-[11.5px] font-semibold text-[#B91C1C]">Access removed</p>}
+                  </div>
+                  <span className="text-[11.5px] text-[#6B7280]">
+                    {m.role === "SUPPLIER" ? `${m.products} products` : m.role === "ADMIN" && m.openTickets ? `${m.openTickets} open tickets assigned` : ""}
+                  </span>
+                  {!self && !removed && (
+                    <select id={`role-${m.id}`} aria-label="Role" value={m.role} disabled={busy === m.id}
+                      onChange={e => { const r = e.target.value as Role; if (confirm(`Change ${m.name ?? m.email} to ${ROLES[r].label}? ${ROLES[r].can}`)) patch(m, { action: "setRole", role: r }, `${m.name ?? m.email} is now ${ROLES[r].label}. They need to log out and in again.`); }}
+                      className="px-2 py-1.5 text-[12px] rounded-lg border border-[#E8EDF6] bg-white outline-none">
+                      {(Object.keys(ROLES) as Role[]).map(r => <option key={r} value={r}>{ROLES[r].label}</option>)}
+                    </select>
+                  )}
+                  <div className="flex items-center gap-1.5">
+                    {busy === m.id && <Loader2 className="w-4 h-4 animate-spin text-[#9CA3AF]" />}
+                    {removed ? (
+                      <button onClick={() => setPw({ m, mode: "restoreAccess" })} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[12px] font-semibold bg-[#DCFCE7] text-[#047857]"><UserCheck className="w-3.5 h-3.5" /> Restore access</button>
+                    ) : (
+                      <>
+                        <button onClick={() => setPw({ m, mode: "resetPassword" })} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[12px] font-semibold border border-[#E8EDF6] text-[#374151] hover:border-[#C7D2FE]"><KeyRound className="w-3.5 h-3.5" /> {self ? "Change my password" : "Reset password"}</button>
+                        {!self && (
+                          <button onClick={() => { if (confirm(`Remove ${m.name ?? m.email}'s access? Their password stops working right away. Anyone already logged in stays logged in until their session ends.`)) patch(m, { action: "removeAccess" }, `${m.name ?? m.email} can no longer log in.`); }}
+                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[12px] font-semibold text-[#B91C1C] hover:bg-[#FEF2F2]"><UserX className="w-3.5 h-3.5" /> Remove access</button>
+                        )}
+                      </>
+                    )}
                   </div>
                 </div>
-              )}
-
-              <div className="flex gap-3 pt-1">
-                <button
-                  type="button"
-                  onClick={() => { setShowModal(false); setFormError(""); }}
-                  className="flex-1 py-2.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-xl hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="flex-1 py-2.5 bg-purple-600 hover:bg-purple-700 text-white text-sm font-semibold rounded-xl disabled:opacity-50"
-                >
-                  {submitting ? "Creating..." : "Create User"}
-                </button>
-              </div>
-            </form>
+              );
+            })}
           </div>
+        </section>
+      ))}
+
+      {adding && <AddMember onClose={() => setAdding(false)} onAdded={t => { setAdding(false); setMsg({ ok: true, text: t }); load(); }} />}
+      {pw && <PasswordModal member={pw.m} mode={pw.mode} onClose={() => setPw(null)} onSave={async p => { const ok = await patch(pw.m, { action: pw.mode, password: p }, pw.mode === "restoreAccess" ? `${pw.m.name ?? pw.m.email} can log in again with the new password.` : "Password changed. Share it with them privately."); if (ok) setPw(null); }} />}
+    </div>
+  );
+}
+
+function PasswordField({ id, value, onChange }: { id: string; value: string; onChange: (v: string) => void }) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="flex gap-2">
+      <div className="relative flex-1">
+        <input id={id} type={show ? "text" : "password"} autoComplete="new-password" value={value} onChange={e => onChange(e.target.value)} className="w-full px-3 py-2 pr-9 text-[13px] font-mono rounded-lg border border-[#E8EDF6] outline-none focus:border-[#4361EE]" />
+        <button type="button" onClick={() => setShow(s => !s)} aria-label={show ? "Hide password" : "Show password"} className="absolute right-2 top-1/2 -translate-y-1/2 text-[#9CA3AF]">{show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button>
+      </div>
+      <button type="button" onClick={() => { onChange(strongPassword()); setShow(true); }} className="flex items-center gap-1 px-2.5 rounded-lg text-[12px] font-semibold border border-[#E8EDF6] text-[#374151]"><Wand2 className="w-3.5 h-3.5" /> Generate</button>
+    </div>
+  );
+}
+
+function AddMember({ onClose, onAdded }: { onClose: () => void; onAdded: (text: string) => void }) {
+  const [f, setF] = useState({ name: "", email: "", phone: "", role: "ADMIN" as Role, password: "" });
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+  async function save(e: React.FormEvent) {
+    e.preventDefault(); setSaving(true); setErr("");
+    const res = await fetch("/api/admin/team", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(f) });
+    const d = await res.json().catch(() => ({}));
+    setSaving(false);
+    if (!res.ok) { setErr(d.error ?? "Couldn't add"); return; }
+    onAdded(`${f.name} added as ${ROLES[f.role].label}. Share their email and password with them privately.`);
+  }
+  const input = "w-full px-3 py-2 text-[13px] rounded-lg border border-[#E8EDF6] outline-none focus:border-[#4361EE]";
+  const label = "block text-[11.5px] font-semibold text-[#374151] mb-1";
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <form onSubmit={save} onClick={e => e.stopPropagation()} className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
+        <div className="px-5 py-4 border-b border-[#F3F4F6] flex items-center justify-between">
+          <p className="text-[15px] font-bold text-[#0C1220]">Add team member</p>
+          <button type="button" onClick={onClose} aria-label="Close" className="p-1 rounded-lg hover:bg-[#F3F4F6]"><X className="w-4 h-4" /></button>
         </div>
-      )}
+        <div className="p-5 space-y-3">
+          {err && <p className="text-[12.5px] text-[#B91C1C] bg-[#FEF2F2] rounded-lg px-3 py-2">{err}</p>}
+          <div><label htmlFor="tm-name" className={label}>Name</label><input id="tm-name" required value={f.name} onChange={e => setF({ ...f, name: e.target.value })} className={input} /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label htmlFor="tm-email" className={label}>Email (login)</label><input id="tm-email" type="email" required value={f.email} onChange={e => setF({ ...f, email: e.target.value })} className={input} /></div>
+            <div><label htmlFor="tm-phone" className={label}>Phone (optional)</label><input id="tm-phone" inputMode="tel" value={f.phone} onChange={e => setF({ ...f, phone: e.target.value })} className={input} /></div>
+          </div>
+          <div>
+            <p className={label}>Role</p>
+            <div className="space-y-1.5">
+              {(Object.keys(ROLES) as Role[]).map(r => (
+                <label key={r} className={`flex items-start gap-2 px-3 py-2 rounded-lg border cursor-pointer ${f.role === r ? "border-[#4361EE] bg-[#EEF2FF]" : "border-[#E8EDF6]"}`}>
+                  <input type="radio" name="tm-role" checked={f.role === r} onChange={() => setF({ ...f, role: r })} className="mt-0.5 accent-[#4361EE]" />
+                  <span><span className="block text-[13px] font-semibold text-[#0C1220]">{ROLES[r].label}</span><span className="block text-[11.5px] text-[#6B7280]">{ROLES[r].can}</span></span>
+                </label>
+              ))}
+            </div>
+          </div>
+          <div><label htmlFor="tm-pw" className={label}>Password (8+ characters, with a number)</label><PasswordField id="tm-pw" value={f.password} onChange={v => setF({ ...f, password: v })} /></div>
+        </div>
+        <div className="px-5 py-3 border-t border-[#F3F4F6] flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg text-[13px] text-[#374151] border border-[#E8EDF6]">Cancel</button>
+          <button type="submit" disabled={saving} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-[13px] font-bold text-white bg-[#4361EE] disabled:opacity-60">{saving && <Loader2 className="w-4 h-4 animate-spin" />} Add member</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function PasswordModal({ member, mode, onClose, onSave }: { member: Member; mode: "resetPassword" | "restoreAccess"; onClose: () => void; onSave: (p: string) => Promise<void> }) {
+  const [p, setP] = useState("");
+  const [saving, setSaving] = useState(false);
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} className="bg-white rounded-2xl w-full max-w-sm shadow-2xl">
+        <div className="px-5 py-4 border-b border-[#F3F4F6] flex items-center justify-between">
+          <div>
+            <p className="text-[15px] font-bold text-[#0C1220]">{mode === "restoreAccess" ? "Restore access" : "Set a new password"}</p>
+            <p className="text-[12px] text-[#9CA3AF]">{member.name ?? member.email}</p>
+          </div>
+          <button onClick={onClose} aria-label="Close" className="p-1 rounded-lg hover:bg-[#F3F4F6]"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="p-5 space-y-2">
+          <label htmlFor="pw-new" className="block text-[11.5px] font-semibold text-[#374151]">New password</label>
+          <PasswordField id="pw-new" value={p} onChange={setP} />
+          <p className="text-[11.5px] text-[#9CA3AF]">Share it with them privately. They can log in with it straight away.</p>
+        </div>
+        <div className="px-5 py-3 border-t border-[#F3F4F6] flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 rounded-lg text-[13px] text-[#374151] border border-[#E8EDF6]">Cancel</button>
+          <button onClick={async () => { setSaving(true); await onSave(p); setSaving(false); }} disabled={saving || p.length < 8} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-[13px] font-bold text-white bg-[#4361EE] disabled:opacity-50">{saving && <Loader2 className="w-4 h-4 animate-spin" />} Save password</button>
+        </div>
       </div>
     </div>
   );

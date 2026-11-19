@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { applyHoldOnPaid } from "@/lib/plan-billing";
 import { pairRtoDebits } from "@/lib/payouts";
 import { calculateSettlement } from "@/lib/settlement-service";
+import { getInvoiceSettings } from "@/lib/invoices";
 
 // GET: unremitted orders OR history
 export async function GET(req: NextRequest) {
@@ -49,7 +50,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Default: pending unremitted DELIVERED + RTO orders
-  const [orders, configRows] = await Promise.all([
+  const [orders, configRows, invoiceSettings] = await Promise.all([
     prisma.order.findMany({
       where: {
         sellerId,
@@ -60,13 +61,15 @@ export async function GET(req: NextRequest) {
       orderBy: { createdAt: "desc" },
     }),
     prisma.platformConfig.findMany({
-      where: { key: { in: ["DEFAULT_PACKING_CHARGE", "DEFAULT_SHIPPING_CHARGE"] } },
+      where: { key: { in: ["DEFAULT_SHIPPING_CHARGE"] } },
     }),
+    getInvoiceSettings(),
   ]);
 
   const configMap = Object.fromEntries(configRows.map((r) => [r.key, parseFloat(r.value)]));
   const defaults = {
-    platformCharge: configMap["DEFAULT_PACKING_CHARGE"]  ?? 20,
+    // Packing per order, same as AXQEN invoices (Invoice settings). The ₹20 commission is invoiced monthly, not deducted here.
+    platformCharge: invoiceSettings.packing.amount ?? 5,
     shippingCharge: configMap["DEFAULT_SHIPPING_CHARGE"] ?? 50,
   };
 

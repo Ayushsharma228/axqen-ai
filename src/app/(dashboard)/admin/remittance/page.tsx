@@ -4,9 +4,9 @@ import { useState, useEffect, useCallback } from "react";
 import {
   IndianRupee, CheckSquare, Square, Calculator, Send,
   ChevronDown, ChevronRight, History, Clock, CheckCircle2, BadgeCheck, RotateCcw,
-  ArrowLeft, Search, Store,
+  ArrowLeft, Store,
 } from "lucide-react";
-import { PageHero } from "@/components/layout/page-hero";
+import { RemittanceOverview } from "@/components/admin/remittance-overview";
 
 interface Seller { id: string; name: string | null; email: string; brandName: string | null; }
 
@@ -57,7 +57,7 @@ function OrderBreakdownTable({ orders }: { orders: HistoryOrder[] }) {
             <th className="px-4 py-2 text-right text-gray-500">Order Amt</th>
             <th className="px-4 py-2 text-right text-purple-600">Product</th>
             <th className="px-4 py-2 text-right text-blue-600">Shipping</th>
-            <th className="px-4 py-2 text-right text-orange-500">Platform</th>
+            <th className="px-4 py-2 text-right text-orange-500">Packing</th>
             <th className="px-4 py-2 text-right text-red-500">RTO</th>
             <th className="px-4 py-2 text-right text-green-600 font-semibold">Net</th>
           </tr>
@@ -103,13 +103,12 @@ function OrderBreakdownTable({ orders }: { orders: HistoryOrder[] }) {
 export default function AdminRemittancePage() {
   const [sellers, setSellers] = useState<Seller[]>([]);
   const [sellerId, setSellerId] = useState("");
-  const [sellerSearch, setSellerSearch] = useState("");
   const [tab, setTab] = useState<"pending" | "history">("pending");
 
   // Pending
   const [orders, setOrders] = useState<Order[]>([]);
   const [charges, setCharges] = useState<Record<string, ChargeRow>>({});
-  const [defaults, setDefaults] = useState({ platformCharge: 20, shippingCharge: 50 });
+  const [defaults, setDefaults] = useState({ platformCharge: 5, shippingCharge: 50 });
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [remittanceDate, setRemittanceDate] = useState("");
@@ -157,7 +156,7 @@ export default function AdminRemittancePage() {
     const res = await fetch(`/api/admin/remittance?sellerId=${sellerId}`);
     const data = await res.json();
     const fetched: Order[] = data.orders ?? [];
-    const cfgDefaults = data.defaults ?? { platformCharge: 20, shippingCharge: 50 };
+    const cfgDefaults = data.defaults ?? { platformCharge: 5, shippingCharge: 50 };
     setOrders(fetched);
     setDefaults(cfgDefaults);
     const rows: Record<string, ChargeRow> = {};
@@ -362,49 +361,14 @@ export default function AdminRemittancePage() {
 
   return (
     <div className="min-h-screen" style={{ background: "var(--bg-page)" }}>
-      <PageHero title="Remittance" subtitle="Calculate and generate remittance for sellers" />
-
-      <div className="px-8 py-6 space-y-5">
-
-      {/* ── No seller selected — show card grid ── */}
-      {!sellerId && (
-        <div className="space-y-4">
-          {/* Search */}
-          <div className="relative max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search sellers…"
-              value={sellerSearch}
-              onChange={e => setSellerSearch(e.target.value)}
-              className="pl-9 pr-4 py-2 w-full text-sm border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          {sellers.length === 0 ? (
-            <div className="py-16 text-center text-sm text-gray-400">Loading sellers…</div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-              {sellers
-                .filter(s => {
-                  const q = sellerSearch.toLowerCase();
-                  return !q || (s.brandName || "").toLowerCase().includes(q) || (s.name || "").toLowerCase().includes(q) || s.email.toLowerCase().includes(q);
-                })
-                .map(s => (
-                  <button key={s.id}
-                    onClick={() => { setSellerId(s.id); setTab("pending"); }}
-                    className="text-left bg-white border border-gray-200 rounded-xl p-4 hover:border-blue-400 hover:shadow-sm transition-all group">
-                    <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center mb-3 group-hover:bg-blue-100 transition-colors">
-                      <Store className="w-4 h-4 text-blue-500" />
-                    </div>
-                    <p className="text-sm font-semibold text-gray-900 truncate">{s.brandName || s.name || s.email}</p>
-                    <p className="text-xs text-gray-400 truncate mt-0.5">{s.email}</p>
-                  </button>
-                ))}
-            </div>
-          )}
+      <div className="px-4 py-5 md:p-8 space-y-5">
+        <div>
+          <h1 className="text-[22px] font-black text-[#0C1220]">Seller Remittance</h1>
+          <p className="text-[12.5px] text-[#6B7280] mt-1">What each seller is owed, scheduled payouts to mark paid, and the per-seller remittance calculator.</p>
         </div>
-      )}
+
+      {/* ── No seller selected — payouts overview ── */}
+      {!sellerId && <RemittanceOverview onOpenSeller={(id) => { setSellerId(id); setTab("pending"); }} />}
 
       {/* ── Seller selected — show header + tabs ── */}
       {sellerId && planDue && (planDue.pending > 0 || planDue.held > 0) && (
@@ -517,7 +481,7 @@ export default function AdminRemittancePage() {
                     <Calculator className="w-4 h-4 text-gray-400" />
                     <span className="font-semibold text-sm text-gray-900">Orders Pending Remittance ({orders.length})</span>
                     <span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-600 font-medium">
-                      Platform ₹{defaults.platformCharge} · Shipping ₹{defaults.shippingCharge} (auto-filled)
+                      Packing ₹{defaults.platformCharge} · Shipping ₹{defaults.shippingCharge} (auto-filled)
                     </span>
                   </div>
                   <button onClick={toggleAll} className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800">
@@ -534,7 +498,7 @@ export default function AdminRemittancePage() {
                     <input type="number" min="0" placeholder="Shipping" value={bulkFill.shippingCharge}
                       onChange={(e) => setBulkFill((p) => ({ ...p, shippingCharge: e.target.value }))}
                       className="w-24 text-right px-2 py-1 text-xs border border-blue-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white" />
-                    <input type="number" min="0" placeholder="Platform" value={bulkFill.packingCharge}
+                    <input type="number" min="0" placeholder="Packing" value={bulkFill.packingCharge}
                       onChange={(e) => setBulkFill((p) => ({ ...p, packingCharge: e.target.value }))}
                       className="w-24 text-right px-2 py-1 text-xs border border-orange-300 rounded-md focus:outline-none focus:ring-1 focus:ring-orange-400 bg-white" />
                     <input type="number" min="0" placeholder="RTO Charge" value={bulkFill.rtoCharge}
@@ -563,7 +527,7 @@ export default function AdminRemittancePage() {
                         <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500">Order Amt</th>
                         <th className="px-3 py-3 text-right text-xs font-semibold text-purple-600">Product Cost</th>
                         <th className="px-3 py-3 text-right text-xs font-semibold text-blue-600">Shipping</th>
-                        <th className="px-3 py-3 text-right text-xs font-semibold text-orange-500">Platform</th>
+                        <th className="px-3 py-3 text-right text-xs font-semibold text-orange-500">Packing</th>
                         <th className="px-3 py-3 text-right text-xs font-semibold text-red-500">RTO</th>
                         <th className="px-3 py-3 text-right text-xs font-semibold text-green-600">Net</th>
                       </tr>
@@ -605,7 +569,7 @@ export default function AdminRemittancePage() {
                   <div className="bg-gray-50 rounded-lg p-3"><p className="text-xs text-gray-500">Order Amount</p><p className="font-bold text-gray-800 mt-0.5">{fmt(totalOrderAmt)}</p></div>
                   <div className="bg-purple-50 rounded-lg p-3"><p className="text-xs text-purple-600">Product Cost</p><p className="font-bold text-purple-700 mt-0.5">- {fmt(totalProductCost)}</p></div>
                   <div className="bg-blue-50 rounded-lg p-3"><p className="text-xs text-blue-600">Shipping</p><p className="font-bold text-blue-700 mt-0.5">- {fmt(totalShipping)}</p></div>
-                  <div className="bg-orange-50 rounded-lg p-3"><p className="text-xs text-orange-500">Platform Charges</p><p className="font-bold text-orange-600 mt-0.5">- {fmt(totalPacking)}</p></div>
+                  <div className="bg-orange-50 rounded-lg p-3"><p className="text-xs text-orange-500">Packing</p><p className="font-bold text-orange-600 mt-0.5">- {fmt(totalPacking)}</p></div>
                   <div className="bg-red-50 rounded-lg p-3"><p className="text-xs text-red-500">RTO Charges</p><p className="font-bold text-red-600 mt-0.5">- {fmt(totalRTO)}</p></div>
                   <div className={`rounded-lg p-3 ${totalNet >= 0 ? "bg-green-50" : "bg-red-50"}`}><p className={`text-xs font-semibold ${totalNet >= 0 ? "text-green-600" : "text-red-500"}`}>Net Remittance</p><p className={`text-xl font-bold mt-0.5 ${totalNet >= 0 ? "text-green-700" : "text-red-600"}`}>{fmt(totalNet)}</p></div>
                 </div>

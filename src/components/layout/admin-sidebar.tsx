@@ -25,7 +25,7 @@ const NAV: Entry[] = [
   { id: "orders", label: "Orders", icon: ShoppingCart, children: [
     { label: "All Orders",    href: "/admin/orders" },
     { label: "Order Calling", href: "/admin/order-confirmation", badge: "calling" },
-    { label: "Fulfillment",   href: "/admin/delivery" },
+    { label: "Shipments",     href: "/admin/delivery" },
     { label: "NDR",           href: "/admin/ndr", badge: "ndr" },
     { label: "RTO",           href: "/admin/rto", badge: "rto" },
     { label: "Customers",     href: "/admin/customers" },

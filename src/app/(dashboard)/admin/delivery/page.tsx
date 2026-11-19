@@ -1,513 +1,253 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import {
-  RefreshCw, Truck, Save, ExternalLink,
-  Loader2, ChevronLeft, ChevronRight,
-  Search, MapPin,
-} from "lucide-react";
-import { FulfillmentTrendChart } from "@/components/admin/fulfillment-trend-chart";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Loader2, Search, RefreshCw, Truck, Pencil, Printer, AlertTriangle, ChevronRight, MapPin } from "lucide-react";
+import { OrderDrawer } from "@/components/admin/order-drawer";
+import { EnterAwbModal, ShipdaakModal, type ShipOrder } from "@/components/admin/order-ship-modals";
 
-interface Seller { id: string; name: string | null; email: string; brandName: string | null; }
-
-interface Order {
-  id: string;
-  externalOrderId: string;
-  status: string;
-  awbNumber: string | null;
-  trackingUrl: string | null;
-  customerName: string | null;
-  customerAddress: { phone?: string } | null;
-  totalAmount: number;
-  courier: string | null;
-  ndrStatus: string | null;
-  createdAt: string;
-  seller: { name: string | null; email: string };
-  supplier: { name: string | null; email: string } | null;
-  items: { name: string; quantity: number }[];
+type Stage = "READY_TO_SHIP" | "READY_FOR_PICKUP" | "IN_TRANSIT" | "OUT_FOR_DELIVERY" | "DELIVERED" | "RTO";
+interface Row {
+  id: string; externalOrderId: string; status: string; stage: Stage; awbNumber: string | null; courier: string | null; viaShipdaak: boolean;
+  paymentMode: string; totalAmount: number; customerName: string | null; city: string | null; state: string | null; pincode: string | null;
+  seller: string; createdAt: string; lastScan: { status: string; location: string; time: string } | null; idleDays: number; stuck: boolean;
 }
+interface Perf { total: number; delivered: number; rto: number; deliveredPct: number | null; rtoPct: number | null }
+interface Data {
+  rows: Row[]; deliveredToday: Row[]; stuckDays: number;
+  couriers: (Perf & { courier: string; inTransit: number; avgDays: number | null })[];
+  states: (Perf & { state: string })[];
+  counts: Record<string, number>;
+}
+type Tab = "READY_TO_SHIP" | "READY_FOR_PICKUP" | "IN_TRANSIT" | "OUT_FOR_DELIVERY" | "STUCK" | "DELIVERED_TODAY";
 
-const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> = {
-  NEW:        { label: "New",        color: "#4361EE", bg: "#EEF2FF" },
-  PROCESSING: { label: "Processing", color: "#D97706", bg: "#FFF7ED" },
-  SHIPPED:    { label: "Shipped",    color: "#0369A1", bg: "#E0F2FE" },
-  IN_TRANSIT: { label: "In Transit", color: "#7C3AED", bg: "#F5F3FF" },
-  DELIVERED:  { label: "Delivered",  color: "#059669", bg: "#ECFDF5" },
-  CANCELLED:  { label: "Cancelled",  color: "#6B7280", bg: "#F3F4F6" },
-  RTO:        { label: "RTO",        color: "#EF4444", bg: "#FEF2F2" },
-};
-
-const STATUSES = ["NEW", "PROCESSING", "SHIPPED", "IN_TRANSIT", "DELIVERED", "CANCELLED", "RTO"];
-const PAGE_LIMIT = 50;
-type TabKey = "" | "SHIPPED" | "IN_TRANSIT" | "DELIVERED" | "RTO" | "NDR";
-
-const STAT_TABS: { key: TabKey; label: string; sub: string; color: string }[] = [
-  { key: "SHIPPED",    label: "Shipped",    sub: "picked up",        color: "#0369A1" },
-  { key: "IN_TRANSIT", label: "In Transit", sub: "on the way",       color: "#7C3AED" },
-  { key: "DELIVERED",  label: "Delivered",  sub: "successfully done", color: "#059669" },
-  { key: "RTO",        label: "RTO",        sub: "return to origin",  color: "#EF4444" },
-  { key: "NDR",        label: "NDR",        sub: "delivery exception", color: "#D97706" },
+const TABS: { key: Tab; label: string; hint: string }[] = [
+  { key: "READY_TO_SHIP", label: "Ready to ship", hint: "Confirmed, no AWB yet" },
+  { key: "READY_FOR_PICKUP", label: "Awaiting pickup", hint: "AWB booked, courier hasn't picked up" },
+  { key: "IN_TRANSIT", label: "In transit", hint: "Picked up, moving" },
+  { key: "OUT_FOR_DELIVERY", label: "Out for delivery", hint: "With the delivery agent today" },
+  { key: "STUCK", label: "Stuck", hint: "No courier update for 3+ days" },
+  { key: "DELIVERED_TODAY", label: "Delivered today", hint: "" },
 ];
+const ago = (iso: string) => {
+  const h = Math.floor((Date.now() - new Date(iso).getTime()) / 3600000);
+  return h < 1 ? "just now" : h < 24 ? `${h}h ago` : `${Math.floor(h / 24)}d ago`;
+};
+const tone = (p: number | null, bad = false) => (p == null ? "#9CA3AF" : bad ? (p >= 30 ? "#B91C1C" : p >= 20 ? "#B45309" : "#374151") : p >= 80 ? "#047857" : p >= 65 ? "#B45309" : "#B91C1C");
 
-function getDateBounds(range: number) {
-  const now = new Date();
-  const currentEnd = new Date(now); currentEnd.setHours(23, 59, 59, 999);
-  const currentStart = new Date(now);
-  currentStart.setDate(currentStart.getDate() - range + 1); currentStart.setHours(0, 0, 0, 0);
-  return { currentStart, currentEnd };
-}
+export default function ShipmentsPage() {
+  const [data, setData] = useState<Data | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [tab, setTab] = useState<Tab>("READY_TO_SHIP");
+  const [q, setQ] = useState("");
+  const [sellers, setSellers] = useState<{ id: string; name: string | null; email: string }[]>([]);
+  const [sellerId, setSellerId] = useState("");
+  const [drawerId, setDrawerId] = useState<string | null>(null);
+  const [shipOrder, setShipOrder] = useState<ShipOrder | null>(null);
+  const [awbOrder, setAwbOrder] = useState<ShipOrder | null>(null);
 
-export default function AdminFulfillmentPage() {
-  const [orders,       setOrders]       = useState<Order[]>([]);
-  const [sellers,      setSellers]      = useState<Seller[]>([]);
-  const [loading,      setLoading]      = useState(true);
-  const [search,       setSearch]       = useState("");
-  const [tab,          setTab]          = useState<TabKey>("");
-  const [sellerFilter, setSellerFilter] = useState("");
-  const [page,         setPage]         = useState(1);
-  const [totalOrders,  setTotalOrders]  = useState(0);
-  const [totalPages,   setTotalPages]   = useState(1);
-  const [statusInputs, setStatusInputs] = useState<Record<string, string>>({});
-  const [saving,       setSaving]       = useState<string | null>(null);
-  const [bulkSaving,   setBulkSaving]   = useState(false);
-  const [refreshing,   setRefreshing]   = useState(false);
-  const [counts,       setCounts]       = useState<Record<string, number>>({});
-
-  const [dateRange,    setDateRange]    = useState<0 | 7 | 14>(7);
-
-  type CourierRow = { courier: string; total: number; delivered: number; rto: number };
-  type StateRow   = { state: string;   total: number; delivered: number; rto: number };
-  const [couriers,       setCouriers]       = useState<CourierRow[]>([]);
-  const [states,         setStates]         = useState<StateRow[]>([]);
-  const [insightsLoading, setInsightsLoading] = useState(false);
-
-  useEffect(() => {
-    fetch("/api/admin/sellers").then(r => r.json()).then(d => setSellers(d.sellers || []));
-  }, []);
-
-  const fetchCounts = useCallback(async () => {
-    const base = new URLSearchParams();
-    if (sellerFilter) base.set("sellerId", sellerFilter);
-    base.set("limit", "1");
-    const statuses = ["SHIPPED", "IN_TRANSIT", "DELIVERED", "RTO"];
-    const [results, ndrRes] = await Promise.all([
-      Promise.all(statuses.map(s => fetch(`/api/admin/orders?${base}&status=${s}`).then(r => r.json()))),
-      fetch(`/api/admin/orders?${base}&ndr=true`).then(r => r.json()),
-    ]);
-    const next: Record<string, number> = {};
-    statuses.forEach((s, i) => { next[s] = results[i].total ?? 0; });
-    next["NDR"] = ndrRes.total ?? 0;
-    setCounts(next);
-  }, [sellerFilter]);
-
-  const fetchInsights = useCallback(async () => {
-    setInsightsLoading(true);
-    const params = new URLSearchParams();
-    if (sellerFilter) params.set("sellerId", sellerFilter);
-    if (dateRange !== 0) {
-      const { currentStart, currentEnd } = getDateBounds(dateRange);
-      params.set("dateFrom", currentStart.toISOString());
-      params.set("dateTo",   currentEnd.toISOString());
-    }
-    const data = await fetch(`/api/admin/analytics/delivery?${params}`).then(r => r.json());
-    setCouriers(data.couriers ?? []);
-    setStates(data.states ?? []);
-    setInsightsLoading(false);
-  }, [dateRange, sellerFilter]);
-
-
-  const fetchOrders = useCallback(async () => {
+  const load = useCallback(() => {
     setLoading(true);
-    const params = new URLSearchParams();
-    if (search)       params.set("search",   search);
-    if (sellerFilter) params.set("sellerId", sellerFilter);
-    if (tab === "NDR") { params.set("ndr", "true"); }
-    else if (tab)      { params.set("status", tab); }
-    else               { params.set("status", "SHIPPED,IN_TRANSIT,DELIVERED,RTO"); }
-    params.set("page",  String(page));
-    params.set("limit", String(PAGE_LIMIT));
-    const data = await fetch(`/api/admin/orders?${params}`).then(r => r.json());
-    setOrders(data.orders ?? []);
-    setTotalOrders(data.total ?? 0);
-    setTotalPages(data.pages ?? 1);
-    setLoading(false);
-  }, [search, sellerFilter, tab, page]);
+    fetch(`/api/admin/shipments${sellerId ? `?sellerId=${sellerId}` : ""}`).then(r => r.json())
+      .then(d => { if (d.rows) { setData(d); setError(false); } else setError(true); })
+      .catch(() => setError(true)).finally(() => setLoading(false));
+  }, [sellerId]);
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { fetch("/api/admin/sellers").then(r => r.json()).then(d => setSellers(d.sellers ?? [])).catch(() => {}); }, []);
 
-  useEffect(() => { fetchCounts(); },   [fetchCounts]);
-  useEffect(() => { fetchInsights(); }, [fetchInsights]);
-  useEffect(() => { setPage(1); },       [search, sellerFilter, tab]);
-  useEffect(() => { fetchOrders(); },    [fetchOrders]);
+  const list = useMemo(() => {
+    if (!data) return [];
+    const base = tab === "DELIVERED_TODAY" ? data.deliveredToday : tab === "STUCK" ? data.rows.filter(r => r.stuck) : data.rows.filter(r => r.stage === tab);
+    const s = q.trim().toLowerCase();
+    const out = !s ? base : base.filter(r => [r.externalOrderId, r.awbNumber, r.customerName, r.seller, r.city, r.pincode].some(v => v?.toLowerCase().includes(s)));
+    return tab === "STUCK" ? [...out].sort((a, b) => b.idleDays - a.idleDays) : out;
+  }, [data, tab, q]);
 
-  async function handleSaveStatus(order: Order) {
-    const status = statusInputs[order.id];
-    if (!status || status === order.status) return;
-    setSaving(order.id);
-    await fetch("/api/admin/orders/set-awb", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderId: order.id, awb: order.awbNumber ?? "", status, courier: order.courier ?? "" }),
-    });
-    setStatusInputs(p => { const n = { ...p }; delete n[order.id]; return n; });
-    await fetchOrders();
-    setSaving(null);
+  async function printLabel(orderId: string) {
+    const res = await fetch("/api/admin/shipdaak", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "label", orderId }) });
+    const d = await res.json();
+    if (!res.ok || !d.labelUrl) { alert(d.error || "Label not available"); return; }
+    window.open(d.labelUrl, "_blank", "noopener");
   }
-
-  async function handleBulkSave() {
-    const dirty = orders.filter(o => statusInputs[o.id] !== undefined && statusInputs[o.id] !== o.status);
-    if (!dirty.length) return;
-    setBulkSaving(true);
-    await Promise.all(dirty.map(o =>
-      fetch("/api/admin/orders/set-awb", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId: o.id, awb: o.awbNumber ?? "", status: statusInputs[o.id], courier: o.courier ?? "" }),
-      })
-    ));
-    setStatusInputs({});
-    await Promise.all([fetchOrders(), fetchCounts()]);
-    setBulkSaving(false);
+  async function saveAwb(orderId: string, awb: string, courier: string) {
+    const res = await fetch("/api/admin/orders/set-awb", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ orderId, awb, courier, status: "SHIPPED" }) });
+    const d = await res.json();
+    if (!res.ok) { alert(d.error || "Failed to save AWB"); return; }
+    setAwbOrder(null); load();
   }
-
-  async function handleRefresh() {
-    setRefreshing(true);
-    await Promise.all([fetchOrders(), fetchCounts(), fetchInsights()]);
-    setRefreshing(false);
+  async function setStatus(orderId: string, status: string) {
+    const res = await fetch("/api/admin/orders/update-status", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ orderId, status }) });
+    if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error || "Couldn't update the status"); }
+    load();
   }
-
-  const dirtyCount = orders.filter(o => statusInputs[o.id] !== undefined && statusInputs[o.id] !== o.status).length;
+  const asShip = (r: Row): ShipOrder => ({ id: r.id, externalOrderId: r.externalOrderId, customerName: r.customerName, totalAmount: r.totalAmount, paymentMode: r.paymentMode, awbNumber: r.awbNumber });
+  const drawerRow = data ? [...data.rows, ...data.deliveredToday].find(r => r.id === drawerId) ?? null : null;
+  const hint = TABS.find(t => t.key === tab)?.hint;
 
   return (
-    <div className="px-3 py-4 md:p-8 space-y-5" style={{ background: "#F7F8FC", minHeight: "100vh" }}>
-
-      {/* ── Header ── */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
+    <div className="px-4 py-5 md:p-8 space-y-5" style={{ background: "var(--bg-page)", minHeight: "100vh" }}>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-[18px] font-black text-[#0C1220]">Fulfillment</h1>
-          <p className="text-[12px] text-[#9CA3AF] mt-0.5">Track shipments, update statuses, monitor delivery performance</p>
+          <h1 className="text-[22px] font-black text-[#0C1220]">Shipments</h1>
+          <p className="text-[12.5px] text-[#6B7280] mt-1">Orders on the move, read from the latest courier scans. Stuck shipments and courier performance at a glance.</p>
         </div>
         <div className="flex items-center gap-2">
-          {dirtyCount > 0 && (
-            <button onClick={handleBulkSave} disabled={bulkSaving}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[13px] font-semibold text-white disabled:opacity-50"
-              style={{ background: "#059669" }}>
-              <Save className="w-3.5 h-3.5" />
-              {bulkSaving ? "Saving…" : `Save ${dirtyCount}`}
-            </button>
-          )}
-          <button onClick={handleRefresh} disabled={refreshing}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[13px] font-semibold bg-white border border-[#E8EDF6] text-[#6B7280] hover:text-[#0C1220] transition-colors disabled:opacity-50">
-            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
-            {refreshing ? "Refreshing…" : "Refresh"}
+          <select id="sh-seller" aria-label="Seller" value={sellerId} onChange={e => setSellerId(e.target.value)} className="px-2.5 py-2 text-[12.5px] rounded-lg border border-[#E8EDF6] bg-white outline-none focus:border-[#4361EE] max-w-[200px]">
+            <option value="">All sellers</option>
+            {sellers.map(s => <option key={s.id} value={s.id}>{s.name || s.email}</option>)}
+          </select>
+          <button onClick={load} disabled={loading} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12.5px] font-semibold border border-[#E8EDF6] bg-white text-[#374151] hover:border-[#C7D2FE] disabled:opacity-60">
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> Refresh
           </button>
         </div>
       </div>
 
-      {/* ── Stat cards (tab filters) ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        {STAT_TABS.map(({ key, label, sub, color }) => {
-          const active = tab === key;
-          const count  = counts[key] ?? 0;
-          return (
-            <button key={key} onClick={() => { setTab(key); setPage(1); }}
-              className="text-left rounded-xl border px-4 py-3.5 transition-all"
-              style={{
-                background:  active ? color : "white",
-                borderColor: active ? color : "#E8EDF6",
-              }}>
-              <p className="text-[11px] font-bold uppercase tracking-wide mb-1"
-                style={{ color: active ? "rgba(255,255,255,0.75)" : "#9CA3AF" }}>
-                {label}
-              </p>
-              <p className="text-[22px] font-black leading-none"
-                style={{ color: active ? "white" : color }}>
-                {count.toLocaleString("en-IN")}
-              </p>
-              <p className="text-[11px] mt-1"
-                style={{ color: active ? "rgba(255,255,255,0.65)" : "#9CA3AF" }}>
-                {sub}
-              </p>
-            </button>
-          );
-        })}
-      </div>
+      {error ? <p className="py-24 text-center text-[13px] text-[#B91C1C]">Couldn&apos;t load shipments. Refresh to try again.</p>
+        : !data ? <div className="flex items-center justify-center gap-2 py-24 text-[13px] text-[#9CA3AF]"><Loader2 className="w-5 h-5 animate-spin" /> Loading shipments…</div>
+        : (
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            {TABS.map(t => {
+              const n = data.counts[t.key] ?? 0, on = tab === t.key, alert = t.key === "STUCK" && n > 0;
+              return (
+                <button key={t.key} onClick={() => setTab(t.key)}
+                  className={`text-left bg-white rounded-xl border p-4 transition-colors ${on ? "border-[#4361EE] ring-2 ring-[#E8EDFF]" : alert ? "border-[#FECACA] hover:border-[#FCA5A5]" : "border-[#E8EDF6] hover:border-[#C7D2FE]"}`}>
+                  <p className="text-[11.5px] font-semibold text-[#6B7280] flex items-center gap-1">{alert && <AlertTriangle className="w-3.5 h-3.5 text-[#DC2626]" />}{t.label}</p>
+                  <p className="text-[26px] font-black leading-tight tabular-nums mt-1" style={{ color: alert ? "#B91C1C" : t.key === "DELIVERED_TODAY" ? "#047857" : "#0C1220" }}>{n}</p>
+                </button>
+              );
+            })}
+          </div>
 
-      {/* ── Trend chart ── */}
-      <FulfillmentTrendChart sellerId={sellerFilter || undefined} />
-
-      {/* ── Analytics row ── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-
-        {/* Courier breakdown */}
-        <div className="bg-white rounded-xl border border-[#E8EDF6] p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Truck className="w-3.5 h-3.5 text-[#9CA3AF]" />
-              <div>
-                <p className="text-[13px] font-bold text-[#0C1220]">By Courier</p>
-                <p className="text-[11px] text-[#9CA3AF]">{dateRange === 0 ? "All time" : `Last ${dateRange} days`}</p>
+          <div className="bg-white rounded-xl border border-[#E8EDF6] overflow-hidden">
+            <div className="flex items-center gap-2 flex-wrap px-4 py-3 bg-[#FAFBFF] border-b border-[#F3F4F6]">
+              <p className="text-[13px] font-bold text-[#0C1220]">{TABS.find(t => t.key === tab)?.label}</p>
+              {hint && <p className="text-[12px] text-[#9CA3AF]">· {tab === "STUCK" ? `No courier update for ${data.stuckDays}+ days` : hint}</p>}
+              <div className="relative ml-auto w-full sm:w-[260px]">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#9CA3AF]" />
+                <input id="sh-search" value={q} onChange={e => setQ(e.target.value)} placeholder="Order, AWB, customer, city"
+                  className="pl-8 pr-3 py-1.5 text-[13px] rounded-lg border border-[#E8EDF6] bg-white outline-none focus:border-[#4361EE] w-full" />
               </div>
             </div>
-            <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-[#F3F4F6]">
-              {([{ label: "7d", value: 7 }, { label: "14d", value: 14 }, { label: "All", value: 0 }] as const).map(({ label, value }) => (
-                <button key={value} onClick={() => setDateRange(value)}
-                  className="px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all"
-                  style={dateRange === value
-                    ? { background: "white", color: "#0C1220", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }
-                    : { color: "#9CA3AF" }}>
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-          {insightsLoading ? (
-            <div className="py-6 flex items-center justify-center">
-              <Loader2 className="w-4 h-4 animate-spin text-[#9CA3AF]" />
-            </div>
-          ) : couriers.length === 0 ? (
-            <p className="py-6 text-center text-[12px] text-[#9CA3AF]">No data for this period</p>
-          ) : (
-            <div className="space-y-3">
-              {couriers.map((c, i) => {
-                const delivRate = c.total > 0 ? Math.round(c.delivered / c.total * 100) : 0;
-                const rtoRate   = c.total > 0 ? Math.round(c.rto / c.total * 100) : 0;
-                const barW      = Math.round(c.total / (couriers[0]?.total ?? 1) * 100);
-                return (
-                  <div key={c.courier}>
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] font-bold text-[#D1D5DB] w-3">{i + 1}</span>
-                        <span className="text-[12px] font-semibold text-[#0C1220]">{c.courier}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-[11px]">
-                        <span className="font-bold text-[#0C1220]">{c.total}</span>
-                        <span style={{ color: "#059669" }}>{delivRate}%</span>
-                        <span style={{ color: "#EF4444" }}>{rtoRate}% RTO</span>
-                      </div>
-                    </div>
-                    <div className="h-1 rounded-full bg-[#F3F4F6] overflow-hidden">
-                      <div className="h-full rounded-full bg-[#4361EE]" style={{ width: `${barW}%` }} />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* State breakdown */}
-        <div className="bg-white rounded-xl border border-[#E8EDF6] p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <MapPin className="w-3.5 h-3.5 text-[#9CA3AF]" />
-            <div>
-              <p className="text-[13px] font-bold text-[#0C1220]">By State</p>
-              <p className="text-[11px] text-[#9CA3AF]">{dateRange === 0 ? "All time" : `Last ${dateRange} days`}</p>
-            </div>
-          </div>
-          {insightsLoading ? (
-            <div className="py-6 flex items-center justify-center">
-              <Loader2 className="w-4 h-4 animate-spin text-[#9CA3AF]" />
-            </div>
-          ) : states.length === 0 ? (
-            <p className="py-6 text-center text-[12px] text-[#9CA3AF]">No data for this period</p>
-          ) : (
-            <div className="space-y-3">
-              {states.map((s, i) => {
-                const delivRate = s.total > 0 ? Math.round(s.delivered / s.total * 100) : 0;
-                const rtoRate   = s.total > 0 ? Math.round(s.rto / s.total * 100) : 0;
-                const barW      = Math.round(s.total / (states[0]?.total ?? 1) * 100);
-                return (
-                  <div key={s.state}>
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] font-bold text-[#D1D5DB] w-3">{i + 1}</span>
-                        <span className="text-[12px] font-semibold text-[#0C1220]">{s.state}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-[11px]">
-                        <span className="font-bold text-[#0C1220]">{s.total}</span>
-                        <span style={{ color: "#059669" }}>{delivRate}%</span>
-                        <span style={{ color: "#EF4444" }}>{rtoRate}% RTO</span>
-                      </div>
-                    </div>
-                    <div className="h-1 rounded-full bg-[#F3F4F6] overflow-hidden">
-                      <div className="h-full rounded-full bg-[#059669]" style={{ width: `${barW}%` }} />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* ── Main table card ── */}
-      <div className="bg-white rounded-xl border border-[#E8EDF6] overflow-hidden">
-
-        {/* Search + filter row */}
-        <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-[#F3F4F6]">
-          <div className="relative flex-1 min-w-[160px] max-w-xs">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#9CA3AF]" />
-            <input
-              type="text"
-              placeholder="Order #, customer, AWB…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && fetchOrders()}
-              className="pl-8 pr-3 py-1.5 text-[12px] rounded-lg border border-[#E8EDF6] bg-[#FAFBFF] text-[#0C1220] placeholder-[#9CA3AF] outline-none focus:border-[#4361EE] w-full transition-colors"
-            />
-          </div>
-          <select value={sellerFilter} onChange={e => setSellerFilter(e.target.value)}
-            className="px-3 py-1.5 text-[12px] rounded-lg border border-[#E8EDF6] bg-[#FAFBFF] text-[#0C1220] outline-none focus:border-[#4361EE]">
-            <option value="">All Sellers</option>
-            {sellers.map(s => (
-              <option key={s.id} value={s.id}>{s.brandName || s.name || s.email}</option>
-            ))}
-          </select>
-          <span className="ml-auto text-[12px] text-[#9CA3AF]">{totalOrders} orders</span>
-        </div>
-
-        {/* Table */}
-        {loading ? (
-          <div className="py-16 flex flex-col items-center gap-3">
-            <RefreshCw className="w-6 h-6 animate-spin text-[#4361EE]" />
-            <p className="text-[13px] text-[#9CA3AF]">Loading shipments…</p>
-          </div>
-        ) : orders.length === 0 ? (
-          <div className="py-16 flex flex-col items-center gap-3">
-            <Truck className="w-10 h-10 text-[#E8EDF6]" />
-            <p className="text-[13px] font-medium text-[#9CA3AF]">No orders found</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-[#F3F4F6]" style={{ background: "#FAFBFF" }}>
-                  {["ORDER #", "SELLER", "CUSTOMER", "PRODUCT", "AMOUNT", "AWB / COURIER", "STATUS", ""].map(h => (
-                    <th key={h} className="px-4 py-3 text-left text-[11px] font-bold text-[#9CA3AF] uppercase tracking-wide whitespace-nowrap">
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {orders.map(order => {
-                  const selectedStatus = statusInputs[order.id] ?? order.status;
-                  const isDirty        = statusInputs[order.id] !== undefined && statusInputs[order.id] !== order.status;
-                  const cfg            = STATUS_CFG[selectedStatus] ?? STATUS_CFG.NEW;
-                  return (
-                    <tr key={order.id}
-                      className="border-b border-[#F9FAFB] hover:bg-[#FAFBFF] transition-colors"
-                      style={{ background: isDirty ? "rgba(67,97,238,0.02)" : undefined }}>
-
-                      <td className="px-4 py-3.5">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[13px] font-bold text-[#4361EE]">#{order.externalOrderId}</span>
-                          {order.ndrStatus && (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-[#FFF7ED] text-[#D97706]">NDR</span>
-                          )}
-                        </div>
-                      </td>
-
-                      <td className="px-4 py-3.5">
-                        <span className="text-[12px] text-[#6B7280]">{order.seller.name || order.seller.email}</span>
-                        {order.supplier && (
-                          <p className="text-[11px] text-[#9CA3AF] mt-0.5">{order.supplier.name || order.supplier.email}</p>
-                        )}
-                      </td>
-
-                      <td className="px-4 py-3.5">
-                        <p className="text-[13px] font-semibold text-[#0C1220]">{order.customerName || "—"}</p>
-                        <p className="text-[11px] text-[#9CA3AF] mt-0.5">{order.customerAddress?.phone || ""}</p>
-                      </td>
-
-                      <td className="px-4 py-3.5 max-w-[130px]">
-                        <span className="text-[12px] text-[#374151] truncate block">
-                          {order.items.map(i => `${i.name} ×${i.quantity}`).join(", ") || "—"}
-                        </span>
-                      </td>
-
-                      <td className="px-4 py-3.5 whitespace-nowrap">
-                        <span className="text-[13px] font-semibold text-[#0C1220]">₹{order.totalAmount.toLocaleString("en-IN")}</span>
-                      </td>
-
-                      <td className="px-4 py-3.5">
-                        {order.awbNumber ? (
-                          <div>
-                            <p className="font-mono text-[12px] font-semibold text-[#0C1220]">{order.awbNumber}</p>
-                            {order.courier && <p className="text-[11px] text-[#9CA3AF] mt-0.5">{order.courier}</p>}
-                            {order.trackingUrl && (
-                              <a href={order.trackingUrl} target="_blank" rel="noreferrer"
-                                className="flex items-center gap-0.5 text-[11px] font-semibold text-[#4361EE] mt-0.5">
-                                Track <ExternalLink className="w-2.5 h-2.5" />
-                              </a>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-[11px] px-2 py-0.5 rounded-full font-semibold bg-[#FFF7ED] text-[#D97706]">
-                            No AWB
-                          </span>
-                        )}
-                      </td>
-
-                      <td className="px-4 py-3.5">
-                        <select
-                          value={selectedStatus}
-                          onChange={e => setStatusInputs(p => ({ ...p, [order.id]: e.target.value }))}
-                          className="px-2.5 py-1 rounded-full text-[11px] font-bold border-0 outline-none cursor-pointer"
-                          style={{ background: cfg.bg, color: cfg.color }}>
-                          {STATUSES.map(s => (
-                            <option key={s} value={s} className="bg-white text-gray-900">
-                              {s.replace("_", " ")}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-
-                      <td className="px-4 py-3.5">
-                        {isDirty && (
-                          <button onClick={() => handleSaveStatus(order)} disabled={saving === order.id}
-                            className="px-3 py-1 rounded-lg text-[11px] font-bold text-white disabled:opacity-50"
-                            style={{ background: "#059669" }}>
-                            {saving === order.id ? "…" : "Save"}
-                          </button>
-                        )}
-                      </td>
+            {list.length === 0 ? (
+              <p className="py-16 text-center text-[13px] text-[#9CA3AF]">{tab === "STUCK" ? "Nothing stuck. Every shipment has a recent courier update." : "Nothing here right now."}</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[1050px] text-[12.5px]">
+                  <thead>
+                    <tr className="bg-[#FAFBFF] text-left text-[10.5px] font-bold uppercase tracking-wide text-[#9CA3AF]">
+                      <th className="px-4 py-2.5">Order</th><th className="px-3 py-2.5">Seller</th><th className="px-3 py-2.5">Customer</th>
+                      <th className="px-3 py-2.5 text-right">Amount</th><th className="px-3 py-2.5">Courier / AWB</th><th className="px-3 py-2.5">Last courier update</th><th className="px-3 py-2.5"></th>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  </thead>
+                  <tbody className="divide-y divide-[#F3F4F6]">
+                    {list.map(r => (
+                      <tr key={r.id} onClick={() => setDrawerId(r.id)} className="cursor-pointer hover:bg-[#FAFBFF]">
+                        <td className="px-4 py-2.5 whitespace-nowrap">
+                          <span className="block font-mono font-semibold text-[#0C1220]">{r.externalOrderId}</span>
+                          <span className="block text-[11px] text-[#9CA3AF]">{new Date(r.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</span>
+                        </td>
+                        <td className="px-3 py-2.5 text-[#374151] truncate max-w-[140px]">{r.seller}</td>
+                        <td className="px-3 py-2.5">
+                          <span className="block text-[#0C1220] truncate max-w-[170px]">{r.customerName ?? "—"}</span>
+                          <span className="block text-[11px] text-[#9CA3AF] truncate max-w-[170px]">{[r.city, r.pincode].filter(Boolean).join(" · ")}</span>
+                        </td>
+                        <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                          <span className="block font-semibold tabular-nums">₹{r.totalAmount.toLocaleString("en-IN")}</span>
+                          {r.paymentMode !== "UNKNOWN" && <span className={`text-[10.5px] font-bold ${r.paymentMode === "COD" ? "text-[#B45309]" : "text-[#047857]"}`}>{r.paymentMode === "COD" ? "COD" : "Prepaid"}</span>}
+                        </td>
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          {r.awbNumber ? <><span className="block text-[#374151]">{r.courier ?? "—"}</span><span className="block text-[11px] font-mono text-[#6B7280]">{r.awbNumber}</span></> : <span className="text-[#C4C9D4]">No AWB</span>}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          {r.lastScan ? (
+                            <>
+                              <span className="block text-[#0C1220] truncate max-w-[240px]">{r.lastScan.status}</span>
+                              <span className={`block text-[11px] truncate max-w-[240px] ${r.stuck ? "text-[#B91C1C] font-semibold" : "text-[#9CA3AF]"}`}>
+                                {r.lastScan.location && <><MapPin className="w-3 h-3 inline -mt-0.5" /> {r.lastScan.location} · </>}{ago(r.lastScan.time)}
+                              </span>
+                            </>
+                          ) : r.awbNumber ? <span className={`text-[11.5px] ${r.stuck ? "text-[#B91C1C] font-semibold" : "text-[#9CA3AF]"}`}>No scans yet{r.stuck ? ` · ${r.idleDays}d` : ""}</span> : <span className="text-[#C4C9D4]">—</span>}
+                        </td>
+                        <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
+                          <div className="flex items-center justify-end gap-1">
+                            {r.stage === "READY_TO_SHIP" && <>
+                              <button onClick={() => setShipOrder(asShip(r))} className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11.5px] font-bold text-white bg-[#4361EE]"><Truck className="w-3 h-3" /> Ship</button>
+                              <button onClick={() => setAwbOrder(asShip(r))} aria-label="Enter AWB" title="Enter AWB" className="p-1.5 rounded-lg text-[#6B7280] hover:bg-[#F3F6FF] hover:text-[#4361EE]"><Pencil className="w-3.5 h-3.5" /></button>
+                            </>}
+                            {r.awbNumber && r.viaShipdaak && <button onClick={() => printLabel(r.id)} aria-label="Print label" title="Print label" className="p-1.5 rounded-lg text-[#6B7280] hover:bg-[#F3F6FF] hover:text-[#4361EE]"><Printer className="w-3.5 h-3.5" /></button>}
+                            <ChevronRight className="w-4 h-4 text-[#C4C9D4]" />
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
-        )}
 
-        {/* Pagination */}
-        {!loading && totalPages > 1 && (
-          <div className="px-5 py-3 flex items-center justify-between border-t border-[#F3F4F6]">
-            <span className="text-[12px] text-[#9CA3AF]">Page {page} of {totalPages} · {totalOrders} orders</span>
-            <div className="flex items-center gap-1">
-              <button disabled={page <= 1} onClick={() => setPage(p => p - 1)}
-                className="p-1.5 rounded-lg border border-[#E8EDF6] disabled:opacity-30 hover:bg-[#FAFBFF] transition-colors">
-                <ChevronLeft className="w-3.5 h-3.5 text-[#6B7280]" />
-              </button>
-              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                const p = Math.max(1, Math.min(totalPages - 4, page - 2)) + i;
-                return (
-                  <button key={p} onClick={() => setPage(p)}
-                    className="w-7 h-7 rounded-lg text-[12px] font-semibold transition-colors"
-                    style={p === page
-                      ? { background: "#4361EE", color: "white" }
-                      : { color: "#9CA3AF" }}>
-                    {p}
-                  </button>
-                );
-              })}
-              <button disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}
-                className="p-1.5 rounded-lg border border-[#E8EDF6] disabled:opacity-30 hover:bg-[#FAFBFF] transition-colors">
-                <ChevronRight className="w-3.5 h-3.5 text-[#6B7280]" />
-              </button>
-            </div>
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+            <section className="bg-white rounded-xl border border-[#E8EDF6] p-5">
+              <h2 className="text-[15px] font-bold text-[#0C1220]">Courier performance</h2>
+              <p className="text-[12px] text-[#9CA3AF] mt-0.5 mb-4">Orders from the last 30 days. Delivered and RTO % are of completed shipments; days are first scan to delivery.</p>
+              {data.couriers.length ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[480px] text-[12.5px]">
+                    <thead><tr className="text-left text-[10.5px] font-bold uppercase tracking-wide text-[#9CA3AF] border-b border-[#F3F4F6]">
+                      <th className="py-2 pr-3">Courier</th><th className="py-2 pr-3 text-right">Shipments</th><th className="py-2 pr-3 text-right">Delivered</th><th className="py-2 pr-3 text-right">RTO</th><th className="py-2 text-right">Avg days</th>
+                    </tr></thead>
+                    <tbody className="divide-y divide-[#F3F4F6]">
+                      {data.couriers.map(c => (
+                        <tr key={c.courier}>
+                          <td className="py-2.5 pr-3 font-medium text-[#0C1220]">{c.courier}</td>
+                          <td className="py-2.5 pr-3 text-right tabular-nums">{c.total}{c.inTransit > 0 && <span className="text-[11px] text-[#9CA3AF]"> · {c.inTransit} moving</span>}</td>
+                          <td className="py-2.5 pr-3 text-right tabular-nums font-semibold" style={{ color: tone(c.deliveredPct) }}>{c.deliveredPct != null ? `${c.deliveredPct}%` : "—"}</td>
+                          <td className="py-2.5 pr-3 text-right tabular-nums font-semibold" style={{ color: tone(c.rtoPct, true) }}>{c.rtoPct != null ? `${c.rtoPct}%` : "—"}</td>
+                          <td className="py-2.5 text-right tabular-nums">{c.avgDays ?? "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : <p className="py-8 text-center text-[13px] text-[#9CA3AF]">No shipments in the last 30 days.</p>}
+            </section>
+            <section className="bg-white rounded-xl border border-[#E8EDF6] p-5">
+              <h2 className="text-[15px] font-bold text-[#0C1220]">State performance</h2>
+              <p className="text-[12px] text-[#9CA3AF] mt-0.5 mb-4">Last 30 days, states with 3+ completed shipments.</p>
+              {data.states.length ? (
+                <div className="overflow-x-auto max-h-[420px]">
+                  <table className="w-full min-w-[420px] text-[12.5px]">
+                    <thead><tr className="text-left text-[10.5px] font-bold uppercase tracking-wide text-[#9CA3AF] border-b border-[#F3F4F6]">
+                      <th className="py-2 pr-3">State</th><th className="py-2 pr-3 text-right">Shipments</th><th className="py-2 pr-3 text-right">Delivered</th><th className="py-2 text-right">RTO</th>
+                    </tr></thead>
+                    <tbody className="divide-y divide-[#F3F4F6]">
+                      {data.states.map(s => (
+                        <tr key={s.state}>
+                          <td className="py-2.5 pr-3 font-medium text-[#0C1220]">{s.state}</td>
+                          <td className="py-2.5 pr-3 text-right tabular-nums">{s.total}</td>
+                          <td className="py-2.5 pr-3 text-right tabular-nums font-semibold" style={{ color: tone(s.deliveredPct) }}>{s.deliveredPct != null ? `${s.deliveredPct}%` : "—"}</td>
+                          <td className="py-2.5 text-right tabular-nums font-semibold" style={{ color: tone(s.rtoPct, true) }}>{s.rtoPct != null ? `${s.rtoPct}%` : "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : <p className="py-8 text-center text-[13px] text-[#9CA3AF]">Not enough completed shipments yet.</p>}
+            </section>
           </div>
-        )}
-      </div>
+        </>
+      )}
+
+      {drawerId && (
+        <OrderDrawer orderId={drawerId} onClose={() => setDrawerId(null)}
+          onShip={() => drawerRow && setShipOrder(asShip(drawerRow))}
+          onAwb={() => drawerRow && setAwbOrder(asShip(drawerRow))}
+          onLabel={() => printLabel(drawerId)}
+          onStatus={s => setStatus(drawerId, s)} />
+      )}
+      {shipOrder && <ShipdaakModal order={shipOrder} onClose={() => setShipOrder(null)} onShipped={async () => { setShipOrder(null); load(); }} />}
+      {awbOrder && <EnterAwbModal order={awbOrder} onClose={() => setAwbOrder(null)} onSaved={saveAwb} />}
     </div>
   );
 }

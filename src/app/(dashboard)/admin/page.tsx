@@ -1,359 +1,216 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import {
-  ArrowRight, AlertTriangle, TrendingUp, CheckCircle2,
-  Truck, RotateCcw, XCircle, Clock, Package,
-  IndianRupee, BarChart2, Bot, Settings,
-  ShoppingCart, Store, ListChecks,
-  Zap,
-  Wallet, BadgeCheck,
-} from "lucide-react";
-import { AdminOrderTrendChart } from "@/components/admin/order-trend-chart";
+import { useSession } from "next-auth/react";
+import { Loader2, ShieldCheck, ListChecks, PhoneCall, Truck, AlertTriangle, RotateCcw, FileWarning, CreditCard, LifeBuoy, BadgeIndianRupee, ChevronRight, Package, CheckCircle2 } from "lucide-react";
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
+import { PincodeRtoCard } from "@/components/dashboard/pincode-rto-card";
 
-function fmt(n: number) {
-  if (n >= 10000000) return `₹${(n / 10000000).toFixed(1)}Cr`;
-  if (n >= 100000)   return `₹${(n / 100000).toFixed(1)}L`;
-  if (n >= 1000)     return `₹${(n / 1000).toFixed(1)}K`;
-  return `₹${n.toLocaleString("en-IN")}`;
+interface Data {
+  needs: { kyc: number; listings: number; calling: number; toShip: number; ndr: number; rtoOverdue: number; invoicesHeld: number; planOverdue: number; supportNeedsReply: number; scheduledPayouts: { count: number; amount: number } };
+  key: { days: number; orders: number; delivered: number; rto: number; deliveredPct: number | null; rtoPct: number | null; gmv: number; earned: number; activeSellers: number };
+  trend: { day: string; delivered: number; rto: number; orders: number }[];
+  sellers: { id: string; name: string; orders: number; delivered: number; rto: number; deliveredPct: number | null; rtoPct: number | null; flags: string[]; lastOrder: string | null }[];
+  products: { id: string; name: string; image: string | null; orders: number; delivered: number; rto: number; deliveredPct: number | null; rtoPct: number | null; deliveredValue: number }[];
+  money: { toPay: number; awaiting: number; scheduled: number; toCollect: number; earnedThisMonth: number };
 }
 
-function greeting() {
-  const h = new Date().getHours();
-  if (h < 12) return "morning";
-  if (h < 17) return "afternoon";
-  return "evening";
-}
+const RANGES = [{ label: "Today", days: 1 }, { label: "7 days", days: 7 }, { label: "30 days", days: 30 }];
+const inr = (n: number) => `₹${Math.round(n).toLocaleString("en-IN")}`;
+const pctColor = (p: number | null, bad = false) => (p == null ? "#9CA3AF" : bad ? (p >= 30 ? "#B91C1C" : p >= 20 ? "#B45309" : "#047857") : p >= 80 ? "#047857" : p >= 65 ? "#B45309" : "#B91C1C");
+const greeting = () => { const h = new Date().getHours(); return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening"; };
 
-export default async function AdminDashboard() {
-  const session = await getServerSession(authOptions);
-  if (!session) return null;
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const todayStr = new Date().toLocaleDateString("en-IN", {
-    weekday: "long", day: "numeric", month: "long",
-  });
-
-  const [
-    // Platform overview
-    gmvResult,
-    platformEarningsResult,
-    totalOrders,
-    productsListed,
-
-    // Orders breakdown
-    newToday,
-    pendingOrders,
-    deliveredOrders,
-    rtoOrders,
-    cancelledOrders,
-    inTransitOrders,
-
-    // Remittance
-    remittancePendingCount,
-    remittancePendingAmtResult,
-    remittanceDoneCount,
-    remittanceDoneAmtResult,
-
-    // Alerts
-    pendingNdrs,
-    unassignedOrders,
-    pendingProducts,
-    pendingPayablesAgg,
-
-    // Misc
-    activeSellers,
-    totalSellers,
-    totalSuppliers,
-  ] = await Promise.all([
-    // Platform overview
-    prisma.order.aggregate({ _sum: { totalAmount: true } }),
-    prisma.settlement.aggregate({ _sum: { platformEarnings: true } }),
-    prisma.order.count(),
-    prisma.listingRequest.count({ where: { status: "LISTED" } }),
-
-    // Orders breakdown
-    prisma.order.count({ where: { createdAt: { gte: today } } }),
-    prisma.order.count({ where: { status: { in: ["NEW", "PROCESSING"] as never[] } } }),
-    prisma.order.count({ where: { status: "DELIVERED" as never } }),
-    prisma.order.count({ where: { status: "RTO" as never } }),
-    prisma.order.count({ where: { status: "CANCELLED" as never } }),
-    prisma.order.count({ where: { status: { in: ["SHIPPED", "IN_TRANSIT"] as never[] } } }),
-
-    // Remittance
-    prisma.order.count({ where: { remittedAt: null, status: { in: ["DELIVERED", "RTO"] as never[] } } }),
-    prisma.order.aggregate({ where: { remittedAt: null, status: { in: ["DELIVERED", "RTO"] as never[] } }, _sum: { totalAmount: true } }),
-    prisma.order.count({ where: { remittedAt: { not: null } } }),
-    prisma.order.aggregate({ where: { remittedAt: { not: null } }, _sum: { totalAmount: true } }),
-
-    // Alerts
-    prisma.order.count({ where: { ndrStatus: { not: null }, ndrActionTaken: null } }),
-    prisma.order.count({ where: { supplierId: null, status: { notIn: ["DELIVERED", "CANCELLED", "RTO"] as never[] } } }),
-    prisma.product.count({ where: { status: "PENDING" as never } }),
-    prisma.supplierPayment.aggregate({ where: { status: "PENDING" as never }, _sum: { amount: true }, _count: { id: true } }),
-
-    // Misc
-    prisma.user.count({ where: { role: "SELLER", accountStatus: "ACTIVE" } }),
-    prisma.user.count({ where: { role: "SELLER" } }),
-    prisma.user.count({ where: { role: "SUPPLIER" } }),
-  ]);
-
-  const gmv               = gmvResult._sum.totalAmount ?? 0;
-  const platformEarnings  = platformEarningsResult._sum.platformEarnings ?? 0;
-  const remittancePending = remittancePendingAmtResult._sum.totalAmount ?? 0;
-  const remittanceCollected = remittanceDoneAmtResult._sum.totalAmount ?? 0;
-  const pendingPayablesCount = pendingPayablesAgg._count.id ?? 0;
-  const pendingPayablesAmount = pendingPayablesAgg._sum.amount ?? 0;
-  const firstName = session.user.name?.split(" ")[0] ?? "Admin";
-  const totalOrNon0 = totalOrders || 1;
-
-  const alerts = [
-    pendingNdrs > 0          && { label: "NDRs pending",       value: pendingNdrs,                href: "/admin/ndr",               color: "#EF4444", border: "rgba(239,68,68,0.2)",   bg: "rgba(239,68,68,0.06)" },
-    unassignedOrders > 0     && { label: "Unassigned orders",  value: unassignedOrders,           href: "/admin/orders",            color: "#D97706", border: "rgba(245,158,11,0.2)",  bg: "rgba(245,158,11,0.06)" },
-    pendingPayablesCount > 0 && { label: "Supplier payables",  value: fmt(pendingPayablesAmount), href: "/admin/supplier-payables", color: "#16A34A", border: "rgba(22,163,74,0.2)",   bg: "rgba(22,163,74,0.06)" },
-    pendingProducts > 0      && { label: "Products pending",   value: pendingProducts,            href: "/admin/products",          color: "#8B5CF6", border: "rgba(139,92,246,0.2)",  bg: "rgba(139,92,246,0.06)" },
-  ].filter(Boolean) as { label: string; value: string | number; href: string; color: string; border: string; bg: string }[];
-
+function Section({ title, sub, right, children }: { title: string; sub?: string; right?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div className="flex-1 overflow-auto" style={{ background: "var(--bg-page)" }}>
-      <div className="p-5 md:p-7 max-w-[1280px] mx-auto space-y-6">
-
-        {/* ── Header ── */}
-        <div className="flex items-end justify-between">
-          <div>
-            <p className="text-xs font-medium mb-0.5" style={{ color: "var(--text-muted)" }}>{todayStr}</p>
-            <h1 className="text-2xl font-bold" style={{ color: "var(--text-primary)" }}>
-              Good {greeting()}, {firstName}
-            </h1>
-          </div>
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold"
-            style={{ background: "rgba(67,97,238,0.1)", color: "#4361EE", border: "1px solid rgba(67,97,238,0.2)" }}>
-            <Zap className="w-3 h-3" /> Live
-          </div>
-        </div>
-
-        {/* ══ SECTION 1: Platform ══ */}
-        <Section label="Platform" href="/admin/analytics">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <KpiTile label="Revenue Generated" value={fmt(gmv)}              sub="all-time GMV"          color="#4361EE" icon={TrendingUp} />
-            <KpiTile label="Platform Earnings"  value={fmt(platformEarnings)} sub="net after GST"         color="#16A34A" icon={IndianRupee} />
-            <KpiTile label="Total Orders"       value={totalOrders.toLocaleString()} sub={`${newToday} new today`} color="#8B5CF6" icon={ShoppingCart} />
-            <KpiTile label="Products Listed"    value={productsListed.toLocaleString()} sub="on marketplaces"  color="#D97706" icon={Package} />
-          </div>
-          <div className="mt-3 grid grid-cols-3 gap-3">
-            <MiniStat label="Active Sellers"  value={activeSellers}   sub={`${totalSellers} total`}  color="#8B5CF6" />
-            <MiniStat label="Suppliers"       value={totalSuppliers}  sub="connected"                color="#4361EE" />
-            <MiniStat label="NDRs Pending"    value={pendingNdrs}     sub="needs action"             color={pendingNdrs > 0 ? "#EF4444" : "#9CA3AF"} />
-          </div>
-        </Section>
-
-        {/* ══ SECTION 2: Orders ══ */}
-        <Section label="Orders" href="/admin/orders">
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-            {[
-              { label: "Received",   value: totalOrders,    color: "#4361EE", icon: ShoppingCart, pct: null },
-              { label: "Pending",    value: pendingOrders,  color: "#D97706", icon: Clock,        pct: Math.round(pendingOrders / totalOrNon0 * 100) },
-              { label: "In Transit", value: inTransitOrders,color: "#06B6D4", icon: Truck,        pct: Math.round(inTransitOrders / totalOrNon0 * 100) },
-              { label: "Delivered",  value: deliveredOrders,color: "#16A34A", icon: CheckCircle2, pct: Math.round(deliveredOrders / totalOrNon0 * 100) },
-              { label: "RTO",        value: rtoOrders,      color: "#F97316", icon: RotateCcw,    pct: Math.round(rtoOrders / totalOrNon0 * 100) },
-              { label: "Cancelled",  value: cancelledOrders,color: "#EF4444", icon: XCircle,      pct: Math.round(cancelledOrders / totalOrNon0 * 100) },
-            ].map(({ label, value, color, icon: Icon, pct }) => (
-              <div key={label} className="rounded-2xl p-4"
-                style={{ background: "var(--bg-card)", border: "1px solid var(--border)", boxShadow: "var(--shadow-card)" }}>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: `${color}15` }}>
-                    <Icon className="w-3.5 h-3.5" style={{ color }} />
-                  </div>
-                  {pct !== null && (
-                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md"
-                      style={{ background: `${color}15`, color }}>
-                      {pct}%
-                    </span>
-                  )}
-                </div>
-                <p className="text-2xl font-black leading-none mb-1" style={{ color: "var(--text-primary)" }}>
-                  {value.toLocaleString()}
-                </p>
-                <p className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>{label}</p>
-              </div>
-            ))}
-          </div>
-          {/* Order trend inline */}
-          <div className="mt-3 rounded-2xl p-5"
-            style={{ background: "var(--bg-card)", border: "1px solid var(--border)", boxShadow: "var(--shadow-card)" }}>
-            <p className="text-xs font-semibold mb-3" style={{ color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-              Order Trend — Last 30 Days
-            </p>
-            <AdminOrderTrendChart />
-          </div>
-        </Section>
-
-        {/* ══ SECTION 3: Remittance ══ */}
-        <Section label="Remittance" href="/admin/remittance">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <RemittanceTile
-              label="Pending"
-              count={remittancePendingCount}
-              amount={remittancePending}
-              color="#EF4444"
-              icon={Clock}
-              sub="delivered/RTO not remitted"
-            />
-            <RemittanceTile
-              label="Remitted"
-              count={remittanceDoneCount}
-              amount={remittanceCollected}
-              color="#16A34A"
-              icon={BadgeCheck}
-              sub="settled to sellers"
-            />
-            <div className="rounded-2xl p-5"
-              style={{ background: "var(--bg-card)", border: "1px solid var(--border)", boxShadow: "var(--shadow-card)" }}>
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: "rgba(67,97,238,0.1)" }}>
-                  <Wallet className="w-3.5 h-3.5" style={{ color: "#4361EE" }} />
-                </div>
-                <span className="text-xs font-semibold" style={{ color: "var(--text-secondary)" }}>Supplier Payables</span>
-              </div>
-              <p className="text-2xl font-black mb-0.5" style={{ color: pendingPayablesCount > 0 ? "#4361EE" : "var(--text-primary)" }}>
-                {fmt(pendingPayablesAmount)}
-              </p>
-              <p className="text-xs" style={{ color: "var(--text-muted)" }}>{pendingPayablesCount} invoices pending</p>
-              {pendingPayablesCount > 0 && (
-                <Link href="/admin/supplier-payables"
-                  className="mt-3 flex items-center gap-1 text-xs font-medium"
-                  style={{ color: "#4361EE" }}>
-                  Pay now <ArrowRight className="w-3 h-3" />
-                </Link>
-              )}
-            </div>
-          </div>
-        </Section>
-
-
-        {/* ══ Needs Attention ══ */}
-        {alerts.length > 0 && (
-          <div className="rounded-2xl p-5"
-            style={{ background: "var(--bg-card)", border: "1px solid var(--border)", boxShadow: "var(--shadow-card)" }}>
-            <div className="flex items-center gap-2 mb-3">
-              <AlertTriangle className="w-4 h-4" style={{ color: "#D97706" }} />
-              <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Needs Attention</p>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              {alerts.map((a) => (
-                <Link key={a.href} href={a.href}
-                  className="flex items-center justify-between px-3.5 py-3 rounded-xl group"
-                  style={{ background: a.bg, border: `1px solid ${a.border}` }}>
-                  <span className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>{a.label}</span>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-sm font-bold" style={{ color: a.color }}>{a.value}</span>
-                    <ArrowRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: a.color }} />
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ══ Quick Access ══ */}
-        <div className="rounded-2xl p-5"
-          style={{ background: "var(--bg-card)", border: "1px solid var(--border)", boxShadow: "var(--shadow-card)" }}>
-          <p className="text-sm font-semibold mb-4" style={{ color: "var(--text-primary)" }}>Quick Access</p>
-          <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
-            {[
-              { label: "Orders",       href: "/admin/orders",         icon: ShoppingCart, color: "#4361EE" },
-              { label: "Fulfillment",  href: "/admin/delivery",       icon: Truck,        color: "#8B5CF6" },
-              { label: "Products",     href: "/admin/products",       icon: Package,      color: "#D97706" },
-              { label: "Sellers",      href: "/admin/sellers",        icon: Store,        color: "#EC4899" },
-              { label: "Finance",      href: "/admin/reconciliation", icon: BarChart2,    color: "#16A34A" },
-              { label: "Listings",     href: "/admin/listings",       icon: ListChecks,   color: "#EF4444" },
-              { label: "AI Workforce", href: "/admin/ai-workforce",   icon: Bot,          color: "#8B5CF6" },
-              { label: "Settings",     href: "/admin/config",         icon: Settings,     color: "#6B7280" },
-            ].map(({ label, href, icon: Icon, color }) => (
-              <Link key={href} href={href}
-                className="flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl text-center"
-                style={{ background: "var(--bg-muted)", border: "1px solid var(--border)" }}>
-                <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: `${color}15` }}>
-                  <Icon className="w-4 h-4" style={{ color }} />
-                </div>
-                <span className="text-[11px] font-medium leading-tight" style={{ color: "var(--text-secondary)" }}>{label}</span>
-              </Link>
-            ))}
-          </div>
-        </div>
-
-      </div>
-    </div>
-  );
-}
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function Section({ label, href, children }: { label: string; href: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
-          {label}
-        </p>
-        <Link href={href} className="flex items-center gap-1 text-xs font-medium" style={{ color: "var(--accent)" }}>
-          View all <ArrowRight className="w-3 h-3" />
-        </Link>
+    <section>
+      <div className="flex items-end justify-between gap-3 mb-3">
+        <div><h2 className="text-[15px] font-bold text-[#0C1220]">{title}</h2>{sub && <p className="text-[12px] text-[#9CA3AF] mt-0.5">{sub}</p>}</div>
+        {right}
       </div>
       {children}
-    </div>
+    </section>
   );
 }
 
-function KpiTile({ label, value, sub, color, icon: Icon }: {
-  label: string; value: string; sub: string; color: string; icon: React.ElementType;
-}) {
-  return (
-    <div className="rounded-2xl p-4"
-      style={{ background: "var(--bg-card)", border: "1px solid var(--border)", boxShadow: "var(--shadow-card)" }}>
-      <div className="w-8 h-8 rounded-xl flex items-center justify-center mb-3" style={{ background: `${color}15` }}>
-        <Icon className="w-4 h-4" style={{ color }} />
-      </div>
-      <p className="text-2xl font-black leading-none mb-1" style={{ color: "var(--text-primary)" }}>{value}</p>
-      <p className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>{label}</p>
-      <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>{sub}</p>
-    </div>
-  );
-}
+export default function AdminDashboard() {
+  const { data: session } = useSession();
+  const [days, setDays] = useState(1);
+  const [data, setData] = useState<Data | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
-function MiniStat({ label, value, sub, color }: { label: string; value: number; sub: string; color: string }) {
+  useEffect(() => {
+    setLoading(true);
+    fetch(`/api/admin/dashboard?days=${days}`).then(r => r.json())
+      .then(d => { if (d.needs) { setData(d); setError(false); } else setError(true); })
+      .catch(() => setError(true)).finally(() => setLoading(false));
+  }, [days]);
+
+  const n = data?.needs;
+  const tiles = n ? [
+    { label: "KYC to review", value: n.kyc, href: "/admin/kyc", icon: ShieldCheck },
+    { label: "Listing requests", value: n.listings, href: "/admin/listings", icon: ListChecks },
+    { label: "COD orders being called", value: n.calling, href: "/admin/order-confirmation", icon: PhoneCall },
+    { label: "Confirmed, not shipped", value: n.toShip, href: "/admin/delivery", icon: Truck },
+    { label: "NDR, no action yet", value: n.ndr, href: "/admin/ndr", icon: AlertTriangle },
+    { label: "RTO not received 15d+", value: n.rtoOverdue, href: "/admin/rto", icon: RotateCcw },
+    { label: "Payouts to mark paid", value: n.scheduledPayouts.count, sub: n.scheduledPayouts.count ? inr(n.scheduledPayouts.amount) : undefined, href: "/admin/remittance", icon: BadgeIndianRupee },
+    { label: "Invoices on hold", value: n.invoicesHeld, href: "/admin/invoices", icon: FileWarning },
+    { label: "Sellers with plan overdue", value: n.planOverdue, href: "/admin/plan-billing", icon: CreditCard },
+    { label: "Tickets waiting on you", value: n.supportNeedsReply, href: "/admin/support", icon: LifeBuoy },
+  ] : [];
+  const waiting = tiles.filter(t => t.value > 0);
+  const k = data?.key;
+  const name = session?.user?.name?.split(" ")[0] ?? "";
+
   return (
-    <div className="rounded-xl px-4 py-3 flex items-center justify-between"
-      style={{ background: "var(--bg-muted)", border: "1px solid var(--border)" }}>
+    <div className="px-4 py-5 md:p-8 space-y-7" style={{ background: "var(--bg-page)", minHeight: "100vh" }}>
       <div>
-        <p className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>{label}</p>
-        <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>{sub}</p>
+        <p className="text-[12.5px] font-semibold text-[#9CA3AF]">{new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}</p>
+        <h1 className="text-[24px] font-black text-[#0C1220]">{greeting()}{name ? `, ${name}` : ""}</h1>
       </div>
-      <p className="text-xl font-black" style={{ color }}>{value.toLocaleString()}</p>
-    </div>
-  );
-}
 
-function RemittanceTile({ label, count, amount, color, icon: Icon, sub }: {
-  label: string; count: number; amount: number; color: string; icon: React.ElementType; sub: string;
-}) {
-  return (
-    <div className="rounded-2xl p-5"
-      style={{ background: "var(--bg-card)", border: "1px solid var(--border)", boxShadow: "var(--shadow-card)" }}>
-      <div className="flex items-center gap-2 mb-3">
-        <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: `${color}15` }}>
-          <Icon className="w-3.5 h-3.5" style={{ color }} />
-        </div>
-        <span className="text-xs font-semibold" style={{ color: "var(--text-secondary)" }}>{label}</span>
-      </div>
-      <p className="text-2xl font-black mb-0.5" style={{ color: "var(--text-primary)" }}>
-        {fmt(amount)}
-      </p>
-      <p className="text-xs font-medium" style={{ color }}>{count.toLocaleString()} orders</p>
-      <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>{sub}</p>
+      {error ? <p className="py-24 text-center text-[13px] text-[#B91C1C]">Couldn&apos;t load the dashboard. Refresh to try again.</p>
+        : !data ? <div className="flex items-center justify-center gap-2 py-24 text-[13px] text-[#9CA3AF]"><Loader2 className="w-5 h-5 animate-spin" /> Loading…</div>
+        : (
+        <>
+          <Section title="Needs your attention" sub={waiting.length ? `${waiting.length} things waiting on the team` : undefined}>
+            {waiting.length === 0 ? (
+              <div className="bg-white rounded-xl border border-[#E8EDF6] p-6 flex items-center gap-3 text-[13px] text-[#047857]"><CheckCircle2 className="w-5 h-5" /> Nothing waiting. Every queue is clear.</div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                {waiting.map(t => {
+                  const Icon = t.icon;
+                  return (
+                    <Link key={t.label} href={t.href} className="group bg-white rounded-xl border border-[#E8EDF6] p-4 hover:border-[#C7D2FE] transition-colors">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="w-8 h-8 rounded-lg bg-[#FEF3C7] text-[#B45309] flex items-center justify-center"><Icon className="w-4 h-4" /></span>
+                        <ChevronRight className="w-4 h-4 text-[#C4C9D4] group-hover:text-[#4361EE]" />
+                      </div>
+                      <p className="text-[26px] font-black leading-none tabular-nums text-[#0C1220]">{t.value}</p>
+                      <p className="text-[12px] font-medium text-[#6B7280] mt-1.5">{t.label}</p>
+                      {t.sub && <p className="text-[11px] text-[#9CA3AF]">{t.sub}</p>}
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </Section>
+
+          <Section title="Key numbers" right={
+            <div className="flex items-center gap-1 bg-white rounded-lg border border-[#E8EDF6] p-1">
+              {loading && <Loader2 className="w-3.5 h-3.5 animate-spin text-[#9CA3AF] mx-1" />}
+              {RANGES.map(r => <button key={r.days} onClick={() => setDays(r.days)} className={`px-2.5 py-1 rounded-lg text-[12px] font-semibold ${days === r.days ? "bg-[#E8EDFF] text-[#4361EE]" : "text-[#6B7280] hover:bg-[#F3F6FF]"}`}>{r.label}</button>)}
+            </div>}>
+            {k && (
+              <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+                {[
+                  { l: "Orders", v: k.orders.toLocaleString("en-IN"), c: "#0C1220", s: "By order date" },
+                  { l: "Delivered %", v: k.deliveredPct != null ? `${k.deliveredPct}%` : "—", c: pctColor(k.deliveredPct), s: `${k.delivered} delivered` },
+                  { l: "RTO %", v: k.rtoPct != null ? `${k.rtoPct}%` : "—", c: pctColor(k.rtoPct, true), s: `${k.rto} returned` },
+                  { l: "Delivered GMV", v: inr(k.gmv), c: "#0C1220", s: "Delivered order value" },
+                  { l: "AXQEN earned", v: inr(k.earned), c: "#047857", s: "Commission + packing" },
+                  { l: "Active sellers", v: String(k.activeSellers), c: "#0C1220", s: "With orders in range" },
+                ].map(x => (
+                  <div key={x.l} className="bg-white rounded-xl border border-[#E8EDF6] p-4">
+                    <p className="text-[11.5px] font-semibold text-[#6B7280]">{x.l}</p>
+                    <p className="text-[22px] font-black leading-tight tabular-nums mt-1" style={{ color: x.c }}>{x.v}</p>
+                    <p className="text-[11px] text-[#9CA3AF] mt-0.5">{x.s}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Section>
+
+          <Section title="Orders trend" sub="Last 30 days, all sellers · delivered vs RTO by order date">
+            <div className="bg-white rounded-xl border border-[#E8EDF6] p-5">
+              {data.trend.some(t => t.orders) ? (
+                <ResponsiveContainer width="100%" height={230}>
+                  <BarChart data={data.trend.map(t => ({ ...t, label: new Date(t.day + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short" }) }))} barCategoryGap="22%">
+                    <CartesianGrid strokeDasharray="2 4" stroke="#F3F4F6" vertical={false} />
+                    <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#9CA3AF" }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={24} />
+                    <YAxis tick={{ fontSize: 11, fill: "#9CA3AF" }} axisLine={false} tickLine={false} allowDecimals={false} width={32} />
+                    <Tooltip contentStyle={{ borderRadius: 10, border: "1px solid #E8EDF6", fontSize: 12 }} />
+                    <Bar dataKey="delivered" name="Delivered" stackId="s" fill="#059669" maxBarSize={14} />
+                    <Bar dataKey="rto" name="RTO" stackId="s" fill="#EF4444" radius={[3, 3, 0, 0]} maxBarSize={14} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : <p className="py-10 text-center text-[13px] text-[#9CA3AF]">No orders in the last 30 days.</p>}
+            </div>
+          </Section>
+
+          <div className="grid grid-cols-1 xl:grid-cols-[1.4fr_1fr] gap-5">
+            <Section title="Seller health" sub="Last 30 days · problems first" right={<Link href="/admin/sellers" className="text-[12.5px] font-semibold text-[#4361EE]">All sellers</Link>}>
+              <div className="bg-white rounded-xl border border-[#E8EDF6] overflow-hidden">
+                {data.sellers.length === 0 ? <p className="py-10 text-center text-[13px] text-[#9CA3AF]">No seller orders in the last 30 days.</p> : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[520px] text-[12.5px]">
+                      <thead><tr className="bg-[#FAFBFF] text-left text-[10.5px] font-bold uppercase tracking-wide text-[#9CA3AF]">
+                        <th className="px-4 py-2.5">Seller</th><th className="px-3 py-2.5 text-right">Orders</th><th className="px-3 py-2.5 text-right">Delivered</th><th className="px-3 py-2.5 text-right">RTO</th><th className="px-3 py-2.5">Last order</th>
+                      </tr></thead>
+                      <tbody className="divide-y divide-[#F3F4F6]">
+                        {data.sellers.map(s => (
+                          <tr key={s.id} className="hover:bg-[#FAFBFF]">
+                            <td className="px-4 py-2.5">
+                              <Link href={`/admin/sellers/${s.id}`} className="font-semibold text-[#0C1220] hover:text-[#4361EE]">{s.name}</Link>
+                              {s.flags.map(f => <span key={f} className="ml-1.5 text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-[#FEE2E2] text-[#B91C1C]">{f}</span>)}
+                            </td>
+                            <td className="px-3 py-2.5 text-right tabular-nums font-semibold">{s.orders}</td>
+                            <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: pctColor(s.deliveredPct) }}>{s.deliveredPct != null ? `${s.deliveredPct}%` : "—"}</td>
+                            <td className="px-3 py-2.5 text-right tabular-nums" style={{ color: pctColor(s.rtoPct, true) }}>{s.rtoPct != null ? `${s.rtoPct}%` : "—"}</td>
+                            <td className="px-3 py-2.5 text-[#6B7280] whitespace-nowrap">{s.lastOrder ? new Date(s.lastOrder).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </Section>
+
+            <Section title="Top products" sub="Last 30 days, by orders" right={<Link href="/admin/products" className="text-[12.5px] font-semibold text-[#4361EE]">All products</Link>}>
+              <div className="bg-white rounded-xl border border-[#E8EDF6] divide-y divide-[#F3F4F6]">
+                {data.products.length === 0 ? <p className="py-10 text-center text-[13px] text-[#9CA3AF]">No product orders matched yet.</p> : data.products.map(p => (
+                  <div key={p.id} className="flex items-center gap-3 px-4 py-3">
+                    <div className="w-10 h-10 rounded-lg bg-[#F3F4F6] overflow-hidden flex-shrink-0">{p.image ? <img src={p.image} alt="" className="w-full h-full object-cover" /> : <Package className="w-4 h-4 m-3 text-[#D1D5DB]" />}</div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[13px] font-semibold text-[#0C1220] truncate">{p.name}</p>
+                      <p className="text-[11.5px] text-[#9CA3AF]">{p.orders} orders · {inr(p.deliveredValue)} delivered</p>
+                    </div>
+                    <div className="text-right text-[12px] tabular-nums">
+                      <p style={{ color: pctColor(p.deliveredPct) }} className="font-semibold">{p.deliveredPct != null ? `${p.deliveredPct}%` : "—"} <span className="text-[#9CA3AF] font-normal">del.</span></p>
+                      <p style={{ color: pctColor(p.rtoPct, true) }} className="font-semibold">{p.rtoPct != null ? `${p.rtoPct}%` : "—"} <span className="text-[#9CA3AF] font-normal">RTO</span></p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          </div>
+
+          <PincodeRtoCard endpoint="/api/admin/pincode-rto" allSellers />
+
+          <Section title="Money">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <Link href="/admin/remittance" className="group bg-white rounded-xl border border-[#E8EDF6] p-5 hover:border-[#C7D2FE]">
+                <p className="text-[12px] font-semibold text-[#6B7280] uppercase tracking-wide flex items-center justify-between">To pay sellers <ChevronRight className="w-4 h-4 text-[#C4C9D4] group-hover:text-[#4361EE]" /></p>
+                <p className="text-[26px] font-black tabular-nums text-[#0C1220] mt-2">{inr(data.money.toPay)}</p>
+                <p className="text-[12px] text-[#9CA3AF] mt-1">{inr(data.money.scheduled)} scheduled · {inr(data.money.awaiting)} delivered, not remitted yet</p>
+              </Link>
+              <Link href="/admin/plan-billing" className="group bg-white rounded-xl border border-[#E8EDF6] p-5 hover:border-[#C7D2FE]">
+                <p className="text-[12px] font-semibold text-[#6B7280] uppercase tracking-wide flex items-center justify-between">To collect from sellers <ChevronRight className="w-4 h-4 text-[#C4C9D4] group-hover:text-[#4361EE]" /></p>
+                <p className="text-[26px] font-black tabular-nums mt-2" style={{ color: data.money.toCollect ? "#B91C1C" : "#0C1220" }}>{inr(data.money.toCollect)}</p>
+                <p className="text-[12px] text-[#9CA3AF] mt-1">Plan dues pending, with GST</p>
+              </Link>
+              <Link href="/admin/analytics" className="group bg-white rounded-xl border border-[#E8EDF6] p-5 hover:border-[#C7D2FE]">
+                <p className="text-[12px] font-semibold text-[#6B7280] uppercase tracking-wide flex items-center justify-between">Earned this month <ChevronRight className="w-4 h-4 text-[#C4C9D4] group-hover:text-[#4361EE]" /></p>
+                <p className="text-[26px] font-black tabular-nums text-[#047857] mt-2">{inr(data.money.earnedThisMonth)}</p>
+                <p className="text-[12px] text-[#9CA3AF] mt-1">Commission, packing and plan payments</p>
+              </Link>
+            </div>
+          </Section>
+        </>
+      )}
     </div>
   );
 }

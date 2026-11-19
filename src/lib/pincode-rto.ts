@@ -22,14 +22,15 @@ type Addr = { pincode?: string; zip?: string; city?: string; state?: string; pro
  * RTO stats per delivery pincode for ONE seller, over completed orders only
  * (DELIVERED or RTO). Read-only.
  */
-export async function pincodeRto(sellerId: string, opts: { days: number | null; dataStartDate: Date | null; level?: AreaLevel }) {
+/** sellerId null = across all sellers (admin only). */
+export async function pincodeRto(sellerId: string | null, opts: { days: number | null; dataStartDate: Date | null; level?: AreaLevel }) {
   const level: AreaLevel = opts.level ?? "pincode";
   const min = MIN_ORDERS[level];
   const since = opts.days ? new Date(Date.now() - opts.days * 86400000) : null;
   const from = since && opts.dataStartDate ? (since > opts.dataStartDate ? since : opts.dataStartDate) : since ?? opts.dataStartDate;
 
   const orders = await prisma.order.findMany({
-    where: { sellerId, status: { in: ["DELIVERED", "RTO"] }, ...(from ? { createdAt: { gte: from } } : {}) },
+    where: { ...(sellerId ? { sellerId } : {}), status: { in: ["DELIVERED", "RTO"] }, ...(from ? { createdAt: { gte: from } } : {}) },
     select: { status: true, customerAddress: true, productCost: true, rtoCharge: true, packingCharge: true },
     orderBy: { createdAt: "desc" },
     take: 25000,

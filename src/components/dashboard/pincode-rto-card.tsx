@@ -21,7 +21,7 @@ function pctTone(p: number) {
   return { bg: "#DCFCE7", fg: "#047857" };
 }
 
-export function PincodeRtoCard({ endpoint = "/api/seller/pincode-rto" }: { endpoint?: string } = {}) {
+export function PincodeRtoCard({ endpoint = "/api/seller/pincode-rto", allSellers = false }: { endpoint?: string; allSellers?: boolean } = {}) {
   const [days, setDays] = useState<number | null>(90);
   const [tab, setTab] = useState<"worst" | "best">("worst");
   const [level, setLevel] = useState<AreaLevel>("pincode");
@@ -46,8 +46,8 @@ export function PincodeRtoCard({ endpoint = "/api/seller/pincode-rto" }: { endpo
         <div>
           <h2 className="text-[15px] font-bold text-[#0C1220] flex items-center gap-2"><MapPin className="w-4 h-4 text-[#4361EE]" /> RTO by area</h2>
           <p className="text-[12px] text-[#9CA3AF] mt-0.5">
-            From your delivered and returned orders
-            {data?.overallPct != null && <> · your overall RTO is <b className="text-[#374151]">{data.overallPct}%</b></>}
+            {allSellers ? "All sellers’ delivered and returned orders" : "From your delivered and returned orders"}
+            {data?.overallPct != null && <> · {allSellers ? "overall" : "your overall"} RTO is <b className="text-[#374151]">{data.overallPct}%</b></>}
           </p>
         </div>
         <div className="flex items-center gap-1">

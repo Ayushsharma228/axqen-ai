@@ -213,6 +213,7 @@ export default function AdminOrdersPage() {
     const sp = new URLSearchParams(window.location.search);
     const s = sp.get("seller"); if (s) setSellerFilter(s);
     const q = sp.get("search"); if (q) { setSearch(q); setSearchInput(q); }
+    const o = sp.get("order"); if (o) setDrawerId(o);
   }, []);
   const [statusFilter, setStatusFilter]   = useState("");
   const [sourceFilter, setSourceFilter]   = useState("");

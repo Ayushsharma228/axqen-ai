@@ -74,15 +74,12 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ user }, { status: 201 });
 }
 
+// Hard-deleting a user also deletes everything linked to it (a seller's orders, wallet, invoices, tickets),
+// so it's switched off. Team access is removed from Admin → Team & Roles instead.
 export async function DELETE(req: NextRequest) {
   const session = await getRouteSession(req);
   if (!session || session.user.role !== "ADMIN") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-
-  const { id } = await req.json();
-  if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
-
-  await prisma.user.delete({ where: { id } });
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ error: "Deleting accounts is switched off. Remove a team member's access from Team & Roles, or suspend a seller from their page." }, { status: 405 });
 }

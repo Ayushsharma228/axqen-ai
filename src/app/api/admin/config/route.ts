@@ -3,6 +3,7 @@ import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 
 const DEFAULTS: Record<string, { value: string; label: string; description: string; unit: string; type?: "number" | "string" }> = {
+  PLATFORM_FEE:             { value: "20",             label: "Commission per delivered order", description: "AXQEN commission on every delivered order, invoiced to sellers at month end. Used in seller profit and platform analytics.", unit: "₹" },
   COMMISSION_RATE:          { value: "5",              label: "Commission Rate",            description: "Platform commission charged on every order (% of selling price)", unit: "%" },
   GST_ON_FEES_RATE:         { value: "18",             label: "GST on Fees",                description: "GST applied on platform commission", unit: "%" },
   DEFAULT_SHIPPING_CHARGE:  { value: "50",             label: "Default Shipping Charge",    description: "Shipping charge deducted when order has no explicit value", unit: "₹" },

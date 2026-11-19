@@ -1,189 +1,142 @@
 ﻿"use client";
 
-import { useState, useEffect } from "react";
-import { Settings, RefreshCw, CheckCircle2, AlertTriangle } from "lucide-react";
-import { PageHero } from "@/components/layout/page-hero";
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { Loader2, CheckCircle2, AlertTriangle, Check, ExternalLink, Clock, FileText } from "lucide-react";
 
-interface Config {
-  key: string; value: string; label: string;
-  description: string; unit: string; isDefault: boolean; type?: string;
-}
+interface Config { key: string; value: string; label: string; description: string; unit: string; type: "number" | "string"; isDefault: boolean }
+interface Integration { group: string; name: string; ok: boolean; missing: string[]; detail: string; href: string | null }
+interface Job { path: string; schedule: string; what: string }
 
-export default function AdminConfigPage() {
-  const [configs, setConfigs] = useState<Config[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [edits,   setEdits]   = useState<Record<string, string>>({});
-  const [saving,  setSaving]  = useState<string | null>(null);
-  const [saved,   setSaved]   = useState<string | null>(null);
-  const [error,   setError]   = useState<string | null>(null);
+// Settings the current flows use. Older keys (commission %, GST on fees, platform charge, Arya, AiSensy) stay stored but aren't shown.
+const SHOWN = ["PLATFORM_FEE", "DEFAULT_SHIPPING_CHARGE", "REMITTANCE_DAYS"];
 
-  async function load() {
-    setLoading(true);
-    const r = await fetch("/api/admin/config");
-    if (r.ok) {
-      const { configs: data } = await r.json();
-      setConfigs(data);
-      setEdits(Object.fromEntries(data.map((c: Config) => [c.key, c.value])));
-    }
-    setLoading(false);
-  }
+export default function IntegrationsConfigPage() {
+  const [configs, setConfigs] = useState<Config[] | null>(null);
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState<string | null>(null);
+  const [saved, setSaved] = useState<string | null>(null);
+  const [err, setErr] = useState<{ key: string; text: string } | null>(null);
+  const [ints, setInts] = useState<{ integrations: Integration[]; jobs: Job[] } | null>(null);
 
-  useEffect(() => { load(); }, []);
+  const loadConfig = useCallback(() => fetch("/api/admin/config").then(r => r.json()).then(d => setConfigs((d.configs ?? []).filter((c: Config) => SHOWN.includes(c.key)).sort((a: Config, b: Config) => SHOWN.indexOf(a.key) - SHOWN.indexOf(b.key)))), []);
+  useEffect(() => {
+    loadConfig();
+    fetch("/api/admin/config/integrations").then(r => r.json()).then(d => { if (d.integrations) setInts(d); });
+  }, [loadConfig]);
 
-  async function save(key: string) {
-    setSaving(key); setError(null); setSaved(null);
-    const r = await fetch("/api/admin/config", {
-      method:  "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ key, value: edits[key] }),
-    });
-    const json = await r.json();
-    if (!r.ok) { setError(json.error ?? "Failed to save"); setSaving(null); return; }
+  async function save(c: Config) {
+    const value = draft[c.key];
+    if (value == null || value === c.value) return;
+    setSaving(c.key); setErr(null);
+    const res = await fetch("/api/admin/config", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: c.key, value }) });
+    const d = await res.json().catch(() => ({}));
     setSaving(null);
-    setSaved(key);
-    setConfigs((prev) => prev.map((c) => c.key === key ? { ...c, value: edits[key], isDefault: false } : c));
-    setTimeout(() => setSaved(null), 2500);
+    if (!res.ok) { setErr({ key: c.key, text: d.error ?? "Couldn't save" }); return; }
+    setDraft(x => { const y = { ...x }; delete y[c.key]; return y; });
+    setSaved(c.key); setTimeout(() => setSaved(s => (s === c.key ? null : s)), 1800);
+    loadConfig();
   }
 
-  const isDirty = (c: Config) => edits[c.key] !== c.value;
+  const groups = ints ? [...new Set(ints.integrations.map(i => i.group))] : [];
+  const problems = ints?.integrations.filter(i => !i.ok).length ?? 0;
 
   return (
-    <div className="min-h-screen" style={{ background: "var(--bg-page)" }}>
-      <PageHero
-        title="Platform Config"
-        subtitle="Live-edit commission rates, fees, and remittance settings"
-        cards={
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {[
-              { label: "Commission Rate",   value: configs.find(c => c.key === "COMMISSION_RATE")?.value   ?? "5",  unit: "%" },
-              { label: "GST on Fees",       value: configs.find(c => c.key === "GST_ON_FEES_RATE")?.value  ?? "18", unit: "%" },
-              { label: "Remittance Days",   value: configs.find(c => c.key === "REMITTANCE_DAYS")?.value   ?? "7",  unit: "days" },
-            ].map(({ label, value, unit }) => (
-              <div key={label} className="rounded-2xl px-5 py-4"
-                style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
-                <p className="text-xs font-medium uppercase tracking-wide mb-1"
-                  style={{ color: "var(--text-muted)" }}>{label}</p>
-                <p className="text-2xl font-bold" style={{ color: "#16A34A" }}>
-                  {value}<span className="text-sm font-normal ml-1" style={{ color: "var(--text-secondary)" }}>{unit}</span>
-                </p>
+    <div className="px-4 py-5 md:p-8 space-y-5 max-w-5xl" style={{ background: "var(--bg-page)", minHeight: "100vh" }}>
+      <div>
+        <h1 className="text-[22px] font-black text-[#0C1220]">Integrations &amp; Config</h1>
+        <p className="text-[12.5px] text-[#6B7280] mt-1">Platform charges your team can change, and which outside services AXQEN is connected to.</p>
+      </div>
+
+      <section className="bg-white rounded-xl border border-[#E8EDF6] p-5 space-y-4">
+        <div>
+          <h2 className="text-[15px] font-bold text-[#0C1220]">Charges</h2>
+          <p className="text-[12px] text-[#9CA3AF] mt-0.5">Changes apply to new calculations straight away. Invoices and remittances already made don&apos;t change.</p>
+        </div>
+        {!configs ? <p className="py-6 text-[13px] text-[#9CA3AF] flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Loading…</p> : (
+          <div className="divide-y divide-[#F3F4F6]">
+            {configs.map(c => (
+              <div key={c.key} className="py-3.5 flex items-center gap-4 flex-wrap">
+                <div className="flex-1 min-w-[240px]">
+                  <label htmlFor={`cfg-${c.key}`} className="text-[13px] font-semibold text-[#0C1220]">{c.label}</label>
+                  <p className="text-[12px] text-[#6B7280] mt-0.5">{c.description}</p>
+                  {err?.key === c.key && <p className="text-[11.5px] text-[#B91C1C] mt-0.5">{err.text}</p>}
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center rounded-lg border border-[#E8EDF6] focus-within:border-[#4361EE] overflow-hidden">
+                    {c.unit === "₹" && <span className="px-2.5 text-[13px] text-[#6B7280] bg-[#FAFBFF] self-stretch flex items-center border-r border-[#E8EDF6]">₹</span>}
+                    <input id={`cfg-${c.key}`} inputMode="decimal" value={draft[c.key] ?? c.value} onChange={e => setDraft(x => ({ ...x, [c.key]: e.target.value }))}
+                      onKeyDown={e => { if (e.key === "Enter") save(c); }} className="w-[90px] px-2.5 py-2 text-[13px] text-right tabular-nums outline-none" />
+                    {c.unit && c.unit !== "₹" && <span className="px-2.5 text-[12.5px] text-[#6B7280] bg-[#FAFBFF] self-stretch flex items-center border-l border-[#E8EDF6]">{c.unit}</span>}
+                  </div>
+                  <button onClick={() => save(c)} disabled={saving === c.key || draft[c.key] == null || draft[c.key] === c.value}
+                    className="w-[72px] flex items-center justify-center gap-1 px-3 py-2 rounded-lg text-[12.5px] font-bold text-white bg-[#4361EE] disabled:opacity-30">
+                    {saving === c.key ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : saved === c.key ? <><Check className="w-3.5 h-3.5" /> Saved</> : "Save"}
+                  </button>
+                </div>
+              </div>
+            ))}
+            <div className="py-3.5 flex items-center gap-4 flex-wrap">
+              <div className="flex-1 min-w-[240px]">
+                <p className="text-[13px] font-semibold text-[#0C1220]">Packing per order, invoice details and numbering</p>
+                <p className="text-[12px] text-[#6B7280] mt-0.5">Set in Invoice settings. Remittance uses the same packing amount.</p>
+              </div>
+              <Link href="/admin/invoices/settings" className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12.5px] font-semibold border border-[#E8EDF6] text-[#374151] hover:border-[#C7D2FE]"><FileText className="w-3.5 h-3.5" /> Invoice settings</Link>
+            </div>
+            <div className="py-3.5 flex items-center gap-4 flex-wrap">
+              <div className="flex-1 min-w-[240px]">
+                <p className="text-[13px] font-semibold text-[#0C1220]">Product prices, HSN and GST</p>
+                <p className="text-[12px] text-[#6B7280] mt-0.5">Per product, in Invoice pricing or on each product.</p>
+              </div>
+              <Link href="/admin/invoice-pricing" className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12.5px] font-semibold border border-[#E8EDF6] text-[#374151] hover:border-[#C7D2FE]"><FileText className="w-3.5 h-3.5" /> Invoice pricing</Link>
+            </div>
+          </div>
+        )}
+      </section>
+
+      <section className="bg-white rounded-xl border border-[#E8EDF6] p-5 space-y-4">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <h2 className="text-[15px] font-bold text-[#0C1220]">Integrations</h2>
+            <p className="text-[12px] text-[#9CA3AF] mt-0.5">Keys live in Vercel → Settings → Environment Variables. This page only checks whether they&apos;re set; it never shows them.</p>
+          </div>
+          {ints && <span className={`text-[12px] font-bold px-2.5 py-1 rounded-lg ${problems ? "bg-[#FEF3C7] text-[#B45309]" : "bg-[#DCFCE7] text-[#047857]"}`}>{problems ? `${problems} not set up` : "All set up"}</span>}
+        </div>
+        {!ints ? <p className="py-6 text-[13px] text-[#9CA3AF] flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Checking…</p> : groups.map(g => (
+          <div key={g}>
+            <p className="text-[11px] font-bold uppercase tracking-wide text-[#9CA3AF] mb-1.5">{g}</p>
+            <div className="rounded-lg border border-[#EEF1F8] divide-y divide-[#F3F4F6]">
+              {ints.integrations.filter(i => i.group === g).map(i => (
+                <div key={i.name} className="px-4 py-3 flex items-start gap-3">
+                  {i.ok ? <CheckCircle2 className="w-4 h-4 text-[#059669] mt-0.5 flex-shrink-0" /> : <AlertTriangle className="w-4 h-4 text-[#D97706] mt-0.5 flex-shrink-0" />}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-semibold text-[#0C1220]">{i.name} <span className={`ml-1 text-[11px] font-bold ${i.ok ? "text-[#047857]" : "text-[#B45309]"}`}>{i.ok ? "Connected" : "Not set up"}</span></p>
+                    <p className="text-[12px] text-[#6B7280]">{i.detail}</p>
+                    {i.missing.length > 0 && <p className="text-[11px] text-[#B45309] mt-0.5">Missing in Vercel: <span className="font-mono">{i.missing.join(", ")}</span></p>}
+                  </div>
+                  {i.href && <Link href={i.href} className="text-[12px] font-semibold text-[#4361EE] inline-flex items-center gap-0.5 whitespace-nowrap">Open <ExternalLink className="w-3 h-3" /></Link>}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </section>
+
+      {ints && (
+        <section className="bg-white rounded-xl border border-[#E8EDF6] p-5">
+          <h2 className="text-[15px] font-bold text-[#0C1220]">Scheduled jobs</h2>
+          <p className="text-[12px] text-[#9CA3AF] mt-0.5 mb-3">These run automatically on Vercel.</p>
+          <div className="rounded-lg border border-[#EEF1F8] divide-y divide-[#F3F4F6]">
+            {ints.jobs.map(j => (
+              <div key={j.path} className="px-4 py-2.5 flex items-center gap-3 flex-wrap text-[12.5px]">
+                <Clock className="w-3.5 h-3.5 text-[#9CA3AF] flex-shrink-0" />
+                <span className="flex-1 min-w-[220px] text-[#0C1220]">{j.what}</span>
+                <span className="text-[#6B7280] whitespace-nowrap">{j.schedule}</span>
               </div>
             ))}
           </div>
-        }
-      />
-
-      <div className="px-4 md:px-8 py-6">
-        {loading ? (
-          <div className="py-16 flex justify-center">
-            <RefreshCw className="w-5 h-5 animate-spin" style={{ color: "var(--text-300)" }} />
-          </div>
-        ) : (
-          <div className="space-y-3 max-w-2xl">
-            {error && (
-              <div className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm"
-                style={{ background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA" }}>
-                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-                {error}
-              </div>
-            )}
-
-            {configs.map((c) => {
-              const dirty   = isDirty(c);
-              const isSaved = saved === c.key;
-              const isSaving = saving === c.key;
-
-              return (
-                <div key={c.key} className="card p-5">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <p className="text-sm font-semibold" style={{ color: "var(--text-900)" }}>
-                          {c.label}
-                        </p>
-                        {c.isDefault && (
-                          <span className="px-1.5 py-0.5 rounded text-xs font-medium"
-                            style={{ background: "var(--bg-muted)", color: "var(--text-400)" }}>
-                            default
-                          </span>
-                        )}
-                        {isSaved && (
-                          <span className="flex items-center gap-1 text-xs font-semibold" style={{ color: "#16A34A" }}>
-                            <CheckCircle2 className="w-3.5 h-3.5" /> Saved
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs mb-3" style={{ color: "var(--text-400)" }}>{c.description}</p>
-
-                      <div className="flex items-center gap-3">
-                        <div className="relative flex items-center">
-                          {c.type === "string" ? (
-                            <input
-                              type="text"
-                              value={edits[c.key] ?? c.value}
-                              onChange={(e) => setEdits((prev) => ({ ...prev, [c.key]: e.target.value }))}
-                              className="w-52 text-sm font-mono rounded-xl px-3 py-2 border outline-none"
-                              style={{
-                                background:   "var(--bg-muted)",
-                                color:        "var(--text-900)",
-                                borderColor:  dirty ? "#16A34A" : "var(--border)",
-                                boxShadow:    dirty ? "0 0 0 2px rgba(0,198,122,0.15)" : "none",
-                              }}
-                            />
-                          ) : (
-                            <>
-                              <input
-                                type="number"
-                                min="0"
-                                step="0.1"
-                                value={edits[c.key] ?? c.value}
-                                onChange={(e) => setEdits((prev) => ({ ...prev, [c.key]: e.target.value }))}
-                                className="w-28 text-sm font-bold rounded-xl px-3 py-2 pr-10 border outline-none"
-                                style={{
-                                  background:   "var(--bg-muted)",
-                                  color:        "var(--text-900)",
-                                  borderColor:  dirty ? "#16A34A" : "var(--border)",
-                                  boxShadow:    dirty ? "0 0 0 2px rgba(0,198,122,0.15)" : "none",
-                                }}
-                              />
-                              <span className="absolute right-3 text-xs font-medium pointer-events-none"
-                                style={{ color: "var(--text-400)" }}>
-                                {c.unit}
-                              </span>
-                            </>
-                          )}
-                        </div>
-
-                        <button
-                          onClick={() => save(c.key)}
-                          disabled={!dirty || isSaving}
-                          className="px-4 py-2 rounded-xl text-xs font-semibold text-white transition-all disabled:opacity-40"
-                          style={{ background: dirty ? "#16A34A" : "var(--bg-muted)" }}>
-                          {isSaving ? "Saving…" : "Save"}
-                        </button>
-
-                        {dirty && (
-                          <button
-                            onClick={() => setEdits((prev) => ({ ...prev, [c.key]: c.value }))}
-                            className="text-xs"
-                            style={{ color: "var(--text-400)" }}>
-                            Reset
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    <Settings className="w-4 h-4 flex-shrink-0 mt-1" style={{ color: "var(--text-300)" }} />
-                  </div>
-                </div>
-              );
-            })}
-
-            <p className="text-xs px-1 pt-2" style={{ color: "var(--text-300)" }}>
-              Changes take effect on the next order settled after saving. Existing settlements are not retroactively recalculated.
-            </p>
-          </div>
-        )}
-      </div>
+        </section>
+      )}
     </div>
   );
 }

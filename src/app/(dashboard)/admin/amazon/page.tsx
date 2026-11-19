@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { RefreshCw, Link2, Link2Off, ShoppingCart, Users, AlertCircle, CheckCircle, Loader2, Search } from "lucide-react";
-import { PageHero } from "@/components/layout/page-hero";
+import Link from "next/link";
+import { RefreshCw, Link2, Link2Off, AlertCircle, CheckCircle, Loader2, Search } from "lucide-react";
 import { MARKETPLACE_IDS } from "@/lib/amazon-sp";
 
 interface Account {
@@ -106,205 +106,124 @@ export default function AdminAmazonPage() {
       || a.amazonSellerId?.toLowerCase().includes(q);
   });
 
-  const statCards = [
-    { label: "Connected Sellers", value: accounts.length,                icon: Users,        color: "#4361EE", bg: "#EEF2FF" },
-    { label: "Total Amazon Orders", value: totalOrders,                  icon: ShoppingCart, color: "#16A34A", bg: "#F0FDF4" },
-    { label: "Active Connections", value: accounts.filter(a => a.isActive).length, icon: CheckCircle, color: "#7C3AED", bg: "#F5F3FF" },
+  const stale = (iso?: string | null) => !iso || Date.now() - new Date(iso).getTime() > 24 * 3600000;
+  const input = "w-full px-3 py-2 text-[13px] rounded-lg border border-[#E8EDF6] bg-white outline-none focus:border-[#4361EE]";
+  const label = "block text-[11.5px] font-semibold text-[#374151] mb-1";
+  const staleCount = accounts.filter(a => a.isActive && stale(a.lastSyncAt)).length;
+  const tiles = [
+    { label: "Connected sellers", value: accounts.length, tone: "#0C1220" },
+    { label: "Active connections", value: accounts.filter(a => a.isActive).length, tone: "#047857" },
+    { label: "Amazon orders", value: totalOrders, tone: "#0C1220" },
+    { label: "Not synced in 24h", value: staleCount, tone: staleCount ? "#B45309" : "#0C1220" },
   ];
 
   return (
-    <div className="min-h-screen" style={{ background: "var(--bg-page)" }}>
-      <PageHero
-        title="Amazon Integration"
-        subtitle="Manage seller Amazon SP-API connections and sync orders"
-        searchValue={search}
-        searchPlaceholder="Search sellers..."
-        onSearchChange={setSearch}
-        cards={
-          <div className="grid grid-cols-3 gap-4">
-            {statCards.map((s) => {
-              const Icon = s.icon;
-              return (
-                <div key={s.label} className="rounded-2xl px-5 py-4" style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
-                  <div className="flex items-center justify-between mb-3">
-                    <p className="text-xs font-medium uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>{s.label}</p>
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: s.bg }}>
-                      <Icon className="w-4 h-4" style={{ color: s.color }} />
-                    </div>
-                  </div>
-                  <p className="text-2xl font-bold" style={{ color: "var(--text-primary)" }}>{fmt(s.value)}</p>
-                </div>
-              );
-            })}
-          </div>
-        }
-      />
-
-      <div className="px-4 md:px-8 py-6 space-y-5">
-
-        {/* Alerts */}
-        {error && (
-          <div className="flex items-start gap-3 px-4 py-3 rounded-xl text-sm"
-            style={{ background: "#FEF2F2", border: "1px solid rgba(239,68,68,0.2)", color: "#EF4444" }}>
-            <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" /><span>{error}</span>
-          </div>
-        )}
-        {successMsg && (
-          <div className="flex items-start gap-3 px-4 py-3 rounded-xl text-sm"
-            style={{ background: "#F0FDF4", border: "1px solid rgba(22,163,74,0.2)", color: "#16A34A" }}>
-            <CheckCircle className="w-4 h-4 mt-0.5 flex-shrink-0" /><span>{successMsg}</span>
-          </div>
-        )}
-
-        {/* Action bar */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            onClick={() => handleSync("all")}
-            disabled={syncing !== null}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
-            style={{ background: "var(--accent)" }}>
-            <RefreshCw className={`w-4 h-4 ${syncing === "all" ? "animate-spin" : ""}`} />
-            {syncing === "all" ? "Syncing All..." : `Sync All (${accounts.length})`}
+    <div className="px-4 py-5 md:p-8 space-y-5" style={{ background: "var(--bg-page)", minHeight: "100vh" }}>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-[22px] font-black text-[#0C1220]">Amazon</h1>
+          <p className="text-[12.5px] text-[#6B7280] mt-1">Sellers&apos; Amazon Seller Central connections. Orders sync automatically; sync here to pull them now.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowConnectForm(p => !p)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12.5px] font-semibold border border-[#E8EDF6] bg-white text-[#374151] hover:border-[#C7D2FE]">
+            <Link2 className="w-3.5 h-3.5" /> Connect for a seller
           </button>
-          <button
-            onClick={() => setShowConnectForm((p) => !p)}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium"
-            style={{ background: "var(--bg-card)", color: "var(--text-primary)", border: "1px solid var(--border)" }}>
-            <Link2 className="w-4 h-4" />
-            Connect for Seller
+          <button onClick={() => handleSync("all")} disabled={syncing !== null || accounts.length === 0} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12.5px] font-bold text-white bg-[#4361EE] disabled:opacity-50">
+            <RefreshCw className={`w-3.5 h-3.5 ${syncing === "all" ? "animate-spin" : ""}`} /> {syncing === "all" ? "Syncing all…" : "Sync all"}
           </button>
         </div>
+      </div>
 
-        {/* Connect-on-behalf form */}
-        {showConnectForm && (
-          <form onSubmit={handleConnectForSeller} className="rounded-2xl p-5 space-y-4"
-            style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
-            <p className="font-semibold text-sm" style={{ color: "var(--text-primary)" }}>Connect Amazon for a Seller</p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-secondary)" }}>Seller Email</label>
-                <input value={targetEmail} onChange={(e) => setTargetEmail(e.target.value)}
-                  placeholder="seller@example.com" className="w-full px-3 py-2 text-sm rounded-xl outline-none"
-                  style={{ background: "var(--bg-muted)", border: "1px solid var(--border)", color: "var(--text-primary)" }} />
-              </div>
-              <div>
-                <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-secondary)" }}>Marketplace</label>
-                <select value={mpCountry} onChange={(e) => setMpCountry(e.target.value)}
-                  className="w-full px-3 py-2 text-sm rounded-xl outline-none"
-                  style={{ background: "var(--bg-muted)", border: "1px solid var(--border)", color: "var(--text-primary)" }}>
-                  {Object.entries(MARKETPLACE_IDS).map(([code, mp]) => (
-                    <option key={code} value={code}>{mp.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-secondary)" }}>Amazon Seller ID</label>
-                <input value={sellerIdInput} onChange={(e) => setSellerIdInput(e.target.value)}
-                  placeholder="A1B2C3..." className="w-full px-3 py-2 text-sm rounded-xl outline-none"
-                  style={{ background: "var(--bg-muted)", border: "1px solid var(--border)", color: "var(--text-primary)" }} />
-              </div>
-              <div>
-                <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-secondary)" }}>LWA Refresh Token</label>
-                <input value={rtInput} onChange={(e) => setRtInput(e.target.value)}
-                  placeholder="Atzr|..." type="password" className="w-full px-3 py-2 text-sm rounded-xl outline-none"
-                  style={{ background: "var(--bg-muted)", border: "1px solid var(--border)", color: "var(--text-primary)" }} />
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button type="submit" disabled={connecting}
-                className="px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
-                style={{ background: "var(--accent)" }}>
-                {connecting ? "Connecting..." : "Connect"}
-              </button>
-              <button type="button" onClick={() => setShowConnectForm(false)}
-                className="px-4 py-2 rounded-xl text-sm" style={{ color: "var(--text-muted)" }}>
-                Cancel
-              </button>
-            </div>
-          </form>
-        )}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {tiles.map(t => (
+          <div key={t.label} className="bg-white rounded-xl border border-[#E8EDF6] p-4">
+            <p className="text-[11.5px] font-semibold text-[#6B7280]">{t.label}</p>
+            <p className="text-[26px] font-black leading-tight tabular-nums mt-1" style={{ color: t.tone }}>{fmt(t.value)}</p>
+          </div>
+        ))}
+      </div>
 
-        {/* Connected sellers table */}
-        <div className="rounded-2xl overflow-hidden" style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
-          {loading ? (
-            <div className="p-8 flex items-center justify-center gap-2 text-sm" style={{ color: "var(--text-muted)" }}>
-              <Loader2 className="w-5 h-5 animate-spin" style={{ color: "var(--accent)" }} /> Loading...
+      {error && <div className="flex items-start gap-2 px-4 py-2.5 rounded-xl text-[13px] bg-[#FEF2F2] text-[#B91C1C]"><AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />{error}</div>}
+      {successMsg && <div className="flex items-start gap-2 px-4 py-2.5 rounded-xl text-[13px] bg-[#ECFDF5] text-[#047857]"><CheckCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />{successMsg}</div>}
+
+      {showConnectForm && (
+        <form onSubmit={handleConnectForSeller} className="bg-white rounded-xl border border-[#C7D2FE] p-5 space-y-3">
+          <div>
+            <p className="text-[14px] font-bold text-[#0C1220]">Connect Amazon for a seller</p>
+            <p className="text-[12px] text-[#6B7280]">Use this when the seller authorised AXQEN in Seller Central and shared their Seller ID and refresh token with your team.</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div><label htmlFor="az-email" className={label}>Seller&apos;s AXQEN email</label><input id="az-email" type="email" required value={targetEmail} onChange={e => setTargetEmail(e.target.value)} placeholder="seller@example.com" className={input} /></div>
+            <div><label htmlFor="az-mp" className={label}>Marketplace</label>
+              <select id="az-mp" value={mpCountry} onChange={e => setMpCountry(e.target.value)} className={input}>
+                {Object.entries(MARKETPLACE_IDS).map(([code, mp]) => <option key={code} value={code}>{mp.name}</option>)}
+              </select>
             </div>
-          ) : filtered.length === 0 ? (
-            <div className="py-16 flex flex-col items-center gap-3">
-              <Link2 className="w-10 h-10" style={{ color: "var(--border)" }} />
-              <p className="text-sm font-medium" style={{ color: "var(--text-muted)" }}>
-                {accounts.length === 0 ? "No sellers have connected Amazon yet" : "No results for that search"}
-              </p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr style={{ borderBottom: "1px solid var(--border)", background: "var(--bg-muted)" }}>
-                    {["Seller", "Amazon ID", "Marketplace", "Orders", "Last Sync", "Connected", ""].map((h) => (
-                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide"
-                        style={{ color: "var(--text-muted)" }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y" style={{ borderColor: "var(--border)" }}>
-                  {filtered.map((acc) => (
-                    <tr key={acc.id} className="hover:bg-gray-50/50 transition-colors">
-                      <td className="px-4 py-3">
-                        <p className="font-medium text-xs" style={{ color: "var(--text-primary)" }}>
-                          {acc.brandName ?? acc.sellerName ?? "—"}
-                        </p>
-                        <p className="text-xs" style={{ color: "var(--text-muted)" }}>{acc.sellerEmail}</p>
+            <div><label htmlFor="az-sid" className={label}>Amazon Seller ID</label><input id="az-sid" required value={sellerIdInput} onChange={e => setSellerIdInput(e.target.value)} placeholder="A1B2C3…" className={`${input} font-mono`} /></div>
+            <div><label htmlFor="az-rt" className={label}>LWA refresh token</label><input id="az-rt" required type="password" autoComplete="off" value={rtInput} onChange={e => setRtInput(e.target.value)} placeholder="Atzr|…" className={`${input} font-mono`} /></div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button type="submit" disabled={connecting} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-[13px] font-bold text-white bg-[#4361EE] disabled:opacity-50">{connecting && <Loader2 className="w-4 h-4 animate-spin" />} Connect</button>
+            <button type="button" onClick={() => setShowConnectForm(false)} className="px-4 py-2 rounded-lg text-[13px] text-[#6B7280]">Cancel</button>
+          </div>
+        </form>
+      )}
+
+      <div className="bg-white rounded-xl border border-[#E8EDF6] overflow-hidden">
+        <div className="flex items-center gap-2 px-4 py-3 bg-[#FAFBFF] border-b border-[#F3F4F6]">
+          <div className="relative flex-1 min-w-[200px] md:max-w-[300px]">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#9CA3AF]" />
+            <input id="az-search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Seller, brand or Amazon ID" className="pl-8 pr-3 py-2 text-[13px] rounded-lg border border-[#E8EDF6] bg-white outline-none focus:border-[#4361EE] w-full" />
+          </div>
+          <span className="text-[12px] text-[#9CA3AF] ml-auto">{filtered.length} connections</span>
+        </div>
+        {loading ? (
+          <div className="py-16 flex items-center justify-center gap-2 text-[13px] text-[#9CA3AF]"><Loader2 className="w-4 h-4 animate-spin" /> Loading…</div>
+        ) : filtered.length === 0 ? (
+          <div className="py-16 flex flex-col items-center gap-2 text-[13px] text-[#9CA3AF]"><Link2 className="w-8 h-8 text-[#D9E0F2]" />{accounts.length === 0 ? "No seller has connected Amazon yet." : "No results for that search."}</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[860px] text-[12.5px]">
+              <thead>
+                <tr className="bg-[#FAFBFF] text-left text-[10.5px] font-bold uppercase tracking-wide text-[#9CA3AF]">
+                  <th className="px-4 py-2.5">Seller</th><th className="px-3 py-2.5">Amazon Seller ID</th><th className="px-3 py-2.5">Marketplace</th>
+                  <th className="px-3 py-2.5 text-right">Orders</th><th className="px-3 py-2.5">Last sync</th><th className="px-3 py-2.5">Connected</th><th className="px-3 py-2.5 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#F3F4F6]">
+                {filtered.map(acc => {
+                  const old = acc.isActive && stale(acc.lastSyncAt);
+                  return (
+                    <tr key={acc.id} className="hover:bg-[#FAFBFF]">
+                      <td className="px-4 py-2.5">
+                        <Link href={`/admin/sellers/${acc.sellerId}`} className="block font-semibold text-[#0C1220] hover:text-[#4361EE]">{acc.brandName ?? acc.sellerName ?? "—"}</Link>
+                        <span className="block text-[11px] text-[#9CA3AF]">{acc.sellerEmail}</span>
                       </td>
-                      <td className="px-4 py-3">
-                        <code className="text-xs px-2 py-0.5 rounded-lg font-mono"
-                          style={{ background: "var(--bg-muted)", color: "var(--text-secondary)" }}>
-                          {acc.amazonSellerId ?? "—"}
-                        </code>
+                      <td className="px-3 py-2.5 font-mono text-[#374151]">{acc.amazonSellerId ?? "—"}</td>
+                      <td className="px-3 py-2.5 text-[#374151]">{MARKETPLACE_IDS[acc.marketplaceCountry ?? ""]?.name ?? acc.marketplaceCountry ?? "—"}</td>
+                      <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-[#0C1220]">{fmt(acc.orderCount)}</td>
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        <span className={old ? "text-[#B45309] font-semibold" : "text-[#374151]"}>
+                          {acc.lastSyncAt ? new Date(acc.lastSyncAt).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }) : "Never"}
+                        </span>
+                        {!acc.isActive && <span className="block text-[11px] text-[#B91C1C]">Inactive</span>}
                       </td>
-                      <td className="px-4 py-3 text-xs" style={{ color: "var(--text-secondary)" }}>
-                        {MARKETPLACE_IDS[acc.marketplaceCountry ?? ""]?.name ?? acc.marketplaceCountry ?? "—"}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>{fmt(acc.orderCount)}</span>
-                      </td>
-                      <td className="px-4 py-3 text-xs" style={{ color: "var(--text-muted)" }}>
-                        {acc.lastSyncAt
-                          ? new Date(acc.lastSyncAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) +
-                            " " + new Date(acc.lastSyncAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })
-                          : "Never"}
-                      </td>
-                      <td className="px-4 py-3 text-xs" style={{ color: "var(--text-muted)" }}>
-                        {acc.connectedAt ? new Date(acc.connectedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—"}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            onClick={() => handleSync(acc.sellerId)}
-                            disabled={syncing !== null}
-                            title="Sync orders"
-                            className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors disabled:opacity-40"
-                            style={{ background: "rgba(67,97,238,0.1)", color: "var(--accent)" }}>
-                            <RefreshCw className={`w-3.5 h-3.5 ${syncing === acc.sellerId ? "animate-spin" : ""}`} />
+                      <td className="px-3 py-2.5 text-[#6B7280] whitespace-nowrap">{acc.connectedAt ? new Date(acc.connectedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—"}</td>
+                      <td className="px-3 py-2.5">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button onClick={() => handleSync(acc.sellerId)} disabled={syncing !== null} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11.5px] font-bold bg-[#E8EDFF] text-[#4361EE] disabled:opacity-40">
+                            <RefreshCw className={`w-3 h-3 ${syncing === acc.sellerId ? "animate-spin" : ""}`} /> Sync
                           </button>
-                          <button
-                            onClick={() => handleDisconnect(acc.sellerId, acc.sellerName)}
-                            title="Disconnect"
-                            className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
-                            style={{ background: "#FEF2F2", color: "#EF4444" }}>
-                            <Link2Off className="w-3.5 h-3.5" />
-                          </button>
+                          <button onClick={() => handleDisconnect(acc.sellerId, acc.sellerName)} aria-label="Disconnect" title="Disconnect" className="p-1.5 rounded-lg text-[#9CA3AF] hover:bg-[#FEF2F2] hover:text-[#B91C1C]"><Link2Off className="w-3.5 h-3.5" /></button>
                         </div>
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

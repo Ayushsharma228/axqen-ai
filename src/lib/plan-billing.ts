@@ -9,6 +9,10 @@ import { PLAN_PRICES_INR } from "@/lib/plan-pricing";
 export const RENEWAL_MONTHS = 3;
 const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
+/** Plan prices are before GST; the seller pays price + 18% GST. Stored amountDue is the price before GST. */
+export const PLAN_GST_RATE = 18;
+export const withGst = (base: number) => r2(base * (1 + PLAN_GST_RATE / 100));
+
 export function planPrice(plan: string | null | undefined, tier: string | null | undefined): number | null {
   if (plan !== "DROPSHIPPING" && plan !== "MARKETPLACE") return null;
   const t = (tier ?? "STARTER").toUpperCase() as keyof (typeof PLAN_PRICES_INR)["DROPSHIPPING"];
@@ -24,7 +28,9 @@ export function addMonths(d: Date, months: number) {
 export interface PeriodView {
   id: string; periodNo: number; plan: string; tier: string | null;
   startDate: string; endDate: string | null; dueDate: string | null; note: string | null;
-  amountDue: number; paid: number; pending: number;
+  amountDue: number;   // payable, GST included
+  base: number; gst: number; // plan price before GST, and the GST on it
+  paid: number; pending: number;
   status: "PAID" | "PARTLY_PAID" | "UNPAID" | "OVERDUE" | "UPCOMING";
   payments: { id: string; amount: number; paidAt: string; transactionId: string | null; mode: string; note: string | null }[];
 }
@@ -51,7 +57,8 @@ export async function getBilling(sellerId: string): Promise<Billing> {
   const views: PeriodView[] = periods.map(p => {
     const pays = payments.filter(x => x.periodId === p.id);
     const paid = r2(pays.reduce((s, x) => s + x.amount, 0));
-    const pending = r2(Math.max(0, p.amountDue - paid));
+    const gross = withGst(p.amountDue);
+    const pending = r2(Math.max(0, gross - paid));
     const started = p.startDate <= now;
     const status: PeriodView["status"] = pending <= 0 ? "PAID"
       : !started ? "UPCOMING"
@@ -61,7 +68,7 @@ export async function getBilling(sellerId: string): Promise<Billing> {
       id: p.id, periodNo: p.periodNo, plan: p.plan, tier: p.tier,
       startDate: p.startDate.toISOString(), endDate: p.endDate?.toISOString() ?? null,
       dueDate: p.dueDate?.toISOString() ?? null, note: p.note,
-      amountDue: p.amountDue, paid, pending, status,
+      amountDue: gross, base: p.amountDue, gst: r2(gross - p.amountDue), paid, pending, status,
       payments: pays.map(x => ({ id: x.id, amount: x.amount, paidAt: x.paidAt.toISOString(), transactionId: x.transactionId, mode: x.mode, note: x.note })),
     };
   });
@@ -176,8 +183,9 @@ const PLAN_LABEL = (plan: string | null | undefined, tier: string | null | undef
   !plan ? "No plan" : plan === "MARKETPLACE" ? "Marketplace" : `Dropshipping ${(tier ?? "STARTER")[0]}${(tier ?? "STARTER").slice(1).toLowerCase()}`;
 
 /**
- * Change a seller's plan/tier. If billing has started, the new plan is billed in full as a new
- * period from `startDate` (earlier periods and payments are left as they are).
+ * Change a seller's plan/tier. The current bill is converted to the new plan at its full price and
+ * everything already paid on it is adjusted against it, so the seller sees one plan with what's pending.
+ * `startDate` is used only when moving to Marketplace (its 3-month cycle starts then).
  */
 export async function changePlan(sellerId: string, plan: string, tier: string | null, startDate: Date, by?: string) {
   if (plan !== "DROPSHIPPING" && plan !== "MARKETPLACE") throw new Error("Pick Dropshipping or Marketplace");
@@ -191,19 +199,51 @@ export async function changePlan(sellerId: string, plan: string, tier: string | 
 
   const amount = planPrice(plan, t);
   if (amount == null) throw new Error("No price is set for this plan");
-  const last = await prisma.planPeriod.findFirst({ where: { sellerId }, orderBy: { periodNo: "desc" }, select: { periodNo: true } });
+  const last = await prisma.planPeriod.findFirst({ where: { sellerId }, orderBy: { periodNo: "desc" } });
   const note = `Plan changed from ${PLAN_LABEL(seller.plan, seller.planTier)} to ${PLAN_LABEL(plan, t)}`;
 
   return prisma.$transaction(async tx => {
     await tx.user.update({ where: { id: sellerId }, data: { plan: plan as "DROPSHIPPING" | "MARKETPLACE", planTier: t } });
     if (!last) return { billed: false, amount: 0, note };
-    await tx.planPeriod.create({
+    const start = plan === "MARKETPLACE" ? startDate : last.startDate;
+    await tx.planPeriod.update({
+      where: { id: last.id },
       data: {
-        sellerId, plan, tier: t, periodNo: last.periodNo + 1, startDate,
-        endDate: plan === "MARKETPLACE" ? addMonths(startDate, RENEWAL_MONTHS) : null,
-        amountDue: amount, note, createdById: by ?? null,
+        plan, tier: t, amountDue: amount, startDate: start,
+        endDate: plan === "MARKETPLACE" ? addMonths(start, RENEWAL_MONTHS) : null,
+        note: [last.note, note].filter(Boolean).join(" · "),
       },
     });
     return { billed: true, amount, note };
   });
+}
+
+/**
+ * One-time repair for plan changes made before the adjust-in-place rule: an unpaid "Plan changed" bill
+ * sitting after an older bill is folded into that older bill (payments stay where they are).
+ */
+export async function mergeSplitPlanChange(sellerId: string) {
+  const periods = await prisma.planPeriod.findMany({ where: { sellerId }, orderBy: { periodNo: "asc" } });
+  const paidCount = await prisma.planPayment.groupBy({ by: ["periodId"], where: { sellerId }, _count: { id: true } });
+  const hasPay = new Set(paidCount.map(p => p.periodId));
+  let merged = 0;
+  for (let i = 1; i < periods.length; i++) {
+    const p = periods[i], prev = periods[i - 1];
+    if (!p.note?.startsWith("Plan changed") || hasPay.has(p.id)) continue;
+    await prisma.$transaction([
+      prisma.planPeriod.update({
+        where: { id: prev.id },
+        data: {
+          plan: p.plan, tier: p.tier, amountDue: p.amountDue,
+          startDate: p.plan === "MARKETPLACE" ? p.startDate : prev.startDate,
+          endDate: p.plan === "MARKETPLACE" ? p.endDate : null,
+          note: [prev.note, p.note].filter(Boolean).join(" · "),
+        },
+      }),
+      prisma.planPeriod.delete({ where: { id: p.id } }),
+    ]);
+    merged++;
+    break; // one per call; periods shift after a merge
+  }
+  return { merged };
 }

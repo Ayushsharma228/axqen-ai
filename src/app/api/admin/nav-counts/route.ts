@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { RTO_RECEIVED, RTO_OVERDUE_DAYS } from "@/lib/rto";
+import { withGst } from "@/lib/plan-billing";
 
 // Small read-only counts for the admin sidebar badges.
 export async function GET(req: NextRequest) {
@@ -40,7 +41,7 @@ export async function GET(req: NextRequest) {
       by: ["periodId"], where: { periodId: { in: duePeriods.map(p => p.id) } }, _sum: { amount: true },
     });
     const paidBy = new Map(paid.map(p => [p.periodId, p._sum.amount ?? 0]));
-    plan = new Set(duePeriods.filter(p => p.amountDue - (paidBy.get(p.id) ?? 0) > 0.5).map(p => p.sellerId)).size;
+    plan = new Set(duePeriods.filter(p => withGst(p.amountDue) - (paidBy.get(p.id) ?? 0) > 0.5).map(p => p.sellerId)).size;
   }
 
   return NextResponse.json({ kyc, plan, calling, ndr, rto, listings, invoices, support });

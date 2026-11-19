@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { addMonths, changePlan, getBilling, RENEWAL_MONTHS, startPlanBilling } from "@/lib/plan-billing";
+import { addMonths, changePlan, getBilling, mergeSplitPlanChange, RENEWAL_MONTHS, startPlanBilling } from "@/lib/plan-billing";
 
 async function admin(req: NextRequest) {
   const s = await getRouteSession(req);
@@ -48,7 +48,8 @@ export async function GET(req: NextRequest) {
 //  { action: "recordPayment", periodId, amount, paidAt, transactionId?, mode, note? }
 //  { action: "deletePayment", paymentId }
 //  { action: "release", holdId, releaseRef }
-//  { action: "changePlan", sellerId, plan, tier?, startDate }   → full price of the new plan as a new period
+//  { action: "changePlan", sellerId, plan, tier?, startDate }   → current bill becomes the new plan; paid amount is adjusted
+//  { action: "mergePlanChange", sellerId }                      → repair an old split plan change into one bill
 export async function POST(req: NextRequest) {
   const session = await admin(req);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -66,6 +67,10 @@ export async function POST(req: NextRequest) {
         const startDate = date(b.startDate);
         if (!startDate) throw new Error("Pick the date the new plan starts");
         const r = await changePlan(String(b.sellerId ?? ""), String(b.plan ?? ""), b.tier ? String(b.tier) : null, startDate, session.user.id);
+        return NextResponse.json({ ok: true, ...r });
+      }
+      case "mergePlanChange": {
+        const r = await mergeSplitPlanChange(String(b.sellerId ?? ""));
         return NextResponse.json({ ok: true, ...r });
       }
       case "setDueDate": {

@@ -5,7 +5,7 @@ import { Loader2, X, Plus, Trash2, Lock, Unlock, AlertTriangle, CalendarClock, P
 
 interface Period {
   id: string; periodNo: number; plan: string; tier: string | null; startDate: string; endDate: string | null; dueDate: string | null; note: string | null;
-  amountDue: number; paid: number; pending: number; status: string;
+  amountDue: number; base: number; gst: number; paid: number; pending: number; status: string;
   payments: { id: string; amount: number; paidAt: string; transactionId: string | null; mode: string; note: string | null }[];
 }
 interface Billing {
@@ -14,6 +14,10 @@ interface Billing {
 }
 
 const inr = (n: number) => "₹" + Math.round(n).toLocaleString("en-IN");
+// Plan prices are before GST; the seller pays price + 18% GST
+const GST_RATE = 18;
+const gstOn = (base: number) => Math.round(base * GST_RATE) / 100;
+const inr2 = (n: number) => "₹" + n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtD = (d: string) => new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 const toInput = (d: string | null) => (d ? new Date(new Date(d).getTime() + 5.5 * 3600000).toISOString().slice(0, 10) : "");
 const today = () => toInput(new Date().toISOString());
@@ -61,7 +65,18 @@ export function PlanBillingDrawer({ sellerId, onClose, onChanged }: { sellerId: 
           <div className="p-5 space-y-4">
             {err && <p className="text-[12.5px] text-[#B91C1C] bg-[#FEF2F2] rounded-lg px-3 py-2">{err}</p>}
 
+            {b.periods.some(p => p.periodNo > 1 && p.note?.startsWith("Plan changed") && p.payments.length === 0) && (
+              <div className="bg-[#FFFBEB] border border-[#FDE68A] rounded-xl p-4 space-y-2">
+                <p className="text-[13px] font-bold text-[#92400E]">The plan change was added as a separate bill</p>
+                <p className="text-[12.5px] text-[#92400E]">Merge it into one plan so the new plan&apos;s price replaces the old one and what&apos;s already paid is adjusted against it.</p>
+                <button onClick={() => act({ action: "mergePlanChange", sellerId }, "merge")} disabled={busy === "merge"}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12.5px] font-bold text-white bg-[#D97706] disabled:opacity-60">
+                  {busy === "merge" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null} Merge into one plan
+                </button>
+              </div>
+            )}
             <ChangePlan current={{ plan: data.seller.plan, tier: data.seller.planTier }} started={b.periods.length > 0} busy={busy === "plan"}
+              paidOnCurrent={b.periods.length ? b.periods[b.periods.length - 1].paid : 0}
               onSubmit={(plan, tier, startDate) => act({ action: "changePlan", sellerId, plan, tier, startDate }, "plan")} />
 
             {b.periods.length === 0 ? (
@@ -83,6 +98,7 @@ export function PlanBillingDrawer({ sellerId, onClose, onChanged }: { sellerId: 
                     <div key={String(l)} className="bg-white rounded-lg border border-[#E8EDF6] px-3 py-2.5">
                       <p className="text-[10.5px] font-semibold uppercase tracking-wide text-[#9CA3AF]">{l}</p>
                       <p className="text-[17px] font-black tabular-nums" style={{ color: String(c) }}>{inr(Number(v))}</p>
+                      {String(l) === "Due" && Number(v) > 0 && <p className="text-[10.5px] text-[#9CA3AF] tabular-nums">incl. GST {inr2(b.periods.filter(x => x.status !== "UPCOMING").reduce((n, x) => n + x.gst, 0))}</p>}
                     </div>
                   ))}
                 </div>
@@ -123,7 +139,8 @@ export function PlanBillingDrawer({ sellerId, onClose, onChanged }: { sellerId: 
                     <div key={p.id} className="bg-white rounded-xl border border-[#E8EDF6] p-4 space-y-3">
                       <div className="flex items-start justify-between gap-2 flex-wrap">
                         <div>
-                          <p className="text-[13.5px] font-bold text-[#0C1220]">{p.plan === "MARKETPLACE" ? `Period ${p.periodNo}` : "One-time plan"} · {inr(p.amountDue)}</p>
+                          <p className="text-[13.5px] font-bold text-[#0C1220]">{p.plan === "MARKETPLACE" ? `Period ${p.periodNo}` : "One-time plan"} · {inr2(p.amountDue)} <span className="text-[11px] font-medium text-[#9CA3AF]">with GST</span></p>
+                          <p className="text-[11.5px] text-[#6B7280]">{planName(p.plan, p.tier)} · {inr2(p.base)} + {inr2(p.gst)} GST ({GST_RATE}%)</p>
                           <p className="text-[11.5px] text-[#6B7280]">{fmtD(p.startDate)}{p.endDate ? ` to ${fmtD(p.endDate)}` : ""} · paid {inr(p.paid)} · pending {inr(p.pending)}</p>
                         </div>
                         <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full" style={{ background: p.status === "PAID" ? "#ECFDF5" : p.status === "OVERDUE" ? "#FEF2F2" : "#F3F4F6", color: p.status === "PAID" ? "#047857" : p.status === "OVERDUE" ? "#DC2626" : "#6B7280" }}>{p.status.replace("_", " ")}</span>
@@ -187,8 +204,8 @@ export function PlanBillingDrawer({ sellerId, onClose, onChanged }: { sellerId: 
 
 const PRICES: Record<string, number> = { "DROPSHIPPING:STARTER": 9999, "DROPSHIPPING:GROWTH": 19999, "DROPSHIPPING:SCALE": 39999, "MARKETPLACE:STARTER": 8999 };
 
-function ChangePlan({ current, started, busy, onSubmit }: {
-  current: { plan: string | null; tier: string | null }; started: boolean; busy: boolean;
+function ChangePlan({ current, started, busy, paidOnCurrent, onSubmit }: {
+  current: { plan: string | null; tier: string | null }; started: boolean; busy: boolean; paidOnCurrent: number;
   onSubmit: (plan: string, tier: string, startDate: string) => Promise<boolean>;
 }) {
   const [open, setOpen] = useState(false);
@@ -226,15 +243,23 @@ function ChangePlan({ current, started, busy, onSubmit }: {
             <option value="STARTER">Starter</option><option value="GROWTH">Growth</option><option value="SCALE">Scale</option>
           </select>
         </label>
-        <label className="text-[11.5px] font-semibold text-[#374151]">Starts on
-          <input id="cp-start" type="date" className={`${input} w-full mt-1`} value={start} onChange={e => setStart(e.target.value)} />
-        </label>
+        {plan === "MARKETPLACE" && (
+          <label className="text-[11.5px] font-semibold text-[#374151]">3-month cycle starts
+            <input id="cp-start" type="date" className={`${input} w-full mt-1`} value={start} onChange={e => setStart(e.target.value)} />
+          </label>
+        )}
       </div>
-      <p className="text-[12px] text-[#6B7280]">
-        {same ? "The seller is already on this plan." : started
-          ? <>A new bill of <b className="text-[#0C1220]">{price ? inr(price) : "—"}</b> (full price of {planName(plan, t)}{plan === "MARKETPLACE" ? ", renews every 3 months" : ""}) is added from this date. Earlier bills and payments stay as they are.</>
-          : <>Billing hasn&apos;t started yet, so only the plan changes. {planName(plan, t)} will be billed when you start billing.</>}
-      </p>
+      {same ? <p className="text-[12px] text-[#6B7280]">The seller is already on this plan.</p> : !started ? (
+        <p className="text-[12px] text-[#6B7280]">Billing hasn&apos;t started yet, so only the plan changes. {planName(plan, t)} will be billed when you start billing.</p>
+      ) : price ? (
+        <div className="rounded-lg bg-[#FAFBFF] border border-[#EEF1F8] px-3 py-2.5 text-[12.5px] space-y-1 tabular-nums">
+          <div className="flex justify-between"><span className="text-[#6B7280]">{planName(plan, t)}</span><span className="text-[#0C1220]">{inr2(price)}</span></div>
+          <div className="flex justify-between"><span className="text-[#6B7280]">GST {GST_RATE}%</span><span className="text-[#0C1220]">{inr2(gstOn(price))}</span></div>
+          <div className="flex justify-between"><span className="font-semibold text-[#0C1220]">Total</span><span className="font-semibold text-[#0C1220]">{inr2(price + gstOn(price))}</span></div>
+          <div className="flex justify-between"><span className="text-[#6B7280]">Already paid, adjusted</span><span className="text-[#047857]">− {inr(paidOnCurrent)}</span></div>
+          <div className="flex justify-between border-t border-[#E8EDF6] pt-1"><span className="font-semibold text-[#0C1220]">Pending after change</span><span className="font-black text-[#B91C1C]">{inr2(Math.max(0, price + gstOn(price) - paidOnCurrent))}</span></div>
+        </div>
+      ) : null}
       <button disabled={same || busy} onClick={async () => { if (await onSubmit(plan, t, start)) setOpen(false); }}
         className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12.5px] font-bold text-white bg-[#4361EE] disabled:opacity-50">
         {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ArrowUpDown className="w-3.5 h-3.5" />} Change to {planName(plan, t)}

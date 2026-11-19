@@ -1,12 +1,10 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import Link from "next/link";
-import { ShoppingCart, Trash2, Plus, X, Loader2, CalendarDays, CheckCircle2, XCircle, UserCheck, Download, ChevronLeft, ChevronRight, ExternalLink, Pencil, Truck, Printer } from "lucide-react";
-import { PageHero } from "@/components/layout/page-hero";
+import { Plus, X, Loader2, CalendarDays, CheckCircle2, Download, ChevronLeft, ChevronRight, Pencil, Truck, Printer, Search } from "lucide-react";
+import { OrderDrawer, STATUS_TONE } from "@/components/admin/order-drawer";
 
 interface Seller   { id: string; name: string | null; email: string; }
-interface Supplier { id: string; name: string | null; email: string; }
 const SOURCES = ["SHOPIFY", "AMAZON", "FLIPKART", "MEESHO", "EBAY", "ETSY", "WALMART", "OTHER"] as const;
 
 interface Order {
@@ -14,8 +12,6 @@ interface Order {
   externalOrderId: string;
   source: string;
   status: string;
-  supplierStatus: string | null;
-  supplierId: string | null;
   awbNumber: string | null;
   courier?: string | null;
   paymentMode?: string;
@@ -24,124 +20,10 @@ interface Order {
   totalAmount: number;
   createdAt: string;
   seller:   { id: string; name: string | null; email: string };
-  supplier: { id: string; name: string | null; email: string } | null;
   items: { name: string; quantity: number }[];
 }
 
-const STATUS_COLOR: Record<string, string> = {
-  NEW:        "bg-gray-100 text-gray-600",
-  PROCESSING: "bg-purple-50 text-purple-600",
-  SHIPPED:    "bg-blue-50 text-blue-600",
-  IN_TRANSIT: "bg-yellow-50 text-yellow-600",
-  DELIVERED:  "bg-green-50 text-green-600",
-  CANCELLED:  "bg-red-50 text-red-600",
-  RTO:        "bg-orange-50 text-orange-600",
-};
-
 const STATUSES = ["NEW", "PROCESSING", "SHIPPED", "IN_TRANSIT", "DELIVERED", "CANCELLED", "RTO"];
-
-// ── Assign Supplier Modal ─────────────────────────────────────────────────
-
-function AssignSupplierModal({ order, suppliers, onClose, onSaved }: {
-  order: Order;
-  suppliers: Supplier[];
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const [supplierId, setSupplierId]         = useState("");
-  const [dispatchDate, setDispatchDate]     = useState("");
-  const [deliveryDate, setDeliveryDate]     = useState("");
-  const [notes, setNotes]                   = useState("");
-  const [saving, setSaving]                 = useState(false);
-  const [error, setError]                   = useState("");
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!supplierId) { setError("Please select a supplier"); return; }
-    setSaving(true); setError("");
-    const res = await fetch(`/api/admin/orders/${order.id}/assign-supplier`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        supplierId,
-        expectedDispatchDate: dispatchDate || undefined,
-        expectedDeliveryDate: deliveryDate || undefined,
-        notes: notes || undefined,
-      }),
-    });
-    const data = await res.json();
-    if (!res.ok) { setError(data.error || "Failed to assign supplier"); setSaving(false); return; }
-    onSaved();
-    onClose();
-  }
-
-  const activeSuppliers = suppliers.filter((s) => s.id !== order.supplierId);
-
-  return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
-        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-          <div>
-            <h2 className="font-bold text-gray-900">Assign Supplier</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Order #{order.externalOrderId} · {order.customerName ?? "—"}</p>
-          </div>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg">
-            <X className="w-5 h-5 text-gray-500" />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          {error && (
-            <div className="px-4 py-3 rounded-xl text-sm bg-red-50 text-red-600 border border-red-100">{error}</div>
-          )}
-
-          <div>
-            <label className="block text-xs font-semibold text-gray-500 mb-1.5">Supplier *</label>
-            <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)} required
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-400">
-              <option value="">Select supplier...</option>
-              {activeSuppliers.map((s) => (
-                <option key={s.id} value={s.id}>{s.name || s.email}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1.5">Expected Dispatch</label>
-              <input type="date" value={dispatchDate} onChange={(e) => setDispatchDate(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-400" />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1.5">Expected Delivery</label>
-              <input type="date" value={deliveryDate} onChange={(e) => setDeliveryDate(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-400" />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-gray-500 mb-1.5">Notes (optional)</label>
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
-              placeholder="Instructions or notes for the supplier..."
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-400 resize-none" />
-          </div>
-
-          <div className="flex gap-3 pt-1">
-            <button type="button" onClick={onClose}
-              className="flex-1 px-4 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50">
-              Cancel
-            </button>
-            <button type="submit" disabled={saving}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-white rounded-xl disabled:opacity-50"
-              style={{ background: "#16A34A" }}>
-              {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Assigning...</> : <><UserCheck className="w-4 h-4" /> Assign & Create PO</>}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
 
 // ── Enter AWB Modal ──────────────────────────────────────────────────────────
 
@@ -492,16 +374,24 @@ function AddOrderModal({ sellers, onClose, onSaved }: {
 
 // ── Main Page ─────────────────────────────────────────────────────────────
 
+const TABS: { key: string; label: string }[] = [
+  { key: "", label: "All" }, { key: "NEW", label: "New" }, { key: "PROCESSING", label: "Processing" },
+  { key: "SHIPPED", label: "Shipped" }, { key: "IN_TRANSIT", label: "In transit" }, { key: "DELIVERED", label: "Delivered" },
+  { key: "RTO", label: "RTO" }, { key: "CANCELLED", label: "Cancelled" },
+];
+const fmtDate = (s: string) => new Date(s).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+const fmtTime = (s: string) => new Date(s).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
+
 export default function AdminOrdersPage() {
   const [sellers, setSellers]             = useState<Seller[]>([]);
-  const [suppliers, setSuppliers]         = useState<Supplier[]>([]);
   const [orders, setOrders]               = useState<Order[]>([]);
   const [totalOrders, setTotalOrders]     = useState(0);
   const [page, setPage]                   = useState(1);
   const [totalPages, setTotalPages]       = useState(1);
-  const [counts, setCounts]               = useState({ new: 0, shipped: 0, cancelled: 0, total: 0 });
+  const [counts, setCounts]               = useState<Record<string, number>>({});
   const PAGE_LIMIT = 50;
   const [loading, setLoading]             = useState(true);
+  const [searchInput, setSearchInput]     = useState("");
   const [search, setSearch]               = useState("");
   const [sellerFilter, setSellerFilter]   = useState("");
   // Opened from a seller page: /admin/orders?seller=<id>
@@ -510,197 +400,106 @@ export default function AdminOrdersPage() {
   const [sourceFilter, setSourceFilter]   = useState("");
   const [dateFrom, setDateFrom]           = useState("");
   const [dateTo, setDateTo]               = useState("");
-  const [dateInputs, setDateInputs]       = useState<Record<string, string>>({});
-  const [quickActing, setQuickActing]       = useState<string | null>(null);
-  const [selected, setSelected]             = useState<Set<string>>(new Set());
-  const [deleting, setDeleting]             = useState(false);
+  const [selected, setSelected]           = useState<Set<string>>(new Set());
   const [bulkConfirming, setBulkConfirming] = useState(false);
-  const [showAddModal, setShowAddModal]     = useState(false);
-  const [assignOrder, setAssignOrder]       = useState<Order | null>(null);
-  const [bulkAssignModal, setBulkAssignModal] = useState(false);
-  const [bulkAssignSupplierId, setBulkAssignSupplierId] = useState("");
-  const [bulkAssigning, setBulkAssigning]   = useState(false);
-  const [bulkDateModal, setBulkDateModal]   = useState(false);
-  const [bulkDate, setBulkDate]             = useState("");
-  const [bulkSaving, setBulkSaving]         = useState(false);
-  const [bulkStatus, setBulkStatus]         = useState("");
-  const [bulkUpdating, setBulkUpdating]     = useState(false);
-  const [editingStatus, setEditingStatus]       = useState<string | null>(null);
-  const [enterAwbOrder, setEnterAwbOrder]       = useState<Order | null>(null);
-  const [shipOrder, setShipOrder]               = useState<Order | null>(null);
+  const [showAddModal, setShowAddModal]   = useState(false);
+  const [bulkDateModal, setBulkDateModal] = useState(false);
+  const [bulkDate, setBulkDate]           = useState("");
+  const [bulkSaving, setBulkSaving]       = useState(false);
+  const [bulkStatus, setBulkStatus]       = useState("");
+  const [bulkUpdating, setBulkUpdating]   = useState(false);
+  const [enterAwbOrder, setEnterAwbOrder] = useState<Order | null>(null);
+  const [shipOrder, setShipOrder]         = useState<Order | null>(null);
+  const [drawerId, setDrawerId]           = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/admin/sellers").then((r) => r.json()).then((d) => setSellers(d.sellers ?? []));
-    fetch("/api/admin/users?role=SUPPLIER").then((r) => r.json()).then((d) => setSuppliers(d.users ?? []));
   }, []);
 
-  const fetchCounts = useCallback(async () => {
-    const base = new URLSearchParams();
-    if (sellerFilter) base.set("sellerId", sellerFilter);
-    base.set("limit", "1");
-    const [n, sh, it, c, all] = await Promise.all([
-      fetch(`/api/admin/orders?${base}&status=NEW`).then(r => r.json()),
-      fetch(`/api/admin/orders?${base}&status=SHIPPED`).then(r => r.json()),
-      fetch(`/api/admin/orders?${base}&status=IN_TRANSIT`).then(r => r.json()),
-      fetch(`/api/admin/orders?${base}&status=CANCELLED`).then(r => r.json()),
-      fetch(`/api/admin/orders?${base}`).then(r => r.json()),
-    ]);
-    setCounts({ new: n.total ?? 0, shipped: (sh.total ?? 0) + (it.total ?? 0), cancelled: c.total ?? 0, total: all.total ?? 0 });
-  }, [sellerFilter]);
+  const filterParams = useCallback(() => {
+    const p = new URLSearchParams();
+    if (search)       p.set("search",   search);
+    if (sellerFilter) p.set("sellerId", sellerFilter);
+    if (sourceFilter) p.set("source",   sourceFilter);
+    if (dateFrom)     p.set("dateFrom", dateFrom);
+    if (dateTo)       p.set("dateTo",   dateTo);
+    return p;
+  }, [search, sellerFilter, sourceFilter, dateFrom, dateTo]);
 
+  const fetchCounts = useCallback(async () => {
+    const d = await fetch(`/api/admin/orders/counts?${filterParams()}`).then(r => r.json()).catch(() => null);
+    if (d?.counts) setCounts(d.counts);
+  }, [filterParams]);
   useEffect(() => { fetchCounts(); }, [fetchCounts]);
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
-    const params = new URLSearchParams();
-    if (search)       params.set("search",   search);
-    if (statusFilter) params.set("status",   statusFilter);
-    if (sellerFilter) params.set("sellerId", sellerFilter);
-    if (sourceFilter) params.set("source",   sourceFilter);
-    if (dateFrom)     params.set("dateFrom", dateFrom);
-    if (dateTo)       params.set("dateTo",   dateTo);
+    const params = filterParams();
+    if (statusFilter) params.set("status", statusFilter);
     params.set("page",  String(page));
     params.set("limit", String(PAGE_LIMIT));
-    const res = await fetch(`/api/admin/orders?${params}`);
-    const data = await res.json();
+    const data = await fetch(`/api/admin/orders?${params}`).then(r => r.json()).catch(() => ({}));
     setOrders(data.orders ?? []);
     setTotalOrders(data.total ?? 0);
     setTotalPages(data.pages ?? 1);
     setLoading(false);
-  }, [search, statusFilter, sellerFilter, sourceFilter, dateFrom, dateTo, page]);
+  }, [filterParams, statusFilter, page]);
 
-  useEffect(() => { setPage(1); }, [search, statusFilter, sellerFilter, sourceFilter, dateFrom, dateTo]);
+  useEffect(() => { setPage(1); setSelected(new Set()); }, [search, statusFilter, sellerFilter, sourceFilter, dateFrom, dateTo]);
   useEffect(() => { fetchOrders(); }, [fetchOrders]);
+  const refresh = async () => { await Promise.all([fetchOrders(), fetchCounts()]); };
 
-  // Quick confirm: NEW → PROCESSING
-  async function handleConfirm(order: Order) {
-    setQuickActing(order.id);
-    await fetch("/api/admin/orders/update-status", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderId: order.id, status: "PROCESSING" }),
+  async function setOrderStatus(orderId: string, status: string) {
+    const res = await fetch("/api/admin/orders/update-status", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ orderId, status }),
     });
-    setQuickActing(null);
-    await fetchOrders();
-  }
-
-  // Quick cancel
-  async function handleCancel(order: Order) {
-    if (!confirm(`Cancel order ${order.externalOrderId}?`)) return;
-    setQuickActing(order.id);
-    await fetch("/api/admin/orders/update-status", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderId: order.id, status: "CANCELLED" }),
-    });
-    setQuickActing(null);
-    await fetchOrders();
+    if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error || "Couldn't update the status"); }
+    await refresh();
   }
 
   // Bulk confirm all selected NEW orders → PROCESSING
   async function handleBulkConfirm() {
     const newOrders = Array.from(selected).filter(id => orders.find(o => o.id === id)?.status === "NEW");
-    if (newOrders.length === 0) { alert("No NEW orders selected"); return; }
+    if (newOrders.length === 0) return;
     setBulkConfirming(true);
     await Promise.all(newOrders.map(orderId =>
       fetch("/api/admin/orders/update-status", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId, status: "PROCESSING" }),
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ orderId, status: "PROCESSING" }),
       })
     ));
     setSelected(new Set());
-    await fetchOrders();
+    await refresh();
     setBulkConfirming(false);
-  }
-
-  // Bulk assign supplier to all selected unassigned orders
-  async function handleBulkAssign() {
-    if (!bulkAssignSupplierId) return;
-    const targets = Array.from(selected).filter(id => {
-      const o = orders.find(o => o.id === id);
-      return o && !o.supplierId && !["DELIVERED", "CANCELLED", "RTO"].includes(o.status);
-    });
-    if (targets.length === 0) { alert("No unassigned orders selected"); return; }
-    setBulkAssigning(true);
-    await Promise.allSettled(targets.map(orderId =>
-      fetch(`/api/admin/orders/${orderId}/assign-supplier`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ supplierId: bulkAssignSupplierId }),
-      })
-    ));
-    setSelected(new Set());
-    setBulkAssignModal(false);
-    setBulkAssignSupplierId("");
-    await fetchOrders();
-    setBulkAssigning(false);
-  }
-
-  async function handleDelete(orderIds: string[]) {
-    if (!confirm(`Delete ${orderIds.length} order${orderIds.length > 1 ? "s" : ""}? This cannot be undone.`)) return;
-    setDeleting(true);
-    const res = await fetch("/api/admin/orders", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderIds }),
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      alert(data.error || "Failed to delete orders. Please try again.");
-      setDeleting(false);
-      return;
-    }
-    setSelected(new Set());
-    await fetchOrders();
-    setDeleting(false);
   }
 
   async function handleBulkDate() {
     if (!bulkDate) return;
     setBulkSaving(true);
     await fetch("/api/admin/orders", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ orderIds: Array.from(selected), orderDate: bulkDate }),
     });
-    setSelected(new Set());
-    setBulkDateModal(false);
-    setBulkDate("");
-    await fetchOrders();
+    setSelected(new Set()); setBulkDateModal(false); setBulkDate("");
+    await refresh();
     setBulkSaving(false);
   }
 
   async function handleBulkStatusUpdate() {
     if (!bulkStatus) return;
-    if (!confirm(`Set ${selected.size} order(s) to ${bulkStatus}?`)) return;
+    if (!confirm(`Set ${selected.size} order(s) to ${STATUS_TONE[bulkStatus]?.label ?? bulkStatus}?`)) return;
     setBulkUpdating(true);
     await fetch("/api/admin/orders/bulk-update-status", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ orderIds: Array.from(selected), status: bulkStatus }),
     });
-    setSelected(new Set());
-    setBulkStatus("");
-    await fetchOrders();
+    setSelected(new Set()); setBulkStatus("");
+    await refresh();
     setBulkUpdating(false);
-  }
-
-  async function handleStatusUpdate(orderId: string, status: string) {
-    await fetch("/api/admin/orders/update-status", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderId, status }),
-    });
-    setEditingStatus(null);
-    await fetchOrders();
   }
 
   async function printLabel(orderId: string) {
     const res = await fetch("/api/admin/shipdaak", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "label", orderId }),
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "label", orderId }),
     });
     const d = await res.json();
     if (!res.ok || !d.labelUrl) { alert(d.error || "Label not available"); return; }
@@ -709,15 +508,13 @@ export default function AdminOrdersPage() {
 
   async function handleSaveAwb(orderId: string, awb: string, courier: string) {
     const res = await fetch("/api/admin/orders/set-awb", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ orderId, awb, courier, status: "SHIPPED" }),
     });
     const data = await res.json();
     if (!res.ok) { alert(data.error || "Failed to save AWB"); return; }
     setEnterAwbOrder(null);
-    await fetchOrders();
-    await fetchCounts();
+    await refresh();
   }
 
   function exportToCSV() {
@@ -732,524 +529,237 @@ export default function AdminOrdersPage() {
   }
 
   function toggleSelect(id: string) {
-    setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    setSelected((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   }
   function toggleAll() {
     setSelected(selected.size === orders.length ? new Set() : new Set(orders.map((o) => o.id)));
   }
 
-  const newSelectedCount          = Array.from(selected).filter(id => orders.find(o => o.id === id)?.status === "NEW").length;
-  const unassignedSelectedCount   = Array.from(selected).filter(id => {
-    const o = orders.find(o => o.id === id);
-    return o && !o.supplierId && !["DELIVERED", "CANCELLED", "RTO"].includes(o.status);
-  }).length;
+  const newSelectedCount = Array.from(selected).filter(id => orders.find(o => o.id === id)?.status === "NEW").length;
+  const drawerOrder = orders.find(o => o.id === drawerId) ?? null;
+  const ctl = "px-2.5 py-2 text-[12.5px] rounded-lg border border-[#E8EDF6] bg-white outline-none focus:border-[#4361EE] text-[#374151]";
+  const chipBtn = "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold disabled:opacity-50";
 
   return (
-    <div className="min-h-screen" style={{ background: "var(--bg-page)" }}>
-      <PageHero
-        title="Orders"
-        subtitle="View, manage, add or delete seller orders"
-        searchValue={search}
-        searchPlaceholder="Search order ID, customer..."
-        onSearchChange={setSearch}
-        onSearchSubmit={fetchOrders}
-        actions={
-          <button onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white"
-            style={{ background: "#16A34A" }}>
-            <Plus className="w-4 h-4" /> Add Order
-          </button>
-        }
-        filters={
-          <div className="flex items-center gap-2 flex-wrap">
-            <select
-              value={sellerFilter}
-              onChange={(e) => setSellerFilter(e.target.value)}
-              className="px-3 py-2 text-sm rounded-xl outline-none" style={{ color: "var(--text-primary)", background: "var(--bg-muted)", border: "1px solid var(--border)" }}>
-              <option value="" className="text-gray-900 bg-white">All Sellers</option>
-              {sellers.map((s) => (
-                <option key={s.id} value={s.id} className="text-gray-900 bg-white">{s.name || s.email}</option>
-              ))}
-            </select>
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-3 py-2 text-sm rounded-xl outline-none" style={{ color: "var(--text-primary)", background: "var(--bg-muted)", border: "1px solid var(--border)" }}>
-              <option value="" className="text-gray-900 bg-white">All Statuses</option>
-              {STATUSES.map((s) => <option key={s} value={s} className="text-gray-900 bg-white">{s}</option>)}
-            </select>
-            <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}
-              className="px-3 py-2 text-sm rounded-xl outline-none" style={{ color: "var(--text-primary)", background: "var(--bg-muted)", border: "1px solid var(--border)" }}>
-              <option value="" className="text-gray-900 bg-white">All Platforms</option>
-              {SOURCES.map((s) => <option key={s} value={s} className="text-gray-900 bg-white">{s}</option>)}
-            </select>
-            <input
-              type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
-              title="From date"
-              className="px-3 py-2 text-sm rounded-xl outline-none"
-              style={{ color: "var(--text-primary)", background: "var(--bg-muted)", border: "1px solid var(--border)", colorScheme: "dark" }}
-            />
-            <input
-              type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
-              title="To date"
-              className="px-3 py-2 text-sm rounded-xl outline-none"
-              style={{ color: "var(--text-primary)", background: "var(--bg-muted)", border: "1px solid var(--border)", colorScheme: "dark" }}
-            />
-            {(dateFrom || dateTo) && (
-              <button
-                onClick={() => { setDateFrom(""); setDateTo(""); }}
-                className="px-2 py-2 text-xs rounded-xl"
-                style={{ background: "rgba(239,68,68,0.2)", color: "#FCA5A5", border: "1px solid rgba(239,68,68,0.3)" }}
-                title="Clear dates">
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-        }
-      />
-
-      <div className="px-4 md:px-8 py-6">
-
-        {/* ── Status cards ── */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-          {[
-            {
-              label: "Pending Orders",
-              value: counts.new,
-              sub: "awaiting confirmation",
-              icon: "🕐",
-              color: "#D97706",
-              bg: "rgba(245,158,11,0.07)",
-              border: "rgba(245,158,11,0.25)",
-              activeFilter: "NEW",
-            },
-            {
-              label: "Shipped Orders",
-              value: counts.shipped,
-              sub: "shipped & in transit",
-              icon: "🚚",
-              color: "#2563EB",
-              bg: "rgba(37,99,235,0.07)",
-              border: "rgba(37,99,235,0.25)",
-              activeFilter: "SHIPPED",
-            },
-            {
-              label: "Cancelled Orders",
-              value: counts.cancelled,
-              sub: "by seller or admin",
-              icon: "✕",
-              color: "#EF4444",
-              bg: "rgba(239,68,68,0.07)",
-              border: "rgba(239,68,68,0.25)",
-              activeFilter: "CANCELLED",
-            },
-          ].map(({ label, value, sub, icon, color, bg, border, activeFilter }) => {
-            const active = statusFilter === activeFilter;
-            return (
-              <button key={label}
-                onClick={() => { setStatusFilter(active ? "" : activeFilter); setPage(1); }}
-                className="rounded-2xl p-5 text-left transition-all group"
-                style={{
-                  background: active ? bg : "var(--bg-card)",
-                  border: `1px solid ${active ? border : "var(--border)"}`,
-                  boxShadow: active ? `0 0 0 3px ${color}18` : "var(--shadow-card)",
-                }}>
-                <div className="flex items-start justify-between mb-3">
-                  <span className="text-xl">{icon}</span>
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
-                    style={{ background: active ? `${color}18` : "var(--bg-muted)", color: active ? color : "var(--text-400)" }}>
-                    {active ? "Filtered" : "Click to filter"}
-                  </span>
-                </div>
-                <p className="text-3xl font-black leading-none mb-1.5"
-                  style={{ color: active ? color : "var(--text-primary)" }}>
-                  {value.toLocaleString()}
-                </p>
-                <p className="text-sm font-semibold" style={{ color: active ? color : "var(--text-secondary)" }}>{label}</p>
-                <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>{sub}</p>
-              </button>
-            );
-          })}
+    <div className="px-4 py-5 md:p-8 space-y-5" style={{ background: "var(--bg-page)", minHeight: "100vh" }}>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-[22px] font-black text-[#0C1220]">Orders</h1>
+          <p className="text-[12.5px] text-[#6B7280] mt-1">Every seller order. Click an order for the full story: items, address, calls, courier scans and actions.</p>
         </div>
-
-        <div className="card overflow-hidden">
-          <div className="px-5 py-3.5 flex items-center justify-between" style={{ borderBottom: "1px solid var(--border)" }}>
-            <div className="flex items-center gap-2">
-              <ShoppingCart className="w-4 h-4" style={{ color: "var(--text-400)" }} />
-              <span className="font-semibold text-sm" style={{ color: "var(--text-900)" }}>
-                Orders ({totalOrders})
-              </span>
-            </div>
-            <button
-              onClick={() => exportToCSV()}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold"
-              style={{ background: "#F0FDF4", color: "#16A34A", border: "1px solid #D1FAE5" }}>
-              <Download className="w-3.5 h-3.5" />
-              {`Export CSV (${totalOrders})`}
-            </button>
-            {selected.size > 0 && (
-              <div className="flex items-center gap-2 flex-wrap">
-                {newSelectedCount > 0 && (
-                  <button
-                    onClick={handleBulkConfirm}
-                    disabled={bulkConfirming}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-50"
-                    style={{ background: "#F0FDF4", color: "#16A34A", border: "1px solid #BBF7D0" }}>
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    {bulkConfirming ? "Confirming..." : `Confirm New (${newSelectedCount})`}
-                  </button>
-                )}
-                {unassignedSelectedCount > 0 && (
-                  <button
-                    onClick={() => { setBulkAssignSupplierId(""); setBulkAssignModal(true); }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold"
-                    style={{ background: "#F0FDF4", color: "#15803D", border: "1px solid #BBF7D0" }}>
-                    <UserCheck className="w-3.5 h-3.5" />
-                    Assign Supplier ({unassignedSelectedCount})
-                  </button>
-                )}
-                <button
-                  onClick={() => { setBulkDate(""); setBulkDateModal(true); }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold"
-                  style={{ background: "#EFF6FF", color: "#1D4ED8", border: "1px solid #BFDBFE" }}>
-                  <CalendarDays className="w-3.5 h-3.5" />
-                  Set Date ({selected.size})
-                </button>
-                <select value={bulkStatus} onChange={e => setBulkStatus(e.target.value)}
-                  className="px-2 py-1.5 rounded-lg text-xs border outline-none"
-                  style={{ borderColor: "var(--border)", color: "var(--text-900)", background: "var(--bg-card)" }}>
-                  <option value="">Set status...</option>
-                  {["PROCESSING","SHIPPED","IN_TRANSIT","DELIVERED","RTO","CANCELLED"].map(s => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
-                {bulkStatus && (
-                  <button onClick={handleBulkStatusUpdate} disabled={bulkUpdating}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-50"
-                    style={{ background: "#F0FDF4", color: "#16A34A", border: "1px solid #BBF7D0" }}>
-                    {bulkUpdating ? "Updating..." : `Apply to ${selected.size}`}
-                  </button>
-                )}
-                <button onClick={() => handleDelete(Array.from(selected))} disabled={deleting}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-50"
-                  style={{ background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA" }}>
-                  <Trash2 className="w-3.5 h-3.5" />
-                  {deleting ? "Deleting..." : `Delete ${selected.size}`}
-                </button>
-              </div>
-            )}
-          </div>
-
-          {loading ? (
-            <div className="py-16 text-center text-gray-400 text-sm flex items-center justify-center gap-2">
-              <Loader2 className="w-4 h-4 animate-spin" /> Loading...
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-100 bg-gray-50/50">
-                    <th className="px-4 py-3 w-10">
-                      <input type="checkbox" checked={selected.size === orders.length && orders.length > 0}
-                        onChange={toggleAll} className="rounded cursor-pointer" />
-                    </th>
-                    {["Order #", "Platform", "Seller", "Customer", "Products", "Amount", "Status", "Supplier", "Date", "Actions"].map((h) => (
-                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {orders.length === 0 ? (
-                    <tr><td colSpan={11} className="py-12 text-center text-gray-400 text-sm">No orders found</td></tr>
-                  ) : orders.map((order) => {
-                    const isSelected = selected.has(order.id);
-                    const isActing   = quickActing === order.id;
-                    const isNew      = order.status === "NEW";
-                    const canAssign  = !order.supplierId && !["DELIVERED", "CANCELLED", "RTO"].includes(order.status);
-                    return (
-                      <tr key={order.id} className={`hover:bg-gray-50/50 transition-colors ${isSelected ? "bg-blue-50/30" : ""}`}>
-                        <td className="px-4 py-3">
-                          <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(order.id)} className="rounded cursor-pointer" />
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <Link href={`/admin/orders/${order.id}`}
-                            className="flex items-center gap-1 font-mono text-xs text-blue-600 hover:underline">
-                            {order.externalOrderId}
-                            <ExternalLink className="w-2.5 h-2.5 opacity-50" />
-                          </Link>
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-600">
-                            {order.source || "OTHER"}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-xs text-gray-600 whitespace-nowrap">{order.seller.name || order.seller.email}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{order.customerName || "—"}</td>
-                        <td className="px-4 py-3 text-xs text-gray-500 max-w-[140px] truncate">
-                          {order.items.map((i) => `${i.name} ×${i.quantity}`).join(", ") || "—"}
-                        </td>
-                        <td className="px-4 py-3 text-sm font-semibold text-gray-800 whitespace-nowrap">₹{order.totalAmount.toLocaleString()}</td>
-                        <td className="px-4 py-3">
-                          {editingStatus === order.id ? (
-                            <select
-                              autoFocus
-                              defaultValue={order.status}
-                              onChange={e => handleStatusUpdate(order.id, e.target.value)}
-                              onBlur={() => setEditingStatus(null)}
-                              className="text-xs px-2 py-1 rounded-lg border border-blue-400 outline-none bg-white text-gray-800 cursor-pointer"
-                            >
-                              {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-                            </select>
-                          ) : (
-                            <button
-                              onClick={() => setEditingStatus(order.id)}
-                              title="Click to edit status"
-                              className={`group flex items-center gap-1 text-xs px-2 py-1 rounded-full font-medium ${STATUS_COLOR[order.status] ?? "bg-gray-100 text-gray-600"} hover:opacity-80`}
-                            >
-                              {order.status}
-                              <Pencil className="w-2.5 h-2.5 opacity-0 group-hover:opacity-60" />
-                            </button>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          {order.supplier ? (
-                            <div>
-                              <p className="text-xs font-medium text-gray-700">{order.supplier.name ?? order.supplier.email}</p>
-                              {order.supplierStatus && (
-                                <p className="text-[10px] mt-0.5 font-medium"
-                                  style={{ color: order.supplierStatus === "DISPATCHED" ? "#15803D" : order.supplierStatus === "REJECTED" ? "#DC2626" : "#D97706" }}>
-                                  {order.supplierStatus.replace(/_/g, " ")}
-                                </p>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-xs text-gray-300">Unassigned</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <input
-                            type="date"
-                            defaultValue={order.createdAt.slice(0, 10)}
-                            max={new Date().toISOString().split("T")[0]}
-                            onChange={(e) => setDateInputs((p) => ({ ...p, [order.id]: e.target.value }))}
-                            className="text-xs text-gray-600 border border-gray-200 rounded-lg px-2 py-1 outline-none focus:ring-1 focus:ring-blue-400"
-                            style={{ width: "8rem" }}
-                          />
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-1 flex-wrap">
-                            {!order.awbNumber && !["CANCELLED", "DELIVERED", "RTO"].includes(order.status) && (
-                              <button
-                                onClick={() => setShipOrder(order)}
-                                title="Book shipment with Shipdaak"
-                                className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold whitespace-nowrap text-white"
-                                style={{ background: "#155EEF" }}>
-                                <Truck className="w-3 h-3" />
-                                Ship
-                              </button>
-                            )}
-                            {order.awbNumber && order.courier?.startsWith("Shipdaak · ") && (
-                              <button
-                                onClick={() => printLabel(order.id)}
-                                title="Print Shipdaak label"
-                                className="p-1.5 rounded-lg hover:bg-gray-100">
-                                <Printer className="w-3.5 h-3.5 text-gray-500" />
-                              </button>
-                            )}
-                            {!order.awbNumber && !["CANCELLED", "DELIVERED", "RTO"].includes(order.status) && (
-                              <button
-                                onClick={() => setEnterAwbOrder(order)}
-                                title="Enter AWB manually"
-                                className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold whitespace-nowrap"
-                                style={{ background: "#EEF2FF", color: "#4338CA", border: "1px solid #C7D2FE" }}>
-                                <Pencil className="w-3 h-3" />
-                                AWB
-                              </button>
-                            )}
-                            {order.awbNumber && (
-                              <span className="text-[10px] font-mono text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
-                                {order.awbNumber}
-                              </span>
-                            )}
-                            {canAssign && (
-                              <button
-                                onClick={() => setAssignOrder(order)}
-                                title="Assign supplier"
-                                className="p-1.5 rounded-lg transition-colors"
-                                style={{ color: "#16A34A", background: "#F0FDF4" }}>
-                                <UserCheck className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                            {isNew && (
-                              <>
-                                <button
-                                  onClick={() => handleConfirm(order)}
-                                  disabled={isActing}
-                                  title="Confirm → Processing"
-                                  className="p-1.5 rounded-lg text-green-500 hover:bg-green-50 disabled:opacity-40 transition-colors">
-                                  {isActing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                                </button>
-                                <button
-                                  onClick={() => handleCancel(order)}
-                                  disabled={isActing}
-                                  title="Cancel order"
-                                  className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 disabled:opacity-40 transition-colors">
-                                  <XCircle className="w-4 h-4" />
-                                </button>
-                              </>
-                            )}
-                            <button
-                              onClick={() => handleDelete([order.id])}
-                              disabled={deleting}
-                              title="Delete order"
-                              className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40">
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="px-5 py-3 flex items-center justify-between" style={{ borderTop: "1px solid var(--border)" }}>
-              <span className="text-xs" style={{ color: "var(--text-400)" }}>
-                Page {page} of {totalPages} · {totalOrders} orders
-              </span>
-              <div className="flex items-center gap-2">
-                <button disabled={page <= 1} onClick={() => setPage(p => p - 1)}
-                  className="p-1.5 rounded-lg disabled:opacity-30 transition-colors hover:bg-gray-100"
-                  style={{ border: "1px solid var(--border)" }}>
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                  const p = Math.max(1, Math.min(totalPages - 4, page - 2)) + i;
-                  return (
-                    <button key={p} onClick={() => setPage(p)}
-                      className="w-7 h-7 rounded-lg text-xs font-semibold"
-                      style={p === page
-                        ? { background: "var(--bg-sidebar)", color: "var(--text-primary)" }
-                        : { color: "var(--text-400)" }}>
-                      {p}
-                    </button>
-                  );
-                })}
-                <button disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}
-                  className="p-1.5 rounded-lg disabled:opacity-30 transition-colors hover:bg-gray-100"
-                  style={{ border: "1px solid var(--border)" }}>
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          )}
+        <div className="flex items-center gap-2">
+          <button onClick={exportToCSV} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12.5px] font-semibold border border-[#E8EDF6] bg-white text-[#374151] hover:border-[#C7D2FE]">
+            <Download className="w-3.5 h-3.5" /> Export CSV
+          </button>
+          <button onClick={() => setShowAddModal(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12.5px] font-bold text-white bg-[#4361EE]">
+            <Plus className="w-3.5 h-3.5" /> Add order
+          </button>
         </div>
       </div>
 
-      {showAddModal && (
-        <AddOrderModal
-          sellers={sellers}
-          onClose={() => setShowAddModal(false)}
-          onSaved={fetchOrders}
-        />
-      )}
+      {/* Status tabs */}
+      <div className="flex items-center gap-1 overflow-x-auto bg-white rounded-xl border border-[#E8EDF6] p-1.5">
+        {TABS.map(t => {
+          const n = counts[t.key || "ALL"] ?? 0;
+          const on = statusFilter === t.key;
+          return (
+            <button key={t.key || "all"} onClick={() => setStatusFilter(t.key)}
+              className={`px-3 py-1.5 rounded-lg text-[12.5px] font-semibold flex items-center gap-1.5 whitespace-nowrap ${on ? "bg-[#E8EDFF] text-[#4361EE]" : "text-[#6B7280] hover:bg-[#F3F6FF]"}`}>
+              {t.label}
+              <span className={`text-[10.5px] px-1.5 rounded-full tabular-nums ${t.key === "NEW" && n ? "bg-[#FEF3C7] text-[#B45309]" : on ? "bg-white text-[#4361EE]" : "bg-[#F3F4F6] text-[#6B7280]"}`}>{n.toLocaleString("en-IN")}</span>
+            </button>
+          );
+        })}
+      </div>
 
-      {assignOrder && (
-        <AssignSupplierModal
-          order={assignOrder}
-          suppliers={suppliers}
-          onClose={() => setAssignOrder(null)}
-          onSaved={fetchOrders}
-        />
-      )}
+      <div className="bg-white rounded-xl border border-[#E8EDF6] overflow-hidden">
+        {/* Filters */}
+        <div className="flex items-center gap-2 flex-wrap px-4 py-3 bg-[#FAFBFF] border-b border-[#F3F4F6]">
+          <form className="relative flex-1 min-w-[200px] md:max-w-[300px]" onSubmit={e => { e.preventDefault(); setSearch(searchInput.trim()); }}>
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#9CA3AF]" />
+            <input id="order-search" value={searchInput} onChange={e => { setSearchInput(e.target.value); if (!e.target.value) setSearch(""); }}
+              placeholder="Order ID, customer, AWB or product" className="pl-8 pr-3 py-2 text-[13px] rounded-lg border border-[#E8EDF6] bg-white outline-none focus:border-[#4361EE] w-full" />
+          </form>
+          <select id="f-seller" aria-label="Seller" value={sellerFilter} onChange={(e) => setSellerFilter(e.target.value)} className={`${ctl} max-w-[200px]`}>
+            <option value="">All sellers</option>
+            {sellers.map((s) => <option key={s.id} value={s.id}>{s.name || s.email}</option>)}
+          </select>
+          <select id="f-source" aria-label="Platform" value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)} className={ctl}>
+            <option value="">All platforms</option>
+            {SOURCES.map((s) => <option key={s} value={s}>{s[0] + s.slice(1).toLowerCase()}</option>)}
+          </select>
+          <input id="f-from" type="date" aria-label="From date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className={ctl} />
+          <span className="text-[12px] text-[#9CA3AF]">to</span>
+          <input id="f-to" type="date" aria-label="To date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className={ctl} />
+          {(dateFrom || dateTo || sellerFilter || sourceFilter || search) && (
+            <button onClick={() => { setDateFrom(""); setDateTo(""); setSellerFilter(""); setSourceFilter(""); setSearch(""); setSearchInput(""); }}
+              className="text-[12px] font-semibold text-[#4361EE] px-2">Clear filters</button>
+          )}
+          <span className="text-[12px] text-[#9CA3AF] ml-auto">{totalOrders.toLocaleString("en-IN")} orders</span>
+        </div>
 
-      {bulkAssignModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="font-bold text-gray-900">Assign Supplier</h3>
-                <p className="text-xs text-gray-400 mt-0.5">Assign {unassignedSelectedCount} order{unassignedSelectedCount !== 1 ? "s" : ""} to a supplier</p>
-              </div>
-              <button onClick={() => setBulkAssignModal(false)} className="p-1 hover:bg-gray-100 rounded-lg">
-                <X className="w-4 h-4 text-gray-400" />
+        {/* Bulk bar */}
+        {selected.size > 0 && (
+          <div className="flex items-center gap-2 flex-wrap px-4 py-2.5 bg-[#EEF2FF] border-b border-[#E0E7FF]">
+            <span className="text-[12.5px] font-semibold text-[#3730A3] mr-1">{selected.size} selected</span>
+            {newSelectedCount > 0 && (
+              <button onClick={handleBulkConfirm} disabled={bulkConfirming} className={`${chipBtn} bg-white text-[#047857] border border-[#BBF7D0]`}>
+                <CheckCircle2 className="w-3.5 h-3.5" /> {bulkConfirming ? "Confirming…" : `Confirm new (${newSelectedCount})`}
               </button>
-            </div>
-            <label className="block text-xs font-semibold text-gray-500 mb-1.5">Supplier</label>
-            <select value={bulkAssignSupplierId} onChange={(e) => setBulkAssignSupplierId(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-400 mb-4 bg-white">
-              <option value="">Select supplier...</option>
-              {suppliers.map((s) => (
-                <option key={s.id} value={s.id}>{s.name || s.email}</option>
-              ))}
+            )}
+            <button onClick={() => { setBulkDate(""); setBulkDateModal(true); }} className={`${chipBtn} bg-white text-[#1D4ED8] border border-[#BFDBFE]`}>
+              <CalendarDays className="w-3.5 h-3.5" /> Set date
+            </button>
+            <select id="bulk-status" aria-label="Set status" value={bulkStatus} onChange={e => setBulkStatus(e.target.value)} className="px-2 py-1.5 rounded-lg text-[12px] border border-[#C7D2FE] bg-white outline-none">
+              <option value="">Set status…</option>
+              {["PROCESSING", "SHIPPED", "IN_TRANSIT", "DELIVERED", "RTO", "CANCELLED"].map(s => <option key={s} value={s}>{STATUS_TONE[s].label}</option>)}
             </select>
-            <div className="flex gap-2">
-              <button onClick={() => setBulkAssignModal(false)}
-                className="flex-1 px-4 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50">
-                Cancel
+            {bulkStatus && (
+              <button onClick={handleBulkStatusUpdate} disabled={bulkUpdating} className={`${chipBtn} bg-[#4361EE] text-white`}>
+                {bulkUpdating ? "Updating…" : `Apply to ${selected.size}`}
               </button>
-              <button onClick={handleBulkAssign} disabled={bulkAssigning || !bulkAssignSupplierId}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-white rounded-xl disabled:opacity-50"
-                style={{ background: "#16A34A" }}>
-                {bulkAssigning
-                  ? <><Loader2 className="w-4 h-4 animate-spin" /> Assigning...</>
-                  : <><UserCheck className="w-4 h-4" /> Assign {unassignedSelectedCount} Orders</>}
-              </button>
+            )}
+            <button onClick={() => setSelected(new Set())} className="ml-auto text-[12px] font-semibold text-[#4361EE]">Clear selection</button>
+          </div>
+        )}
+
+        {loading ? (
+          <div className="py-20 flex items-center justify-center gap-2 text-[13px] text-[#9CA3AF]"><Loader2 className="w-4 h-4 animate-spin" /> Loading orders…</div>
+        ) : orders.length === 0 ? (
+          <p className="py-20 text-center text-[13px] text-[#9CA3AF]">No orders match these filters.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1150px] text-[12.5px]">
+              <thead>
+                <tr className="bg-[#FAFBFF] text-left text-[10.5px] font-bold uppercase tracking-wide text-[#9CA3AF]">
+                  <th className="pl-4 pr-2 py-2.5 w-8">
+                    <input type="checkbox" aria-label="Select all" checked={selected.size === orders.length && orders.length > 0} onChange={toggleAll} className="rounded cursor-pointer accent-[#4361EE]" />
+                  </th>
+                  {["Order", "Seller", "Customer", "Products", "Amount", "Courier / AWB", "Status", ""].map((h, i) => (
+                    <th key={i} className={`px-3 py-2.5 whitespace-nowrap ${h === "Amount" ? "text-right" : ""}`}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#F3F4F6]">
+                {orders.map((order) => {
+                  const isSelected = selected.has(order.id);
+                  const a = order.customerAddress ?? {};
+                  const place = [a.city, a.pincode ?? a.zip].filter(Boolean).join(" · ");
+                  const st = STATUS_TONE[order.status] ?? { bg: "#F3F4F6", fg: "#374151", label: order.status };
+                  const open = !["CANCELLED", "DELIVERED", "RTO"].includes(order.status);
+                  return (
+                    <tr key={order.id} onClick={() => setDrawerId(order.id)} className={`cursor-pointer transition-colors ${isSelected ? "bg-[#F5F7FF]" : "hover:bg-[#FAFBFF]"}`}>
+                      <td className="pl-4 pr-2 py-2.5" onClick={e => e.stopPropagation()}>
+                        <input type="checkbox" aria-label={`Select ${order.externalOrderId}`} checked={isSelected} onChange={() => toggleSelect(order.id)} className="rounded cursor-pointer accent-[#4361EE]" />
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        <span className="block font-mono font-semibold text-[#0C1220]">{order.externalOrderId}</span>
+                        <span className="block text-[11px] text-[#9CA3AF]">{fmtDate(order.createdAt)}, {fmtTime(order.createdAt)} · {order.source[0] + order.source.slice(1).toLowerCase()}</span>
+                      </td>
+                      <td className="px-3 py-2.5 text-[#374151] whitespace-nowrap truncate max-w-[150px]">{order.seller.name || order.seller.email}</td>
+                      <td className="px-3 py-2.5">
+                        <span className="block text-[#0C1220] truncate max-w-[170px]">{order.customerName || "—"}</span>
+                        {place && <span className="block text-[11px] text-[#9CA3AF] truncate max-w-[170px]">{place}</span>}
+                      </td>
+                      <td className="px-3 py-2.5 text-[#4B5563] max-w-[200px]">
+                        <span className="block truncate">{order.items.map((i) => `${i.name} ×${i.quantity}`).join(", ") || "—"}</span>
+                      </td>
+                      <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                        <span className="block font-semibold text-[#0C1220] tabular-nums">₹{order.totalAmount.toLocaleString("en-IN")}</span>
+                        {order.paymentMode && order.paymentMode !== "UNKNOWN" && (
+                          <span className={`text-[10.5px] font-bold ${order.paymentMode === "COD" ? "text-[#B45309]" : "text-[#047857]"}`}>{order.paymentMode === "COD" ? "COD" : "Prepaid"}</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        {order.awbNumber ? (
+                          <>
+                            <span className="block text-[#374151]">{order.courier?.replace("Shipdaak · ", "") ?? "—"}</span>
+                            <span className="block text-[11px] font-mono text-[#6B7280]">{order.awbNumber}</span>
+                          </>
+                        ) : <span className="text-[#C4C9D4]">Not shipped</span>}
+                      </td>
+                      <td className="px-3 py-2.5"><span className="text-[11px] font-bold px-2 py-0.5 rounded-md whitespace-nowrap" style={{ background: st.bg, color: st.fg }}>{st.label}</span></td>
+                      <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-1">
+                          {open && !order.awbNumber && (
+                            <button onClick={() => setShipOrder(order)} title="Ship with Shipdaak" className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11.5px] font-bold text-white bg-[#4361EE]">
+                              <Truck className="w-3 h-3" /> Ship
+                            </button>
+                          )}
+                          {open && !order.awbNumber && (
+                            <button onClick={() => setEnterAwbOrder(order)} title="Enter AWB" aria-label="Enter AWB" className="p-1.5 rounded-lg text-[#6B7280] hover:bg-[#F3F6FF] hover:text-[#4361EE]"><Pencil className="w-3.5 h-3.5" /></button>
+                          )}
+                          {order.awbNumber && order.courier?.startsWith("Shipdaak · ") && (
+                            <button onClick={() => printLabel(order.id)} title="Print label" aria-label="Print label" className="p-1.5 rounded-lg text-[#6B7280] hover:bg-[#F3F6FF] hover:text-[#4361EE]"><Printer className="w-3.5 h-3.5" /></button>
+                          )}
+                          <ChevronRight className="w-4 h-4 text-[#C4C9D4]" />
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {totalPages > 1 && (
+          <div className="px-4 py-3 flex items-center justify-between border-t border-[#F3F4F6]">
+            <span className="text-[12px] text-[#9CA3AF]">Page {page} of {totalPages}</span>
+            <div className="flex items-center gap-1">
+              <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} aria-label="Previous page" className="p-1.5 rounded-lg border border-[#E8EDF6] disabled:opacity-30 hover:bg-[#F3F6FF]"><ChevronLeft className="w-4 h-4" /></button>
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                const p = Math.max(1, Math.min(totalPages - 4, page - 2)) + i;
+                return (
+                  <button key={p} onClick={() => setPage(p)} className={`w-7 h-7 rounded-lg text-[12px] font-semibold ${p === page ? "bg-[#E8EDFF] text-[#4361EE]" : "text-[#6B7280] hover:bg-[#F3F6FF]"}`}>{p}</button>
+                );
+              })}
+              <button disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} aria-label="Next page" className="p-1.5 rounded-lg border border-[#E8EDF6] disabled:opacity-30 hover:bg-[#F3F6FF]"><ChevronRight className="w-4 h-4" /></button>
             </div>
           </div>
-        </div>
+        )}
+      </div>
+
+      {drawerId && (
+        <OrderDrawer
+          orderId={drawerId}
+          onClose={() => setDrawerId(null)}
+          onShip={() => drawerOrder && setShipOrder(drawerOrder)}
+          onAwb={() => drawerOrder && setEnterAwbOrder(drawerOrder)}
+          onLabel={() => printLabel(drawerId)}
+          onStatus={(s) => setOrderStatus(drawerId, s)}
+        />
       )}
+
+      {showAddModal && <AddOrderModal sellers={sellers} onClose={() => setShowAddModal(false)} onSaved={refresh} />}
 
       {bulkDateModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="font-bold text-gray-900">Set Date for {selected.size} Orders</h3>
-                <p className="text-xs text-gray-400 mt-0.5">All selected orders will get this date</p>
+                <h3 className="font-bold text-[#0C1220]">Set date for {selected.size} orders</h3>
+                <p className="text-[12px] text-[#9CA3AF] mt-0.5">All selected orders get this order date</p>
               </div>
-              <button onClick={() => setBulkDateModal(false)} className="p-1 hover:bg-gray-100 rounded-lg">
-                <X className="w-4 h-4 text-gray-400" />
-              </button>
+              <button onClick={() => setBulkDateModal(false)} aria-label="Close" className="p-1 hover:bg-[#F3F4F6] rounded-lg"><X className="w-4 h-4 text-[#9CA3AF]" /></button>
             </div>
-            <label className="block text-xs font-semibold text-gray-500 mb-1.5">Order Date</label>
-            <input type="date" value={bulkDate} max={new Date().toISOString().split("T")[0]}
-              onChange={(e) => setBulkDate(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 mb-4" />
+            <label htmlFor="bulk-date" className="block text-[12px] font-semibold text-[#374151] mb-1.5">Order date</label>
+            <input id="bulk-date" type="date" value={bulkDate} max={new Date().toISOString().split("T")[0]} onChange={(e) => setBulkDate(e.target.value)}
+              className="w-full px-3 py-2 text-[13px] border border-[#E8EDF6] rounded-lg outline-none focus:border-[#4361EE] mb-4" />
             <div className="flex gap-2">
-              <button onClick={() => setBulkDateModal(false)}
-                className="flex-1 px-4 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50">
-                Cancel
-              </button>
-              <button onClick={handleBulkDate} disabled={bulkSaving || !bulkDate}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-white rounded-xl disabled:opacity-50"
-                style={{ background: "#1D4ED8" }}>
-                {bulkSaving ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</> : `Apply to ${selected.size} orders`}
+              <button onClick={() => setBulkDateModal(false)} className="flex-1 px-4 py-2 text-[13px] font-medium text-[#374151] border border-[#E8EDF6] rounded-lg hover:bg-[#F9FAFB]">Cancel</button>
+              <button onClick={handleBulkDate} disabled={bulkSaving || !bulkDate} className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-[13px] font-bold text-white rounded-lg disabled:opacity-50 bg-[#4361EE]">
+                {bulkSaving ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</> : `Apply to ${selected.size}`}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── Ship via Shipdaak ── */}
       {shipOrder && (
-        <ShipdaakModal
-          order={shipOrder}
-          onClose={() => setShipOrder(null)}
-          onShipped={async () => { setShipOrder(null); await fetchOrders(); await fetchCounts(); }}
-        />
+        <ShipdaakModal order={shipOrder} onClose={() => setShipOrder(null)} onShipped={async () => { setShipOrder(null); await refresh(); }} />
       )}
-
-      {/* ── Enter AWB manually ── */}
-      {enterAwbOrder && (
-        <EnterAwbModal
-          order={enterAwbOrder}
-          onClose={() => setEnterAwbOrder(null)}
-          onSaved={handleSaveAwb}
-        />
-      )}
+      {enterAwbOrder && <EnterAwbModal order={enterAwbOrder} onClose={() => setEnterAwbOrder(null)} onSaved={handleSaveAwb} />}
     </div>
   );
 }

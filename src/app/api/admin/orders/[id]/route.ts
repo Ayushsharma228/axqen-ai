@@ -27,7 +27,7 @@ export async function GET(
       timeline: {
         orderBy: { createdAt: "asc" },
         select: {
-          id: true, event: true, details: true, metadata: true,
+          id: true, event: true, eventType: true, details: true, metadata: true,
           actorRole: true, createdAt: true,
         },
       },

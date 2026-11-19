@@ -59,7 +59,7 @@ const BLUE = "#4361EE";
 export function SellerSidebar({ plan, userName }: { plan?: string; userName?: string; userEmail?: string }) {
   const pathname = usePathname();
   const initial = userName?.[0]?.toUpperCase() || "U";
-  const planLabel = plan ? `${plan === "MARKETPLACE" ? "Marketplace" : "Dropshipping"} plan` : "Seller";
+  const planLabel = plan ? (plan === "MARKETPLACE" ? "Marketplace" : "Dropshipping") : "Seller";
 
   const [mini, setMini] = useState(false);
   const [open, setOpen] = useState<Record<string, boolean>>({});

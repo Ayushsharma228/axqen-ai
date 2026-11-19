@@ -209,7 +209,11 @@ export default function AdminOrdersPage() {
   const [search, setSearch]               = useState("");
   const [sellerFilter, setSellerFilter]   = useState("");
   // Opened from a seller page: /admin/orders?seller=<id>
-  useEffect(() => { const s = new URLSearchParams(window.location.search).get("seller"); if (s) setSellerFilter(s); }, []);
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    const s = sp.get("seller"); if (s) setSellerFilter(s);
+    const q = sp.get("search"); if (q) { setSearch(q); setSearchInput(q); }
+  }, []);
   const [statusFilter, setStatusFilter]   = useState("");
   const [sourceFilter, setSourceFilter]   = useState("");
   const [dateFrom, setDateFrom]           = useState("");

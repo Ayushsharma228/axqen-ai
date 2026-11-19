@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
       include: {
         seller:     { select: { id: true, name: true, email: true, brandName: true } },
         assignedTo: { select: { id: true, name: true } },
-        messages:   { orderBy: { createdAt: "desc" }, take: 1, select: { createdAt: true, isInternal: true } },
+        messages:   { orderBy: { createdAt: "desc" }, where: { isInternal: false }, take: 1, select: { createdAt: true, isInternal: true, message: true, author: { select: { role: true } } } },
         _count:     { select: { messages: true } },
       },
     }),

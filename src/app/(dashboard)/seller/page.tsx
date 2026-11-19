@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { PlanDueNotice, useBilling } from "@/components/billing/plan-payments-panel";
+import { PincodeRtoCard } from "@/components/dashboard/pincode-rto-card";
 import { useSession } from "next-auth/react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
@@ -326,6 +327,9 @@ export default function SellerDashboard() {
           <p className="text-[13px] text-[#9CA3AF] py-10 text-center">No delivered or RTO orders in the last 30 days yet.</p>
         )}
       </section>
+
+      {/* 4b. RTO by pincode */}
+      <PincodeRtoCard />
 
       {/* 5. Money snapshot */}
       <section>

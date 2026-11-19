@@ -1,224 +1,183 @@
 ﻿"use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { ShieldCheck, RefreshCw, CheckCircle2, XCircle, ExternalLink, Filter } from "lucide-react";
-import { PageHero } from "@/components/layout/page-hero";
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { Loader2, ShieldCheck, ShieldAlert, FileText, Eye, EyeOff, ExternalLink, Phone, Mail, Landmark, Building2, Search } from "lucide-react";
 
+type Status = "SUBMITTED" | "APPROVED" | "REJECTED" | "NOT_SUBMITTED";
 interface Seller {
-  id: string; name: string | null; email: string; brandName: string | null;
-  businessName: string | null; phone: string | null; gstNumber: string | null;
-  aadhaarNumber: string | null; aadhaarDocUrl: string | null;
-  kycStatus: string; onboardingDone: boolean; createdAt: string;
-  businessAddress: string | null; pincode: string | null;
+  id: string; name: string | null; email: string; brandName: string | null; businessName: string | null; phone: string | null;
+  gstNumber: string | null; aadhaarNumber: string | null; aadhaarDocUrl: string | null; kycStatus: Status;
+  onboardingDone: boolean; accountStatus: string; createdAt: string; businessAddress: string | null; pincode: string | null;
   bankName: string | null; bankHolder: string | null; bankIfsc: string | null;
 }
 
-interface Count { kycStatus: string; _count: { id: number } }
+const TABS: { key: Status; label: string }[] = [
+  { key: "SUBMITTED", label: "To review" }, { key: "APPROVED", label: "Approved" },
+  { key: "REJECTED", label: "Rejected" }, { key: "NOT_SUBMITTED", label: "Not submitted" },
+];
+const fmt = (s: string) => new Date(s).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+const isImage = (u: string) => /\.(png|jpe?g|webp|gif)(\?|$)/i.test(u) || u.startsWith("data:image");
+const maskAadhaar = (a: string) => { const d = a.replace(/\D/g, ""); return d.length >= 4 ? `XXXX XXXX ${d.slice(-4)}` : a; };
+const spaced = (a: string) => a.replace(/\D/g, "").replace(/(\d{4})(?=\d)/g, "$1 ");
 
-const STATUS_TABS = ["SUBMITTED", "APPROVED", "REJECTED", "NOT_SUBMITTED"] as const;
-type StatusTab = (typeof STATUS_TABS)[number];
+export default function KycApprovalsPage() {
+  const [tab, setTab] = useState<Status>("SUBMITTED");
+  const [rows, setRows] = useState<Seller[]>([]);
+  const [counts, setCounts] = useState<Partial<Record<Status, number>>>({});
+  const [loading, setLoading] = useState(true);
+  const [q, setQ] = useState("");
+  const [reveal, setReveal] = useState<Record<string, boolean>>({});
+  const [preview, setPreview] = useState<Record<string, boolean>>({});
+  const [reason, setReason] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
-const BADGE: Record<string, { bg: string; color: string }> = {
-  SUBMITTED:     { bg: "#EFF6FF", color: "#2563EB" },
-  APPROVED:      { bg: "#F0FDF4", color: "#15803D" },
-  REJECTED:      { bg: "#FEF2F2", color: "#DC2626" },
-  NOT_SUBMITTED: { bg: "var(--bg-muted)", color: "var(--text-400)" },
-};
-
-export default function AdminKycPage() {
-  const [tab,      setTab]      = useState<StatusTab>("SUBMITTED");
-  const [sellers,  setSellers]  = useState<Seller[]>([]);
-  const [counts,   setCounts]   = useState<Count[]>([]);
-  const [loading,  setLoading]  = useState(true);
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const [rejNote,  setRejNote]  = useState("");
-  const [acting,   setActing]   = useState<string | null>(null);
-
-  const fetchData = useCallback(async () => {
+  const load = useCallback(() => {
     setLoading(true);
-    const r = await fetch(`/api/admin/kyc?status=${tab}`);
-    if (r.ok) {
-      const d = await r.json();
-      setSellers(d.sellers); setCounts(d.counts);
-    }
-    setLoading(false);
+    fetch(`/api/admin/kyc?status=${tab}`).then(r => r.json()).then(d => {
+      setRows(d.sellers ?? []);
+      setCounts(Object.fromEntries((d.counts ?? []).map((c: { kycStatus: Status; _count: { id: number } }) => [c.kycStatus, c._count.id])));
+    }).finally(() => setLoading(false));
   }, [tab]);
+  useEffect(() => { load(); }, [load]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
-
-  async function act(sellerId: string, action: "APPROVED" | "REJECTED") {
-    setActing(sellerId);
-    await fetch(`/api/admin/kyc/${sellerId}`, {
-      method:  "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ action, adminNote: rejNote }),
+  async function decide(s: Seller, action: "APPROVED" | "REJECTED") {
+    setBusy(`${s.id}:${action}`); setMsg(null);
+    const res = await fetch(`/api/admin/kyc/${s.id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, adminNote: action === "REJECTED" ? reason[s.id]?.trim() : undefined }),
     });
-    setActing(null); setExpanded(null); setRejNote("");
-    fetchData();
+    const d = await res.json().catch(() => ({}));
+    setBusy(null);
+    if (!res.ok) { setMsg({ ok: false, text: d.error ?? "Couldn't save" }); return; }
+    setMsg({ ok: true, text: `${s.name ?? s.email}: KYC ${action === "APPROVED" ? "approved" : "rejected"}. The seller has been emailed.` });
+    load();
   }
 
-  function countFor(s: string) {
-    return counts.find(c => c.kycStatus === s)?._count?.id ?? 0;
-  }
+  const list = rows.filter(r => !q.trim() || [r.name, r.email, r.phone, r.brandName, r.businessName].some(v => v?.toLowerCase().includes(q.trim().toLowerCase())));
+  const btn = "flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12.5px] font-bold disabled:opacity-50";
 
   return (
-    <div className="min-h-screen" style={{ background: "var(--bg-page)" }}>
-      <PageHero
-        title="KYC Approvals"
-        subtitle="Review and approve seller identity verification submissions"
-        cards={
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {[
-              { label: "Pending Review", value: countFor("SUBMITTED"),     color: "#3B82F6" },
-              { label: "Approved",       value: countFor("APPROVED"),      color: "#16A34A" },
-              { label: "Rejected",       value: countFor("REJECTED"),      color: "#EF4444" },
-              { label: "Not Submitted",  value: countFor("NOT_SUBMITTED"), color: "#F59E0B" },
-            ].map(({ label, value, color }) => (
-              <div key={label} className="rounded-2xl px-5 py-4"
-                style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
-                <p className="text-xs font-medium uppercase tracking-wide mb-1"
-                  style={{ color: "var(--text-muted)" }}>{label}</p>
-                <p className="text-2xl font-bold" style={{ color }}>{value}</p>
-              </div>
-            ))}
-          </div>
-        }
-      />
+    <div className="px-4 py-5 md:p-8 space-y-5" style={{ background: "var(--bg-page)", minHeight: "100vh" }}>
+      <div>
+        <h1 className="text-[22px] font-black text-[#0C1220]">KYC Approvals</h1>
+        <p className="text-[12.5px] text-[#6B7280] mt-1">Check each seller&apos;s Aadhaar, business and bank details. Approving or rejecting emails the seller and sends them a notification.</p>
+      </div>
 
-      <div className="px-4 md:px-8 py-6">
-        {/* Tab bar */}
-        <div className="flex items-center gap-1 mb-4">
-          <Filter className="w-4 h-4 mr-1" style={{ color: "var(--text-400)" }} />
-          {STATUS_TABS.map(s => (
-            <button key={s} onClick={() => setTab(s)}
-              className="px-4 py-1.5 rounded-full text-xs font-semibold transition-all"
-              style={tab === s
-                ? { background: "var(--bg-sidebar)", color: "var(--text-primary)" }
-                : { color: "var(--text-400)" }}>
-              {s.replace("_", " ")}
-              {countFor(s) > 0 && (
-                <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-xs"
-                  style={{ background: "var(--bg-muted)" }}>{countFor(s)}</span>
-              )}
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-1 bg-white rounded-xl border border-[#E8EDF6] p-1.5">
+          {TABS.map(t => (
+            <button key={t.key} onClick={() => setTab(t.key)}
+              className={`px-3 py-1.5 rounded-lg text-[12.5px] font-semibold flex items-center gap-1.5 ${tab === t.key ? "bg-[#E8EDFF] text-[#4361EE]" : "text-[#6B7280] hover:bg-[#F3F6FF]"}`}>
+              {t.label}
+              <span className={`text-[10.5px] px-1.5 rounded-full tabular-nums ${t.key === "SUBMITTED" && counts.SUBMITTED ? "bg-[#FEF3C7] text-[#B45309]" : "bg-[#F3F4F6] text-[#6B7280]"}`}>{counts[t.key] ?? 0}</span>
             </button>
           ))}
         </div>
-
-        <div className="card overflow-hidden">
-          {loading ? (
-            <div className="p-8 flex justify-center">
-              <RefreshCw className="w-5 h-5 animate-spin" style={{ color: "var(--text-300)" }} />
-            </div>
-          ) : sellers.length === 0 ? (
-            <div className="py-16 flex flex-col items-center gap-2">
-              <ShieldCheck className="w-10 h-10" style={{ color: "var(--border)" }} />
-              <p className="text-sm" style={{ color: "var(--text-400)" }}>
-                No sellers with status {tab.replace("_", " ").toLowerCase()}
-              </p>
-            </div>
-          ) : (
-            <div className="divide-y" style={{ borderColor: "var(--border)" }}>
-              {sellers.map(seller => {
-                const badge = BADGE[seller.kycStatus] ?? BADGE.NOT_SUBMITTED;
-                const isOpen = expanded === seller.id;
-                return (
-                  <div key={seller.id}>
-                    {/* Row */}
-                    <div
-                      className="px-5 py-4 flex items-center gap-4 cursor-pointer hover:bg-gray-50/20"
-                      onClick={() => setExpanded(isOpen ? null : seller.id)}>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="text-sm font-semibold" style={{ color: "var(--text-900)" }}>
-                            {seller.brandName ?? seller.name ?? seller.email}
-                          </p>
-                          <span className="px-2 py-0.5 rounded-full text-xs font-semibold"
-                            style={{ background: badge.bg, color: badge.color }}>
-                            {seller.kycStatus.replace("_", " ")}
-                          </span>
-                        </div>
-                        <p className="text-xs mt-0.5" style={{ color: "var(--text-400)" }}>
-                          {seller.email} · Joined {new Date(seller.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
-                        </p>
-                      </div>
-                      {tab === "SUBMITTED" && (
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          <button onClick={e => { e.stopPropagation(); act(seller.id, "APPROVED"); }}
-                            disabled={acting === seller.id}
-                            className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50"
-                            style={{ background: "#16A34A" }}>
-                            <CheckCircle2 className="w-3.5 h-3.5" /> Approve
-                          </button>
-                          <button onClick={e => { e.stopPropagation(); setExpanded(isOpen ? null : seller.id); }}
-                            className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold"
-                            style={{ background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA" }}>
-                            <XCircle className="w-3.5 h-3.5" /> Reject
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Expanded detail */}
-                    {isOpen && (
-                      <div className="px-5 pb-5 pt-3 space-y-4"
-                        style={{ background: "var(--bg-muted)", borderTop: "1px solid var(--border)" }}>
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                          {[
-                            { label: "GST Number",   value: seller.gstNumber },
-                            { label: "Phone",        value: seller.phone },
-                            { label: "Business",     value: seller.businessName },
-                            { label: "Address",      value: seller.businessAddress },
-                            { label: "Pincode",      value: seller.pincode },
-                            { label: "Bank",         value: seller.bankName },
-                            { label: "Account IFSC", value: seller.bankIfsc },
-                            { label: "Holder",       value: seller.bankHolder },
-                            { label: "Aadhaar",      value: seller.aadhaarNumber },
-                          ].map(({ label, value }) => (
-                            <div key={label} className="rounded-xl p-3"
-                              style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
-                              <p className="text-xs" style={{ color: "var(--text-400)" }}>{label}</p>
-                              <p className="text-sm font-medium mt-0.5" style={{ color: "var(--text-900)" }}>
-                                {value ?? <span style={{ color: "var(--text-300)" }}>—</span>}
-                              </p>
-                            </div>
-                          ))}
-                        </div>
-
-                        {seller.aadhaarDocUrl && (
-                          <a href={seller.aadhaarDocUrl} target="_blank" rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 text-xs font-semibold"
-                            style={{ color: "#3B82F6" }}>
-                            <ExternalLink className="w-3.5 h-3.5" /> View KYC Document
-                          </a>
-                        )}
-
-                        {tab === "SUBMITTED" && (
-                          <div className="pt-3 space-y-2" style={{ borderTop: "1px solid var(--border)" }}>
-                            <p className="text-xs font-semibold" style={{ color: "var(--text-400)" }}>
-                              Rejection reason (shown to seller)
-                            </p>
-                            <input value={rejNote} onChange={e => setRejNote(e.target.value)}
-                              placeholder="e.g. Aadhaar number doesn't match uploaded document"
-                              className="w-full text-sm rounded-xl px-3 py-2 border outline-none"
-                              style={{ background: "var(--bg-card)", color: "var(--text-900)", borderColor: "var(--border)" }}
-                            />
-                            <button onClick={() => act(seller.id, "REJECTED")}
-                              disabled={acting === seller.id}
-                              className="px-4 py-2 rounded-xl text-xs font-semibold text-white disabled:opacity-50"
-                              style={{ background: "#EF4444" }}>
-                              {acting === seller.id ? "Rejecting…" : "Confirm Rejection"}
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
+        <div className="relative flex-1 min-w-[200px] md:max-w-[280px] ml-auto">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#9CA3AF]" />
+          <input id="kyc-search" value={q} onChange={e => setQ(e.target.value)} placeholder="Search sellers"
+            className="pl-8 pr-3 py-2 text-[13px] rounded-lg border border-[#E8EDF6] bg-white outline-none focus:border-[#4361EE] w-full" />
         </div>
       </div>
+
+      {msg && <div className="px-4 py-2.5 rounded-xl text-[13px]" style={{ background: msg.ok ? "#ECFDF5" : "#FEF2F2", color: msg.ok ? "#047857" : "#B91C1C" }}>{msg.text}</div>}
+
+      {loading ? (
+        <div className="flex items-center justify-center gap-2 py-24 text-[13px] text-[#9CA3AF]"><Loader2 className="w-5 h-5 animate-spin" /> Loading…</div>
+      ) : list.length === 0 ? (
+        <p className="py-24 text-center text-[13px] text-[#9CA3AF]">{tab === "SUBMITTED" ? "Nothing to review. All caught up." : "No sellers here."}</p>
+      ) : (
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          {list.map(s => {
+            const missing = [!s.aadhaarNumber && "Aadhaar number", !s.aadhaarDocUrl && "Aadhaar document", !s.bankHolder && "bank details", !s.businessAddress && "address"].filter(Boolean) as string[];
+            return (
+              <article key={s.id} className="bg-white rounded-xl border border-[#E8EDF6] p-5 space-y-4">
+                <header className="flex items-start gap-3">
+                  <span className="w-10 h-10 rounded-full bg-[#E8EDFF] text-[#4361EE] text-[14px] font-bold flex items-center justify-center flex-shrink-0">{(s.name ?? s.email)[0]?.toUpperCase()}</span>
+                  <div className="flex-1 min-w-0">
+                    <Link href={`/admin/sellers/${s.id}`} className="text-[15px] font-bold text-[#0C1220] hover:text-[#4361EE] inline-flex items-center gap-1">{s.name ?? s.email} <ExternalLink className="w-3 h-3 opacity-50" /></Link>
+                    <p className="text-[12px] text-[#6B7280] truncate">{[s.brandName || s.businessName, `signed up ${fmt(s.createdAt)}`].filter(Boolean).join(" · ")}</p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {s.phone && <a href={`tel:${s.phone}`} aria-label="Call" className="p-2 rounded-lg text-[#6B7280] hover:bg-[#F3F6FF] hover:text-[#4361EE]"><Phone className="w-4 h-4" /></a>}
+                    <a href={`mailto:${s.email}`} aria-label="Email" className="p-2 rounded-lg text-[#6B7280] hover:bg-[#F3F6FF] hover:text-[#4361EE]"><Mail className="w-4 h-4" /></a>
+                  </div>
+                </header>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="rounded-lg bg-[#FAFBFF] border border-[#EEF1F8] p-3">
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-[#9CA3AF] flex items-center gap-1.5"><ShieldCheck className="w-3.5 h-3.5" /> Aadhaar</p>
+                    {s.aadhaarNumber ? (
+                      <p className="text-[14px] font-mono text-[#0C1220] mt-1 flex items-center gap-2">
+                        {reveal[s.id] ? spaced(s.aadhaarNumber) : maskAadhaar(s.aadhaarNumber)}
+                        <button onClick={() => setReveal(r => ({ ...r, [s.id]: !r[s.id] }))} aria-label={reveal[s.id] ? "Hide number" : "Show full number"} className="text-[#9CA3AF] hover:text-[#4361EE]">
+                          {reveal[s.id] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        </button>
+                      </p>
+                    ) : <p className="text-[12.5px] text-[#B45309] mt-1">Not provided</p>}
+                    {s.aadhaarDocUrl ? (
+                      <div className="flex items-center gap-3 mt-2 text-[12px]">
+                        <button onClick={() => setPreview(p => ({ ...p, [s.id]: !p[s.id] }))} className="font-semibold text-[#4361EE] inline-flex items-center gap-1"><FileText className="w-3.5 h-3.5" /> {preview[s.id] ? "Hide document" : "View document"}</button>
+                        <a href={s.aadhaarDocUrl} target="_blank" rel="noreferrer" className="text-[#6B7280] inline-flex items-center gap-1 hover:text-[#4361EE]">Open <ExternalLink className="w-3 h-3" /></a>
+                      </div>
+                    ) : <p className="text-[12px] text-[#B45309] mt-2">No document uploaded</p>}
+                  </div>
+                  <div className="rounded-lg bg-[#FAFBFF] border border-[#EEF1F8] p-3">
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-[#9CA3AF] flex items-center gap-1.5"><Landmark className="w-3.5 h-3.5" /> Bank</p>
+                    {s.bankHolder ? (
+                      <>
+                        <p className="text-[13px] text-[#0C1220] mt-1 font-semibold">{s.bankHolder}</p>
+                        <p className="text-[12px] text-[#6B7280]">{[s.bankName, s.bankIfsc].filter(Boolean).join(" · ")}</p>
+                        {s.name && s.bankHolder.trim().toLowerCase() !== s.name.trim().toLowerCase() && (s.businessName ?? "").trim().toLowerCase() !== s.bankHolder.trim().toLowerCase() && (
+                          <p className="text-[11.5px] text-[#B45309] mt-1">Holder name differs from the seller and business name. Check it matches the Aadhaar.</p>
+                        )}
+                      </>
+                    ) : <p className="text-[12.5px] text-[#B45309] mt-1">Not provided</p>}
+                  </div>
+                </div>
+
+                {preview[s.id] && s.aadhaarDocUrl && (
+                  <div className="rounded-lg border border-[#E8EDF6] overflow-hidden bg-[#F9FAFB]">
+                    {isImage(s.aadhaarDocUrl)
+                      ? <img src={s.aadhaarDocUrl} alt={`Aadhaar document of ${s.name ?? s.email}`} className="w-full max-h-[420px] object-contain" />
+                      : <iframe src={s.aadhaarDocUrl} title="Aadhaar document" className="w-full h-[420px]" />}
+                  </div>
+                )}
+
+                <div className="rounded-lg bg-[#FAFBFF] border border-[#EEF1F8] p-3">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-[#9CA3AF] flex items-center gap-1.5"><Building2 className="w-3.5 h-3.5" /> Business</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 mt-1 text-[12.5px]">
+                    <p className="text-[#374151]"><span className="text-[#9CA3AF]">Name:</span> {s.businessName || "—"}</p>
+                    <p className="text-[#374151]"><span className="text-[#9CA3AF]">GSTIN:</span> <span className="font-mono">{s.gstNumber || "—"}</span></p>
+                    <p className="text-[#374151] sm:col-span-2"><span className="text-[#9CA3AF]">Address:</span> {[s.businessAddress, s.pincode].filter(Boolean).join(" – ") || "—"}</p>
+                    <p className="text-[#374151]"><span className="text-[#9CA3AF]">Phone:</span> {s.phone || "—"}</p>
+                    <p className="text-[#374151] truncate"><span className="text-[#9CA3AF]">Email:</span> {s.email}</p>
+                  </div>
+                </div>
+
+                {missing.length > 0 && tab === "SUBMITTED" && <p className="text-[12px] text-[#B45309]">Missing: {missing.join(", ")}.</p>}
+
+                {(tab === "SUBMITTED" || tab === "REJECTED") && (
+                  <footer className="flex flex-col sm:flex-row gap-2 pt-1">
+                    <button onClick={() => decide(s, "APPROVED")} disabled={!!busy} className={`${btn} bg-[#059669] text-white justify-center`}>
+                      {busy === `${s.id}:APPROVED` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />} Approve
+                    </button>
+                    {tab === "SUBMITTED" && <>
+                      <input id={`reason-${s.id}`} value={reason[s.id] ?? ""} onChange={e => setReason(r => ({ ...r, [s.id]: e.target.value }))}
+                        placeholder="Reason for rejecting (the seller sees this)" className="flex-1 px-3 py-2 text-[12.5px] rounded-lg border border-[#E8EDF6] outline-none focus:border-[#4361EE]" />
+                      <button onClick={() => decide(s, "REJECTED")} disabled={!!busy || !reason[s.id]?.trim()} className={`${btn} bg-[#FEE2E2] text-[#B91C1C] justify-center`}>
+                        {busy === `${s.id}:REJECTED` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldAlert className="w-3.5 h-3.5" />} Reject
+                      </button>
+                    </>}
+                  </footer>
+                )}
+              </article>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

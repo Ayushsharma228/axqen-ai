@@ -1,310 +1,167 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { Activity, RefreshCw, Users, CheckCircle2, TrendingUp, AlertTriangle, ChevronRight, Search, Zap } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { Loader2, Search, Phone, MessageCircle, CheckCircle2, Circle, AlertTriangle } from "lucide-react";
 
-interface SellerActivationRow {
-  id: string;
-  sellerId: string;
-  currentStage: string;
-  activationPct: number;
-  healthScore: number;
-  healthLabel: string;
-  lastActivityAt: string | null;
-  activatedAt: string | null;
-  seller: { id: string; name: string | null; email: string; kycStatus: string; accountStatus: string; createdAt: string };
+type Step = "agreement" | "business" | "bank" | "kyc" | "shopify" | "listingRequested" | "listingLive" | "firstOrder" | "firstDelivery";
+interface Row {
+  id: string; name: string | null; email: string; phone: string | null; brand: string | null;
+  status: string; plan: string | null; kyc: string; joined: string;
+  done: Record<Step, boolean>; stepsDone: number; next: Step | null; activated: boolean; stuck: boolean; idleDays: number; lastOrder: string | null;
 }
+interface Data { sellers: Row[]; funnel: { step: Step; count: number }[]; summary: { total: number; activated: number; inProgress: number; stuck: number } }
 
-interface Summary {
-  totalSellers: number;
-  totalActivated: number;
-  activationRate: number;
-  avgActivationPct: number;
-  avgActivationHours: number | null;
-  inactiveSellers: number;
-}
-
-interface PageData {
-  activations: SellerActivationRow[];
-  total: number;
-  page: number;
-  pages: number;
-  funnel: Record<string, number>;
-  summary: Summary;
-}
-
-const STAGES = [
-  "ACCOUNT_CREATED", "AGREEMENT_SIGNED", "KYC_APPROVED", "BANK_VERIFIED",
-  "SHOPIFY_CONNECTED", "PRODUCTS_IMPORTED", "LISTING_REQUESTED",
-  "FIRST_LISTING_LIVE", "FIRST_ORDER_RECEIVED", "ACTIVATED",
+const STEPS: { key: Step; short: string; next: string }[] = [
+  { key: "agreement", short: "Agreement", next: "Accept the agreement" },
+  { key: "business", short: "Business", next: "Fill business name and address" },
+  { key: "bank", short: "Bank", next: "Add bank details" },
+  { key: "kyc", short: "KYC", next: "Get KYC approved" },
+  { key: "shopify", short: "Shopify", next: "Connect Shopify store" },
+  { key: "listingRequested", short: "Listing req.", next: "Request product listings" },
+  { key: "listingLive", short: "Listed", next: "Get first listing live" },
+  { key: "firstOrder", short: "1st order", next: "Get the first order" },
+  { key: "firstDelivery", short: "1st delivery", next: "First order delivered" },
 ];
+type View = "stuck" | "progress" | "activated" | "all";
+const fmt = (s: string) => new Date(s).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "2-digit" });
 
-const STAGE_LABELS: Record<string, string> = {
-  ACCOUNT_CREATED: "Account Created",
-  AGREEMENT_SIGNED: "Agreement Signed",
-  KYC_APPROVED: "KYC Approved",
-  BANK_VERIFIED: "Bank Verified",
-  SHOPIFY_CONNECTED: "Shopify Connected",
-  PRODUCTS_IMPORTED: "Products Imported",
-  LISTING_REQUESTED: "Listing Requested",
-  FIRST_LISTING_LIVE: "First Listing Live",
-  FIRST_ORDER_RECEIVED: "First Order Received",
-  ACTIVATED: "Fully Activated",
-  STALLED: "Stalled",
-  BLOCKED: "Blocked",
-};
+export default function SellerActivationPage() {
+  const [data, setData] = useState<Data | null>(null);
+  const [error, setError] = useState(false);
+  const [view, setView] = useState<View>("stuck");
+  const [q, setQ] = useState("");
 
-function healthColor(label: string): string {
-  if (label === "Excellent") return "var(--green-500)";
-  if (label === "Good") return "#3B82F6";
-  if (label === "Needs Attention") return "#F59E0B";
-  return "#EF4444";
-}
+  useEffect(() => {
+    fetch("/api/admin/activation/board").then(r => r.json()).then(d => (d.sellers ? setData(d) : setError(true))).catch(() => setError(true));
+  }, []);
 
-function stageBadge(stage: string) {
-  const label = STAGE_LABELS[stage] ?? stage;
-  const color = stage === "ACTIVATED" ? "var(--green-500)" :
-    stage === "STALLED" ? "#F59E0B" :
-    stage === "BLOCKED" ? "#EF4444" :
-    "rgba(255,255,255,0.4)";
-  return (
-    <span className="px-2 py-0.5 rounded text-xs font-medium" style={{ color, border: `1px solid ${color}22`, background: `${color}15` }}>
-      {label}
-    </span>
-  );
-}
+  const list = useMemo(() => {
+    if (!data) return [];
+    const s = q.trim().toLowerCase();
+    return data.sellers
+      .filter(r => view === "all" || (view === "stuck" ? r.stuck : view === "activated" ? r.activated : !r.activated && r.status !== "SUSPENDED"))
+      .filter(r => !s || [r.name, r.email, r.phone, r.brand].some(v => v?.toLowerCase().includes(s)))
+      .sort((a, b) => (view === "stuck" ? b.idleDays - a.idleDays : b.joined.localeCompare(a.joined)));
+  }, [data, view, q]);
 
-function relativeTime(date: string | null): string {
-  if (!date) return "Never";
-  const diff = Date.now() - new Date(date).getTime();
-  const days = Math.floor(diff / 86400000);
-  if (days === 0) return "Today";
-  if (days === 1) return "Yesterday";
-  if (days < 30) return `${days}d ago`;
-  return new Date(date).toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
-}
-
-export default function AdminActivationPage() {
-  const [data, setData] = useState<PageData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<string>("all");
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState("");
-  const [refreshing, setRefreshing] = useState(false);
-  const [seeding, setSeeding] = useState(false);
-
-  const load = useCallback(async (f = filter, p = page) => {
-    setLoading(true);
-    const params = new URLSearchParams({ page: String(p) });
-    if (f !== "all") params.set("filter", f);
-    const res = await fetch(`/api/admin/activation?${params}`);
-    if (res.ok) setData(await res.json());
-    setLoading(false);
-  }, [filter, page]);
-
-  useEffect(() => { load(); }, [load]);
-
-  const handleFilter = (f: string) => { setFilter(f); setPage(1); load(f, 1); };
-
-  const filtered = data?.activations.filter(a =>
-    !search || a.seller.name?.toLowerCase().includes(search.toLowerCase()) || a.seller.email.toLowerCase().includes(search.toLowerCase())
-  ) ?? [];
-
-  const s = data?.summary;
+  const views: { key: View; label: string; n: number }[] = data ? [
+    { key: "stuck", label: "Stuck 7+ days", n: data.summary.stuck },
+    { key: "progress", label: "In progress", n: data.summary.inProgress },
+    { key: "activated", label: "Activated", n: data.summary.activated },
+    { key: "all", label: "All", n: data.summary.total },
+  ] : [];
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold" style={{ color: "var(--text-900)" }}>Seller Activation</h1>
-          <p className="text-sm mt-0.5" style={{ color: "var(--text-400)" }}>Track and manage seller onboarding journeys</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={async () => {
-              setSeeding(true);
-              await fetch("/api/admin/activation", { method: "POST" });
-              await load();
-              setSeeding(false);
-            }}
-            disabled={seeding}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
-            style={{ border: "1px solid var(--border)", color: "var(--text-400)" }}
-          >
-            <Zap className={`w-4 h-4 ${seeding ? "animate-pulse" : ""}`} />
-            {seeding ? "Seeding..." : "Seed All Sellers"}
-          </button>
-          <button
-            onClick={async () => { setRefreshing(true); await load(); setRefreshing(false); }}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors"
-            style={{ border: "1px solid var(--border)", color: "var(--text-400)" }}
-          >
-            <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
-            Refresh
-          </button>
-        </div>
+    <div className="px-4 py-5 md:p-8 space-y-5" style={{ background: "var(--bg-page)", minHeight: "100vh" }}>
+      <div>
+        <h1 className="text-[22px] font-black text-[#0C1220]">Seller Activation</h1>
+        <p className="text-[12.5px] text-[#6B7280] mt-1">Where each seller is between signup and their first delivered order. Steps are read live from their account, store, listings and orders.</p>
       </div>
 
-      {/* KPIs */}
-      {s && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[
-            { label: "Total Sellers", value: s.totalSellers, icon: Users, color: "#3B82F6" },
-            { label: "Fully Activated", value: s.totalActivated, icon: CheckCircle2, color: "var(--green-500)" },
-            { label: "Activation Rate", value: `${s.activationRate}%`, icon: TrendingUp, color: "#8B5CF6" },
-            { label: "Inactive Sellers", value: s.inactiveSellers, icon: AlertTriangle, color: "#F59E0B" },
-          ].map(({ label, value, icon: Icon, color }) => (
-            <div key={label} className="p-4 rounded-xl" style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${color}15` }}>
-                  <Icon className="w-4 h-4" style={{ color }} />
-                </div>
-                <span className="text-sm" style={{ color: "var(--text-400)" }}>{label}</span>
-              </div>
-              <p className="text-2xl font-bold" style={{ color: "var(--text-900)" }}>{value}</p>
-              {label === "Activation Rate" && (
-                <p className="text-xs mt-0.5" style={{ color: "var(--text-300)" }}>Avg progress: {s.avgActivationPct}%</p>
-              )}
-              {label === "Fully Activated" && s.avgActivationHours && (
-                <p className="text-xs mt-0.5" style={{ color: "var(--text-300)" }}>Avg {Math.round(s.avgActivationHours / 24)}d to activate</p>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Funnel */}
-      {data?.funnel && (
-        <div className="p-5 rounded-xl" style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
-          <h2 className="text-sm font-semibold mb-4" style={{ color: "var(--text-900)" }}>Activation Funnel</h2>
-          <div className="space-y-2">
-            {STAGES.map((stage) => {
-              const count = data.funnel[stage] ?? 0;
-              const max = data.summary.totalSellers || 1;
-              const pct = Math.round((count / max) * 100);
-              return (
-                <div key={stage} className="flex items-center gap-3">
-                  <span className="text-xs w-36 flex-shrink-0 text-right" style={{ color: "var(--text-400)" }}>
-                    {STAGE_LABELS[stage]}
-                  </span>
-                  <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: "var(--bg-muted)" }}>
-                    <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: stage === "ACTIVATED" ? "var(--green-500)" : "var(--accent)" }} />
-                  </div>
-                  <span className="text-xs w-8 text-right" style={{ color: "var(--text-900)" }}>{count}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Filters + Table */}
-      <div className="rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)" }}>
-        {/* Toolbar */}
-        <div className="px-4 py-3 flex items-center justify-between gap-3 flex-wrap" style={{ background: "var(--bg-card)", borderBottom: "1px solid var(--border)" }}>
-          <div className="flex gap-2 flex-wrap">
-            {[
-              { key: "all", label: "All" },
-              { key: "inactive", label: "Inactive" },
-              { key: "blocked", label: "Blocked" },
-              { key: "activated", label: "Activated" },
-            ].map(({ key, label }) => (
-              <button
-                key={key}
-                onClick={() => handleFilter(key)}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
-                style={filter === key
-                  ? { background: "var(--green-500)", color: "#fff" }
-                  : { background: "var(--bg-muted)", color: "var(--text-400)" }}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: "var(--text-300)" }} />
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search sellers..."
-              className="pl-8 pr-3 py-1.5 text-xs rounded-lg outline-none"
-              style={{ background: "var(--bg-muted)", border: "1px solid var(--border)", color: "var(--text-900)", width: 200 }}
-            />
-          </div>
-        </div>
-
-        {/* Table */}
-        <div className="overflow-x-auto" style={{ background: "var(--bg-page)" }}>
-          <table className="w-full text-sm">
-            <thead>
-              <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                {["Seller", "Stage", "Progress", "Health", "Last Activity", ""].map(h => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider"
-                    style={{ color: "var(--text-300)" }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan={6} className="px-4 py-8 text-center text-sm" style={{ color: "var(--text-300)" }}>Loading...</td></tr>
-              ) : filtered.length === 0 ? (
-                <tr><td colSpan={6} className="px-4 py-8 text-center text-sm" style={{ color: "var(--text-300)" }}>No sellers found</td></tr>
-              ) : filtered.map((a) => (
-                <tr key={a.id} style={{ borderBottom: "1px solid var(--border)" }}
-                  className="transition-colors hover:bg-white/[0.02]">
-                  <td className="px-4 py-3">
-                    <p className="font-medium text-sm" style={{ color: "var(--text-900)" }}>{a.seller.name ?? "—"}</p>
-                    <p className="text-xs" style={{ color: "var(--text-400)" }}>{a.seller.email}</p>
-                  </td>
-                  <td className="px-4 py-3">{stageBadge(a.currentStage)}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-20 h-1.5 rounded-full overflow-hidden" style={{ background: "var(--bg-muted)" }}>
-                        <div className="h-full rounded-full" style={{ width: `${a.activationPct}%`, background: a.activationPct >= 80 ? "var(--green-500)" : a.activationPct >= 50 ? "#3B82F6" : "#F59E0B" }} />
-                      </div>
-                      <span className="text-xs font-medium" style={{ color: "var(--text-900)" }}>{a.activationPct}%</span>
+      {error ? <p className="py-24 text-center text-[13px] text-[#B91C1C]">Couldn&apos;t load activation. Refresh to try again.</p>
+        : !data ? <div className="flex items-center justify-center gap-2 py-24 text-[13px] text-[#9CA3AF]"><Loader2 className="w-5 h-5 animate-spin" /> Loading…</div>
+        : (
+        <>
+          {/* Funnel */}
+          <section className="bg-white rounded-xl border border-[#E8EDF6] p-5">
+            <h2 className="text-[15px] font-bold text-[#0C1220] mb-4">Funnel</h2>
+            <div className="space-y-2">
+              {data.funnel.map((f, i) => {
+                const pct = data.summary.total ? Math.round((f.count / data.summary.total) * 100) : 0;
+                return (
+                  <div key={f.step} className="flex items-center gap-3 text-[12.5px]">
+                    <span className="w-[110px] text-[#374151] font-medium">{STEPS[i].short}</span>
+                    <div className="flex-1 h-5 rounded-md bg-[#F3F6FF] overflow-hidden">
+                      <div className="h-full rounded-md" style={{ width: `${Math.max(pct, f.count ? 2 : 0)}%`, background: i === data.funnel.length - 1 ? "#059669" : "#4361EE" }} />
                     </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="text-xs font-medium px-2 py-0.5 rounded" style={{ color: healthColor(a.healthLabel), background: `${healthColor(a.healthLabel)}15` }}>
-                      {a.healthLabel}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-xs" style={{ color: "var(--text-400)" }}>
-                    {relativeTime(a.lastActivityAt)}
-                  </td>
-                  <td className="px-4 py-3">
-                    <Link href={`/admin/activation/${a.sellerId}`}
-                      className="flex items-center gap-1 text-xs font-medium transition-colors"
-                      style={{ color: "var(--accent)" }}>
-                      View <ChevronRight className="w-3 h-3" />
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                    <span className="w-[80px] text-right tabular-nums text-[#374151]"><b>{f.count}</b> <span className="text-[#9CA3AF]">· {pct}%</span></span>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
 
-        {/* Pagination */}
-        {data && data.pages > 1 && (
-          <div className="px-4 py-3 flex items-center justify-between" style={{ background: "var(--bg-card)", borderTop: "1px solid var(--border)" }}>
-            <span className="text-xs" style={{ color: "var(--text-400)" }}>
-              Showing {((data.page - 1) * 25) + 1}–{Math.min(data.page * 25, data.total)} of {data.total}
-            </span>
-            <div className="flex gap-2">
-              <button disabled={page <= 1} onClick={() => { setPage(p => p - 1); load(filter, page - 1); }}
-                className="px-3 py-1 text-xs rounded-lg disabled:opacity-40"
-                style={{ background: "var(--bg-muted)", color: "var(--text-400)" }}>Prev</button>
-              <button disabled={page >= data.pages} onClick={() => { setPage(p => p + 1); load(filter, page + 1); }}
-                className="px-3 py-1 text-xs rounded-lg disabled:opacity-40"
-                style={{ background: "var(--bg-muted)", color: "var(--text-400)" }}>Next</button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1 bg-white rounded-xl border border-[#E8EDF6] p-1.5 overflow-x-auto">
+              {views.map(v => (
+                <button key={v.key} onClick={() => setView(v.key)}
+                  className={`px-3 py-1.5 rounded-lg text-[12.5px] font-semibold flex items-center gap-1.5 whitespace-nowrap ${view === v.key ? "bg-[#E8EDFF] text-[#4361EE]" : "text-[#6B7280] hover:bg-[#F3F6FF]"}`}>
+                  {v.label}
+                  <span className={`text-[10.5px] px-1.5 rounded-full tabular-nums ${v.key === "stuck" && v.n ? "bg-[#FEE2E2] text-[#B91C1C]" : "bg-[#F3F4F6] text-[#6B7280]"}`}>{v.n}</span>
+                </button>
+              ))}
+            </div>
+            <div className="relative flex-1 min-w-[200px] md:max-w-[280px] ml-auto">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#9CA3AF]" />
+              <input id="act-search" value={q} onChange={e => setQ(e.target.value)} placeholder="Search sellers"
+                className="pl-8 pr-3 py-2 text-[13px] rounded-lg border border-[#E8EDF6] bg-white outline-none focus:border-[#4361EE] w-full" />
             </div>
           </div>
-        )}
-      </div>
+
+          <div className="bg-white rounded-xl border border-[#E8EDF6] overflow-hidden">
+            {list.length === 0 ? (
+              <p className="py-16 text-center text-[13px] text-[#9CA3AF]">{view === "stuck" ? "No one is stuck. Nice." : "No sellers here."}</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[1100px] text-[12.5px]">
+                  <thead>
+                    <tr className="bg-[#FAFBFF] text-left text-[10.5px] font-bold uppercase tracking-wide text-[#9CA3AF]">
+                      <th className="px-4 py-2.5">Seller</th>
+                      {STEPS.map(s => <th key={s.key} className="px-1.5 py-2.5 text-center whitespace-nowrap">{s.short}</th>)}
+                      <th className="px-3 py-2.5">Next step</th>
+                      <th className="px-3 py-2.5 text-right">Contact</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#F3F4F6]">
+                    {list.map(r => {
+                      const phone = r.phone?.replace(/\D/g, "").slice(-10);
+                      const next = STEPS.find(s => s.key === r.next);
+                      return (
+                        <tr key={r.id} className="hover:bg-[#FAFBFF]">
+                          <td className="px-4 py-2.5">
+                            <Link href={`/admin/sellers/${r.id}`} className="block group">
+                              <span className="block font-semibold text-[#0C1220] group-hover:text-[#4361EE] truncate max-w-[220px]">{r.name ?? r.email}</span>
+                              <span className="block text-[11px] text-[#9CA3AF] truncate max-w-[220px]">{[r.brand, `joined ${fmt(r.joined)}`].filter(Boolean).join(" · ")}</span>
+                            </Link>
+                          </td>
+                          {STEPS.map(s => (
+                            <td key={s.key} className="px-1.5 py-2.5 text-center">
+                              {r.done[s.key]
+                                ? <CheckCircle2 className="w-4 h-4 text-[#059669] inline" aria-label={`${s.short} done`} />
+                                : r.next === s.key
+                                  ? <Circle className="w-4 h-4 text-[#4361EE] inline fill-[#E8EDFF]" aria-label={`${s.short}: next`} />
+                                  : <Circle className="w-4 h-4 text-[#D1D5DB] inline" aria-label={`${s.short} not done`} />}
+                            </td>
+                          ))}
+                          <td className="px-3 py-2.5">
+                            {r.activated ? <span className="text-[12px] font-semibold text-[#047857]">Activated</span> : (
+                              <>
+                                <span className="block text-[12.5px] text-[#0C1220]">{next?.next}</span>
+                                {r.stuck
+                                  ? <span className="text-[11px] font-semibold text-[#B91C1C] inline-flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> No progress for {r.idleDays} days</span>
+                                  : <span className="text-[11px] text-[#9CA3AF]">{r.stepsDone} of {STEPS.length} done</span>}
+                              </>
+                            )}
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <div className="flex items-center justify-end gap-1">
+                              {phone ? <>
+                                <a href={`tel:${phone}`} aria-label={`Call ${r.name ?? ""}`} className="p-2 rounded-lg text-[#6B7280] hover:bg-[#F3F6FF] hover:text-[#4361EE]"><Phone className="w-4 h-4" /></a>
+                                <a href={`https://wa.me/91${phone}`} target="_blank" rel="noreferrer" aria-label={`WhatsApp ${r.name ?? ""}`} className="p-2 rounded-lg text-[#6B7280] hover:bg-[#F3F6FF] hover:text-[#059669]"><MessageCircle className="w-4 h-4" /></a>
+                              </> : <span className="text-[11px] text-[#C4C9D4]">No phone</span>}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

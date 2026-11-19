@@ -171,3 +171,39 @@ export async function ordersBlockedFor(sellerId: string) {
 }
 
 export const BLOCKED_MESSAGE = "This seller's plan payment is overdue, so their orders are on hold. Record the payment in Admin → Plan Billing to continue.";
+
+const PLAN_LABEL = (plan: string | null | undefined, tier: string | null | undefined) =>
+  !plan ? "No plan" : plan === "MARKETPLACE" ? "Marketplace" : `Dropshipping ${(tier ?? "STARTER")[0]}${(tier ?? "STARTER").slice(1).toLowerCase()}`;
+
+/**
+ * Change a seller's plan/tier. If billing has started, the new plan is billed in full as a new
+ * period from `startDate` (earlier periods and payments are left as they are).
+ */
+export async function changePlan(sellerId: string, plan: string, tier: string | null, startDate: Date, by?: string) {
+  if (plan !== "DROPSHIPPING" && plan !== "MARKETPLACE") throw new Error("Pick Dropshipping or Marketplace");
+  const t = plan === "MARKETPLACE" ? "STARTER" : (tier ?? "").toUpperCase();
+  if (plan === "DROPSHIPPING" && !["STARTER", "GROWTH", "SCALE"].includes(t)) throw new Error("Pick Starter, Growth or Scale");
+
+  const seller = await prisma.user.findUnique({ where: { id: sellerId }, select: { plan: true, planTier: true, role: true } });
+  if (!seller || seller.role !== "SELLER") throw new Error("Seller not found");
+  const same = seller.plan === plan && (plan === "MARKETPLACE" || (seller.planTier ?? "STARTER").toUpperCase() === t);
+  if (same) throw new Error("The seller is already on this plan");
+
+  const amount = planPrice(plan, t);
+  if (amount == null) throw new Error("No price is set for this plan");
+  const last = await prisma.planPeriod.findFirst({ where: { sellerId }, orderBy: { periodNo: "desc" }, select: { periodNo: true } });
+  const note = `Plan changed from ${PLAN_LABEL(seller.plan, seller.planTier)} to ${PLAN_LABEL(plan, t)}`;
+
+  return prisma.$transaction(async tx => {
+    await tx.user.update({ where: { id: sellerId }, data: { plan: plan as "DROPSHIPPING" | "MARKETPLACE", planTier: t } });
+    if (!last) return { billed: false, amount: 0, note };
+    await tx.planPeriod.create({
+      data: {
+        sellerId, plan, tier: t, periodNo: last.periodNo + 1, startDate,
+        endDate: plan === "MARKETPLACE" ? addMonths(startDate, RENEWAL_MONTHS) : null,
+        amountDue: amount, note, createdById: by ?? null,
+      },
+    });
+    return { billed: true, amount, note };
+  });
+}

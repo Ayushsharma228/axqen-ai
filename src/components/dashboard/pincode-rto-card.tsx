@@ -21,7 +21,7 @@ function pctTone(p: number) {
   return { bg: "#DCFCE7", fg: "#047857" };
 }
 
-export function PincodeRtoCard() {
+export function PincodeRtoCard({ endpoint = "/api/seller/pincode-rto" }: { endpoint?: string } = {}) {
   const [days, setDays] = useState<number | null>(90);
   const [tab, setTab] = useState<"worst" | "best">("worst");
   const [level, setLevel] = useState<AreaLevel>("pincode");
@@ -30,10 +30,10 @@ export function PincodeRtoCard() {
 
   useEffect(() => {
     setLoading(true);
-    fetch(`/api/seller/pincode-rto?level=${level}${days ? `&days=${days}` : ""}`)
+    fetch(`${endpoint}?level=${level}${days ? `&days=${days}` : ""}`)
       .then(r => r.json()).then(d => setData(d.worst ? d : null)).catch(() => setData(null))
       .finally(() => setLoading(false));
-  }, [days, level]);
+  }, [days, level, endpoint]);
 
   const rows = data ? (tab === "worst" ? data.worst : data.best) : [];
   const anyMissing = tab === "worst" && rows.some(r => r.costsMissing > 0);

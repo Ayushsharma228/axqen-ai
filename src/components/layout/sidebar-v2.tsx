@@ -67,7 +67,6 @@ const adminNav: NavItem[] = [
 
   // ── GROWTH ──────────────────────────────────────────────────────────────
   { label: "Meta Ads",           href: "/admin/ad-spend",          icon: Megaphone,       section: "GROWTH" },
-  { label: "Sales & CRM",        href: "/admin/crm",               icon: UserCheck },
   { label: "Campaigns",          href: "/admin/whatsapp",          icon: BarChart2 },
 
   // ── PLATFORM ────────────────────────────────────────────────────────────

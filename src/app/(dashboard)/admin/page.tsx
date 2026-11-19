@@ -6,9 +6,9 @@ import {
   ArrowRight, AlertTriangle, TrendingUp, CheckCircle2,
   Truck, RotateCcw, XCircle, Clock, Package,
   IndianRupee, BarChart2, Bot, Settings,
-  ShoppingCart, Users, Store, ListChecks,
-  ShoppingBag, Zap, UserCheck, PhoneCall,
-  Wallet, BadgeCheck, Flame,
+  ShoppingCart, Store, ListChecks,
+  Zap,
+  Wallet, BadgeCheck,
 } from "lucide-react";
 import { AdminOrderTrendChart } from "@/components/admin/order-trend-chart";
 
@@ -58,13 +58,6 @@ export default async function AdminDashboard() {
     remittanceDoneCount,
     remittanceDoneAmtResult,
 
-    // Leads
-    totalLeads,
-    closedLeads,
-    notInterestedLeads,
-    hotLeads,
-    salesCallsBooked,
-
     // Alerts
     pendingNdrs,
     unassignedOrders,
@@ -96,13 +89,6 @@ export default async function AdminDashboard() {
     prisma.order.count({ where: { remittedAt: { not: null } } }),
     prisma.order.aggregate({ where: { remittedAt: { not: null } }, _sum: { totalAmount: true } }),
 
-    // Leads
-    prisma.lead.count(),
-    prisma.lead.count({ where: { stage: { in: ["PAID", "ONBOARDED"] as never[] } } }),
-    prisma.lead.count({ where: { isNI: true } }),
-    prisma.lead.count({ where: { temperature: "HOT" as never } }),
-    prisma.lead.count({ where: { salesCallBookedAt: { not: null } } }),
-
     // Alerts
     prisma.order.count({ where: { ndrStatus: { not: null }, ndrActionTaken: null } }),
     prisma.order.count({ where: { supplierId: null, status: { notIn: ["DELIVERED", "CANCELLED", "RTO"] as never[] } } }),
@@ -123,7 +109,6 @@ export default async function AdminDashboard() {
   const pendingPayablesAmount = pendingPayablesAgg._sum.amount ?? 0;
   const firstName = session.user.name?.split(" ")[0] ?? "Admin";
   const totalOrNon0 = totalOrders || 1;
-  const totalLeadsNon0 = totalLeads || 1;
 
   const alerts = [
     pendingNdrs > 0          && { label: "NDRs pending",       value: pendingNdrs,                href: "/admin/ndr",               color: "#EF4444", border: "rgba(239,68,68,0.2)",   bg: "rgba(239,68,68,0.06)" },
@@ -248,30 +233,6 @@ export default async function AdminDashboard() {
           </div>
         </Section>
 
-        {/* ══ SECTION 4: Leads ══ */}
-        <Section label="Leads" href="/admin/crm">
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-            {[
-              { label: "Received",      value: totalLeads,         color: "#4361EE", icon: Users,      sub: "total pipeline" },
-              { label: "Closed / Won",  value: closedLeads,        color: "#16A34A", icon: UserCheck,  sub: `${Math.round(closedLeads / totalLeadsNon0 * 100)}% conv. rate` },
-              { label: "Not Interested",value: notInterestedLeads, color: "#EF4444", icon: XCircle,    sub: `${Math.round(notInterestedLeads / totalLeadsNon0 * 100)}% of leads` },
-              { label: "Hot Leads",     value: hotLeads,           color: "#F97316", icon: Flame,      sub: "high intent" },
-              { label: "Calls Booked",  value: salesCallsBooked,   color: "#8B5CF6", icon: PhoneCall,  sub: "scheduled demos" },
-            ].map(({ label, value, color, icon: Icon, sub }) => (
-              <div key={label} className="rounded-2xl p-4"
-                style={{ background: "var(--bg-card)", border: "1px solid var(--border)", boxShadow: "var(--shadow-card)" }}>
-                <div className="w-7 h-7 rounded-lg flex items-center justify-center mb-2" style={{ background: `${color}15` }}>
-                  <Icon className="w-3.5 h-3.5" style={{ color }} />
-                </div>
-                <p className="text-2xl font-black leading-none mb-1" style={{ color: "var(--text-primary)" }}>
-                  {value.toLocaleString()}
-                </p>
-                <p className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>{label}</p>
-                <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>{sub}</p>
-              </div>
-            ))}
-          </div>
-        </Section>
 
         {/* ══ Needs Attention ══ */}
         {alerts.length > 0 && (

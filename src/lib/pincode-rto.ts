@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/prisma";
 
-/** A pincode only appears once it has this many delivered + RTO orders. */
-export const PINCODE_MIN_ORDERS = 5;
+/** An area is ranked only once it has this many delivered + RTO orders. */
+export type AreaLevel = "pincode" | "city" | "state";
+export const MIN_ORDERS: Record<AreaLevel, number> = { pincode: 3, city: 5, state: 5 };
 
 export interface PincodeRow {
   pincode: string;
@@ -21,7 +22,9 @@ type Addr = { pincode?: string; zip?: string; city?: string; state?: string; pro
  * RTO stats per delivery pincode for ONE seller, over completed orders only
  * (DELIVERED or RTO). Read-only.
  */
-export async function pincodeRto(sellerId: string, opts: { days: number | null; dataStartDate: Date | null }) {
+export async function pincodeRto(sellerId: string, opts: { days: number | null; dataStartDate: Date | null; level?: AreaLevel }) {
+  const level: AreaLevel = opts.level ?? "pincode";
+  const min = MIN_ORDERS[level];
   const since = opts.days ? new Date(Date.now() - opts.days * 86400000) : null;
   const from = since && opts.dataStartDate ? (since > opts.dataStartDate ? since : opts.dataStartDate) : since ?? opts.dataStartDate;
 
@@ -39,9 +42,13 @@ export async function pincodeRto(sellerId: string, opts: { days: number | null; 
     if (isRto) rto++; else delivered++;
     const a = (o.customerAddress ?? {}) as Addr;
     const pin = String(a.pincode ?? a.zip ?? "").replace(/\s/g, "");
-    if (!/^\d{6}$/.test(pin)) { noPincode++; continue; }
-    const row = map.get(pin) ?? {
-      pincode: pin, city: a.city?.trim() || null, state: (a.state ?? a.province)?.trim() || null,
+    const city = a.city?.trim() || null, state = (a.state ?? a.province)?.trim() || null;
+    const key = level === "pincode" ? (/^\d{6}$/.test(pin) ? pin : "")
+      : level === "city" ? (city ? `${city.toLowerCase()}|${(state ?? "").toLowerCase()}` : "")
+      : (state ? state.toLowerCase() : "");
+    if (!key) { noPincode++; continue; }
+    const row = map.get(key) ?? {
+      pincode: level === "pincode" ? pin : "", city: level === "state" ? null : city, state,
       orders: 0, delivered: 0, rto: 0, pct: 0, loss: 0, costsMissing: 0,
     };
     row.orders++;
@@ -50,14 +57,15 @@ export async function pincodeRto(sellerId: string, opts: { days: number | null; 
       row.loss += (o.productCost ?? 0) + (o.rtoCharge ?? 0) + (o.packingCharge ?? 0);
       if (o.productCost == null) row.costsMissing++;
     } else row.delivered++;
-    map.set(pin, row);
+    map.set(key, row);
   }
 
   const rows = [...map.values()].map(r => ({ ...r, pct: Math.round((r.rto / r.orders) * 100), loss: Math.round(r.loss) }));
-  const eligible = rows.filter(r => r.orders >= PINCODE_MIN_ORDERS);
+  const eligible = rows.filter(r => r.orders >= min);
 
   return {
-    minOrders: PINCODE_MIN_ORDERS,
+    level,
+    minOrders: min,
     completed: delivered + rto,
     overallPct: delivered + rto ? Math.round((rto / (delivered + rto)) * 100) : null,
     pincodes: map.size,

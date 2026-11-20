@@ -16,7 +16,7 @@ function DashboardPreview() {
       <div className="rounded-2xl bg-white shadow-[0_24px_60px_rgba(12,18,48,0.35)] p-4 w-[420px] max-w-full">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <span className="w-6 h-6 rounded-full bg-[#E8EDFF] text-[#4361EE] text-[10px] font-bold flex items-center justify-center">R</span>
+            <span className="w-6 h-6 rounded-full bg-[#E6EEFF] text-[#1D5CFF] text-[10px] font-bold flex items-center justify-center">R</span>
             <span className="text-[11px] font-semibold text-[#0C1220]">Seller dashboard</span>
           </div>
           <span className="text-[10px] text-[#9CA3AF]">Last 30 days</span>
@@ -33,7 +33,7 @@ function DashboardPreview() {
           <p className="text-[9.5px] text-[#6B7280] mb-2">Delivered orders per day</p>
           <div className="flex items-end gap-1.5 h-[70px]">
             {bars.map((h, i) => (
-              <div key={i} className="flex-1 rounded-t-[3px]" style={{ height: `${h}%`, background: i === bars.length - 1 ? "#4361EE" : "#C7D2FE" }} />
+              <div key={i} className="flex-1 rounded-t-[3px]" style={{ height: `${h}%`, background: i === bars.length - 1 ? "#1D5CFF" : "#BFD3FF" }} />
             ))}
           </div>
         </div>
@@ -108,24 +108,24 @@ function LoginContent() {
                 <div>
                   <label htmlFor="login-email" className="block text-[12.5px] font-semibold text-[#374151] mb-1.5">Email</label>
                   <input id="login-email" type="email" autoComplete="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="you@yourstore.com"
-                    className="w-full h-12 px-4 text-[14px] rounded-xl border border-[#E2E7F0] bg-white text-[#0C1220] outline-none transition-colors focus:border-[#4361EE] focus:ring-4 focus:ring-[#4361EE]/10" />
+                    className="w-full h-12 px-4 text-[14px] rounded-xl border border-[#E2E7F0] bg-white text-[#0C1220] outline-none transition-colors focus:border-[#1D5CFF] focus:ring-4 focus:ring-[#1D5CFF]/10" />
                 </div>
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <label htmlFor="login-password" className="block text-[12.5px] font-semibold text-[#374151]">Password</label>
-                    <a href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent("Password reset for my AXQEN account")}`} className="text-[12.5px] font-semibold text-[#4361EE] hover:underline">Forgot password?</a>
+                    <a href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent("Password reset for my AXQEN account")}`} className="text-[12.5px] font-semibold text-[#1D5CFF] hover:underline">Forgot password?</a>
                   </div>
                   <div className="relative">
                     <input id="login-password" type={show ? "text" : "password"} autoComplete="current-password" required value={password} onChange={e => setPassword(e.target.value)} placeholder="Your password"
-                      className="w-full h-12 pl-4 pr-12 text-[14px] rounded-xl border border-[#E2E7F0] bg-white text-[#0C1220] outline-none transition-colors focus:border-[#4361EE] focus:ring-4 focus:ring-[#4361EE]/10" />
+                      className="w-full h-12 pl-4 pr-12 text-[14px] rounded-xl border border-[#E2E7F0] bg-white text-[#0C1220] outline-none transition-colors focus:border-[#1D5CFF] focus:ring-4 focus:ring-[#1D5CFF]/10" />
                     <button type="button" onClick={() => setShow(s => !s)} aria-label={show ? "Hide password" : "Show password"}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-lg flex items-center justify-center text-[#9CA3AF] hover:text-[#4361EE] hover:bg-[#F3F6FF]">
+                      className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-lg flex items-center justify-center text-[#9CA3AF] hover:text-[#1D5CFF] hover:bg-[#F0F5FF]">
                       {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
                 </div>
                 <button type="submit" disabled={loading}
-                  className="w-full h-12 rounded-xl text-[14px] font-bold text-white bg-[#4361EE] hover:bg-[#3451D1] disabled:opacity-60 flex items-center justify-center gap-2 transition-colors">
+                  className="w-full h-12 rounded-xl text-[14px] font-bold text-white bg-[#1D5CFF] hover:bg-[#1449D9] disabled:opacity-60 flex items-center justify-center gap-2 transition-colors">
                   {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Logging in…</> : "Log in"}
                 </button>
               </form>
@@ -135,7 +135,7 @@ function LoginContent() {
                   <p className="text-[13px] font-semibold text-[#0C1220]">New to AXQEN?</p>
                   <p className="text-[12px] text-[#6B7280]">Set up your seller account in a few minutes.</p>
                 </div>
-                <Link href="/signup" className="flex items-center gap-1 px-3.5 h-9 rounded-lg text-[12.5px] font-bold text-[#4361EE] bg-white border border-[#DCE3F5] hover:border-[#4361EE] whitespace-nowrap">
+                <Link href="/signup" className="flex items-center gap-1 px-3.5 h-9 rounded-lg text-[12.5px] font-bold text-[#1D5CFF] bg-white border border-[#D3DEF7] hover:border-[#1D5CFF] whitespace-nowrap">
                   Create account <ArrowRight className="w-3.5 h-3.5" />
                 </Link>
               </div>
@@ -145,15 +145,15 @@ function LoginContent() {
           <div className="flex items-center justify-between gap-3 flex-wrap text-[12px] text-[#9CA3AF]">
             <span>© {new Date().getFullYear()} AXQEN</span>
             <span className="flex items-center gap-4">
-              <Link href="/legal/privacy" className="hover:text-[#4361EE]">Privacy</Link>
-              <Link href="/admin/login" className="hover:text-[#4361EE]">AXQEN team login</Link>
+              <Link href="/legal/privacy" className="hover:text-[#1D5CFF]">Privacy</Link>
+              <Link href="/admin/login" className="hover:text-[#1D5CFF]">AXQEN team login</Link>
             </span>
           </div>
         </div>
 
         {/* ── Brand panel ──────────────────────────────────── */}
         <div className="hidden lg:block p-3">
-          <div className="relative h-full rounded-[22px] overflow-hidden flex flex-col px-12 pt-14 pb-12" style={{ background: "#4361EE" }}>
+          <div className="relative h-full rounded-[22px] overflow-hidden flex flex-col px-12 pt-14 pb-12" style={{ background: "linear-gradient(160deg, #1D5CFF 0%, #1A52F0 55%, #1244D6 100%)" }}>
             <div className="absolute inset-0 pointer-events-none opacity-[0.10]"
               style={{ backgroundImage: "radial-gradient(rgba(255,255,255,0.9) 1px, transparent 1px)", backgroundSize: "22px 22px" }} />
             <div className="absolute -right-24 -bottom-24 w-[420px] h-[420px] rounded-full pointer-events-none" style={{ background: "radial-gradient(circle, rgba(255,255,255,0.16), transparent 65%)" }} />

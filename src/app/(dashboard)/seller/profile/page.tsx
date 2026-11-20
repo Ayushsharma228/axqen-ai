@@ -4,12 +4,13 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   User, Building2, Landmark, Lock, Plug, BadgeCheck, Loader2, CheckCircle2, AlertCircle, ShieldCheck,
-  MessageCircle, ExternalLink, Store, Megaphone, ShoppingBag, Clock,
+  MessageCircle, ExternalLink, Store, Megaphone, ShoppingBag, Clock, Trash2,
 } from "lucide-react";
+import { DeleteAccountPanel } from "@/components/seller/delete-account-panel";
 import { WA_LINK } from "@/components/landing/constants";
 import { PlanDueNotice, useBilling } from "@/components/billing/plan-payments-panel";
 
-type Tab = "account" | "business" | "bank" | "plan" | "connections" | "password";
+type Tab = "account" | "business" | "bank" | "plan" | "connections" | "password" | "delete";
 interface Profile {
   name: string | null; email: string; phone: string | null; phoneVerified: boolean;
   brandName: string | null; gstNumber: string | null;
@@ -26,6 +27,7 @@ const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "plan",        label: "Plan",         icon: BadgeCheck },
   { id: "connections", label: "Connections",  icon: Plug },
   { id: "password",    label: "Password",     icon: Lock },
+  { id: "delete",      label: "Delete account", icon: Trash2 },
 ];
 
 const KYC: Record<Profile["kycStatus"], { label: string; bg: string; color: string; note: string }> = {
@@ -60,6 +62,11 @@ export default function ProfilePage() {
     }).finally(() => setLoading(false));
   }
   useEffect(load, []);
+  // Deep link, e.g. /seller/profile?tab=delete (linked from the app store listings)
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get("tab") as Tab | null;
+    if (t && TABS.some(x => x.id === t)) setTab(t);
+  }, []);
   useEffect(() => { setMsg(null); }, [tab]);
 
   async function save(type: string, payload: Record<string, string>, after?: () => void) {
@@ -319,6 +326,8 @@ export default function ProfilePage() {
               <button type="submit" disabled={saving || !pw.current || !pw.newPass} className={saveBtn}>{saving && <Loader2 className="w-4 h-4 animate-spin" />} Change password</button>
             </form>
           )}
+
+          {tab === "delete" && <DeleteAccountPanel email={data.email} />}
         </div>
       </div>
     </div>

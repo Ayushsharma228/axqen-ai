@@ -14,7 +14,19 @@ export default function DataDeletionPage() {
 
         <div className="space-y-6 text-gray-700 text-sm leading-7">
 
-          <p>If you have connected your Amazon Seller Central or Meta Ads account to AXQEN and would like us to delete your data, use the options below.</p>
+          {/* Whole account (App Store / Play Store requirement) */}
+          <div id="account" className="bg-gray-50 border border-gray-200 rounded-xl p-5 space-y-3">
+            <h2 className="text-base font-semibold text-gray-900">Delete your AXQEN account</h2>
+            <p><strong>In the app or on the website:</strong> log in → Profile &amp; Settings → <a href="/seller/profile?tab=delete" className="text-blue-600 underline">Delete account</a>. Confirm with your password and type DELETE.</p>
+            <p><strong>By email:</strong> write to <a href="mailto:vrinandyaventures@gmail.com" className="text-blue-600 underline">vrinandyaventures@gmail.com</a> from your registered email with the subject <strong>&quot;Account Deletion Request&quot;</strong>.</p>
+            <ul className="list-disc pl-5 space-y-1">
+              <li>We settle any pending payouts, then close the account within 7 working days and email you when it&apos;s done.</li>
+              <li>Deleted: your login, profile, bank details, KYC documents, store connections and access tokens.</li>
+              <li>Kept: orders, tax invoices and payment records, for as long as Indian tax law requires (up to 8 years). They are not used for anything else.</li>
+            </ul>
+          </div>
+
+          <p>If you have connected your Amazon Seller Central or Meta Ads account to AXQEN and would like us to delete only that data, use the options below.</p>
 
           {/* Amazon */}
           <div className="bg-gray-50 border border-gray-200 rounded-xl p-5 space-y-3">

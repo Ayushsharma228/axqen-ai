@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
     select:  {
       id: true, name: true, email: true, brandName: true, businessName: true,
       phone: true, gstNumber: true, aadhaarNumber: true, aadhaarDocUrl: true,
-      kycStatus: true, onboardingDone: true, accountStatus: true, createdAt: true,
+      kycStatus: true, onboardingDone: true, accountStatus: true, createdAt: true, plan: true, planTier: true, paymentConfirmed: true,
       businessAddress: true, pincode: true,
       bankName: true, bankHolder: true, bankIfsc: true,
     },

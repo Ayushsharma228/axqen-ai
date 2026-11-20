@@ -9,7 +9,6 @@ import {
 } from "lucide-react";
 import { PLAN_PRICES_INR, TEST_TIER, TEST_PRICE_INR, TEST_PLAN_ENABLED, type Service, type Tier } from "@/lib/plan-pricing";
 import { PRICING, MARKETPLACE_PLAN } from "@/components/landing/content";
-import { WA_LINK } from "@/components/landing/constants";
 
 const BLUE   = "#0048DF";
 const BLUEDIM = "rgba(0,72,223,0.08)";
@@ -526,7 +525,7 @@ export default function SignupPage() {
             </div>
           )}
 
-          {/* ── Step 3: Done (payment is collected offline during onboarding) ── */}
+          {/* ── Step 3: Done. Payment is collected offline and recorded when KYC is approved ── */}
           {step === 3 && (
             <div className="space-y-5">
               <div className="flex flex-col items-center text-center gap-3 py-2">
@@ -536,7 +535,7 @@ export default function SignupPage() {
                 <div>
                   <h2 className="text-xl font-bold" style={{ color: "#0A0E1A" }}>You&apos;re all set{name ? `, ${name.split(" ")[0]}` : ""}!</h2>
                   <p className="text-sm mt-1" style={{ color: "#6B7280" }}>
-                    Our team will call you{phone ? <> on <strong style={{ color: "#0A0E1A" }}>+91 {phone}</strong></> : null} shortly to complete payment and set up your account.
+                    Next, finish onboarding: your business details and KYC. Our team will call you{phone ? <> on <strong style={{ color: "#0A0E1A" }}>+91 {phone}</strong></> : null} to confirm your plan.
                   </p>
                 </div>
               </div>
@@ -544,7 +543,8 @@ export default function SignupPage() {
               <ol className="space-y-2.5 text-sm" style={{ color: "#374151" }}>
                 {[
                   ["Account created", true],
-                  ["Our team calls you to confirm your plan and collect payment", false],
+                  ["Finish onboarding: business details and KYC documents", false],
+                  ["Our team confirms your plan and payment when your KYC is approved", false],
                   ["Your account is activated and the dashboard opens", false],
                 ].map(([label, done], i) => (
                   <li key={i} className="flex items-start gap-3">
@@ -566,13 +566,13 @@ export default function SignupPage() {
                 <p className="text-xs mt-1" style={{ color: "#6B7280" }}>{service === "MARKETPLACE" ? "3-month plan" : "One-time"} · + 18% GST</p>
               </div>
 
-              <a href={WA_LINK} target="_blank" rel="noopener noreferrer"
+              <a href="/onboarding"
                 className="w-full py-3.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 text-white transition-all hover:opacity-90"
-                style={{ background: "#16A34A" }}>
-                Can&apos;t wait? Chat with us on WhatsApp <ChevronRight className="w-4 h-4" />
+                style={{ background: BLUE }}>
+                Continue to onboarding <ChevronRight className="w-4 h-4" />
               </a>
               <p className="text-center text-xs" style={{ color: "#6B7280" }}>
-                Onboarding opens after your payment is confirmed.
+                Payment is collected offline by our team. No online payment is needed.
               </p>
             </div>
           )}

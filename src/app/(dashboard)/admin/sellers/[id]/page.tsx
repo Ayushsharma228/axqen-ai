@@ -9,6 +9,7 @@ import {
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { PincodeRtoCard } from "@/components/dashboard/pincode-rto-card";
 import { PlanBillingDrawer } from "@/components/billing/plan-billing-drawer";
+import { KycApprovePanel } from "@/components/admin/kyc-approve-panel";
 
 interface Summary {
   seller: {
@@ -244,15 +245,14 @@ export default function AdminSellerPage({ params }: { params: Promise<{ id: stri
               <Field label="Agreement" value={s.agreementAccepted ? `Accepted ${fmt(s.agreementAcceptedAt)}` : "Not accepted"} />
             </div>
             {(s.kycStatus === "SUBMITTED" || s.kycStatus === "REJECTED") && (
-              <div className="mt-4 pt-4 border-t border-[#F3F4F6] flex flex-col sm:flex-row gap-2 sm:items-center">
-                <button onClick={() => call("kyc-ok", `/api/admin/kyc/${id}`, "PATCH", { action: "APPROVED" }, "KYC approved. The seller has been emailed.")} disabled={!!busy}
-                  className={`${btn} bg-[#059669] text-white`}>{busy === "kyc-ok" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />} Approve KYC</button>
-                {s.kycStatus === "SUBMITTED" && <>
+              <div className="mt-4 pt-4 border-t border-[#F3F4F6] space-y-2">
+                <KycApprovePanel seller={{ id: s.id, name: s.name, email: s.email, plan: s.plan, planTier: s.planTier, accountStatus: s.accountStatus }} onDone={(text, ok) => { setMsg({ ok, text }); load(); }} />
+                {s.kycStatus === "SUBMITTED" && <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
                   <input id="kyc-reason" value={rejectNote} onChange={e => setRejectNote(e.target.value)} placeholder="Reason for rejecting (sent to the seller)"
                     className="flex-1 px-3 py-2 text-[12.5px] rounded-lg border border-[#E8EDF6] outline-none focus:border-[#4361EE]" />
                   <button onClick={() => call("kyc-no", `/api/admin/kyc/${id}`, "PATCH", { action: "REJECTED", adminNote: rejectNote.trim() || undefined }, "KYC rejected. The seller has been emailed the reason.")} disabled={!!busy || !rejectNote.trim()}
                     className={`${btn} bg-[#FEE2E2] text-[#B91C1C]`}>{busy === "kyc-no" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldAlert className="w-3.5 h-3.5" />} Reject</button>
-                </>}
+                </div>}
               </div>
             )}
           </Card>

@@ -5,7 +5,6 @@ import { signIn } from "next-auth/react";
 import Link from "next/link";
 import { Eye, EyeOff, Loader2, ArrowRight, Wallet, ShoppingBag, MapPin } from "lucide-react";
 
-const SUPPORT_EMAIL = "connect@vrinandyaventures.in";
 
 /** Illustrative preview of the seller dashboard for the brand panel. Not real data. */
 function DashboardPreview() {
@@ -113,7 +112,7 @@ function LoginContent() {
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <label htmlFor="login-password" className="block text-[12.5px] font-semibold text-[#374151]">Password</label>
-                    <a href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent("Password reset for my AXQEN account")}`} className="text-[12.5px] font-semibold text-[#1D5CFF] hover:underline">Forgot password?</a>
+                    <Link href="/forgot-password" className="text-[12.5px] font-semibold text-[#1D5CFF] hover:underline">Forgot password?</Link>
                   </div>
                   <div className="relative">
                     <input id="login-password" type={show ? "text" : "password"} autoComplete="current-password" required value={password} onChange={e => setPassword(e.target.value)} placeholder="Your password"

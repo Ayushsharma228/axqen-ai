@@ -330,3 +330,18 @@ export async function emailTicketReply(opts: {
     `),
   );
 }
+
+export async function emailPasswordReset(opts: { to: string; name: string; link: string; minutes: number }): Promise<void> {
+  await send(
+    opts.to,
+    "Reset your AXQEN password",
+    base(`
+      ${h2("Reset your password")}
+      ${p(`Hi ${esc(opts.name)}, we got a request to reset the password for your AXQEN account.`)}
+      ${p(`<a href="${esc(opts.link)}" style="display:inline-block;background:#1D5CFF;color:#fff;font-weight:bold;padding:11px 22px;border-radius:8px;text-decoration:none">Set a new password</a>`)}
+      ${p(`This link works once and expires in ${opts.minutes} minutes.`)}
+      ${hr()}
+      ${p("Didn't ask for this? You can ignore this email. Your password stays the same.")}
+    `),
+  );
+}

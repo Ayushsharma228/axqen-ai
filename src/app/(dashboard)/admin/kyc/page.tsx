@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { KycApprovePanel } from "@/components/admin/kyc-approve-panel";
 import { Loader2, ShieldCheck, ShieldAlert, FileText, Eye, EyeOff, ExternalLink, Phone, Mail, Landmark, Building2, Search } from "lucide-react";
 
 type Status = "SUBMITTED" | "APPROVED" | "REJECTED" | "NOT_SUBMITTED";
@@ -10,6 +11,7 @@ interface Seller {
   gstNumber: string | null; aadhaarNumber: string | null; aadhaarDocUrl: string | null; kycStatus: Status;
   onboardingDone: boolean; accountStatus: string; createdAt: string; businessAddress: string | null; pincode: string | null;
   bankName: string | null; bankHolder: string | null; bankIfsc: string | null;
+  plan: string | null; planTier: string | null; paymentConfirmed: boolean;
 }
 
 const TABS: { key: Status; label: string }[] = [
@@ -160,17 +162,15 @@ export default function KycApprovalsPage() {
                 {missing.length > 0 && tab === "SUBMITTED" && <p className="text-[12px] text-[#B45309]">Missing: {missing.join(", ")}.</p>}
 
                 {(tab === "SUBMITTED" || tab === "REJECTED") && (
-                  <footer className="flex flex-col sm:flex-row gap-2 pt-1">
-                    <button onClick={() => decide(s, "APPROVED")} disabled={!!busy} className={`${btn} bg-[#059669] text-white justify-center`}>
-                      {busy === `${s.id}:APPROVED` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />} Approve
-                    </button>
-                    {tab === "SUBMITTED" && <>
+                  <footer className="space-y-2 pt-1">
+                    <KycApprovePanel seller={s} onDone={(text, ok) => { setMsg({ ok, text }); load(); }} />
+                    {tab === "SUBMITTED" && <div className="flex flex-col sm:flex-row gap-2">
                       <input id={`reason-${s.id}`} value={reason[s.id] ?? ""} onChange={e => setReason(r => ({ ...r, [s.id]: e.target.value }))}
                         placeholder="Reason for rejecting (the seller sees this)" className="flex-1 px-3 py-2 text-[12.5px] rounded-lg border border-[#E8EDF6] outline-none focus:border-[#4361EE]" />
                       <button onClick={() => decide(s, "REJECTED")} disabled={!!busy || !reason[s.id]?.trim()} className={`${btn} bg-[#FEE2E2] text-[#B91C1C] justify-center`}>
                         {busy === `${s.id}:REJECTED` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldAlert className="w-3.5 h-3.5" />} Reject
                       </button>
-                    </>}
+                    </div>}
                   </footer>
                 )}
               </article>

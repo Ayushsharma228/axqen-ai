@@ -204,8 +204,8 @@ export function RtoBoard({ mode }: { mode: "admin" | "seller" }) {
                         style={{ borderBottom: isOpen ? "none" : "1px solid #F3F4F6" }}>
                         <td className="px-4 py-3.5 whitespace-nowrap">
                           {mode === "seller"
-                            ? <Link href={`/seller/orders/${r.id}`} onClick={e => e.stopPropagation()} className="text-[13px] font-bold text-[#4361EE] hover:underline">#{r.externalOrderId}</Link>
-                            : <span className="text-[13px] font-bold text-[#0C1220]">#{r.externalOrderId}</span>}
+                            ? <Link href={`/seller/orders/${r.id}`} onClick={e => e.stopPropagation()} className="text-[13px] font-bold text-[#4361EE] hover:underline">{r.externalOrderId.startsWith("#") ? r.externalOrderId : `#${r.externalOrderId}`}</Link>
+                            : <span className="text-[13px] font-bold text-[#0C1220]">{r.externalOrderId.startsWith("#") ? r.externalOrderId : `#${r.externalOrderId}`}</span>}
                           <p className="text-[11px] text-[#9CA3AF] mt-0.5">{r.courier}{r.awb ? ` · ${r.awb}` : ""}</p>
                           {r.returnAwb && <p className="text-[11px] text-[#6B7280]">Return AWB {r.returnAwb}</p>}
                           {mode === "admin" && r.seller && <p className="text-[11px] text-[#6B7280]">{r.seller.brandName || r.seller.name}</p>}

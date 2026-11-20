@@ -340,7 +340,7 @@ export default function ShipmentsPage() {
                         style={{ borderBottom: open ? "none" : "1px solid #F3F4F6", background: open ? "rgba(67,97,238,0.02)" : undefined }}>
                         <td className="px-4 py-3.5 whitespace-nowrap">
                           <Link href={`/seller/orders/${s.id}`} onClick={e => e.stopPropagation()} className="text-[13px] font-bold text-[#4361EE] hover:underline">
-                            #{s.externalOrderId}
+                            {s.externalOrderId.startsWith("#") ? s.externalOrderId : `#${s.externalOrderId}`}
                           </Link>
                           {s.awb && (
                             <div className="flex items-center gap-1 mt-0.5" onClick={e => e.stopPropagation()}>

@@ -97,7 +97,7 @@ export function NdrCard({ n, mode, onAction, onEscalate }: {
       <button type="button" onClick={() => setOpen(o => !o)} className="w-full text-left px-4 py-3.5 flex items-start justify-between gap-3 flex-wrap hover:bg-[#FAFBFF]">
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[14px] font-bold text-[#0C1220]">#{n.externalOrderId}</span>
+            <span className="text-[14px] font-bold text-[#0C1220]">{n.externalOrderId.startsWith("#") ? n.externalOrderId : `#${n.externalOrderId}`}</span>
             <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full" style={{ background: meta.bg, color: meta.color }}>{meta.label}</span>
             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
               style={{ background: prepaid ? "#EEF2FF" : "#FFF7ED", color: prepaid ? "#4361EE" : "#C2410C" }}>

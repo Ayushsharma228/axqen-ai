@@ -74,7 +74,7 @@ export function InvoiceDocument({ inv, settings }: { inv: InvoiceDoc; settings: 
                 <tbody>
                   {[
                     [["Invoice No.", inv.number ?? ""], ["Dated", tallyDate(inv.issueDate)]],
-                    [["Buyer's Order No.", inv.orderNumber ? `#${inv.orderNumber}` : ""], ["Mode/Terms of Payment", "Adjusted against payout"]],
+                    [["Buyer's Order No.", inv.orderNumber ? (inv.orderNumber.startsWith("#") ? inv.orderNumber : `#${inv.orderNumber}`) : ""], ["Mode/Terms of Payment", "Adjusted against payout"]],
                     [["Place of Supply", inv.placeOfSupply ?? ""], ["Reverse Charge", "No"]],
                   ].map((row, i) => (
                     <tr key={i}>

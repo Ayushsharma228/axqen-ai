@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRouteSession } from "@/lib/session";
-import { prisma } from "@/lib/prisma";
-import { SHIPDAAK_COURIER_PREFIX, shipdaakConfigured } from "@/lib/shipdaak";
-import { SHIPDAAK_SYNC_SELECT, syncShipdaakOrder, trackableWhere } from "@/lib/shipdaak-sync";
+import { runShipdaakTracking } from "@/lib/shipdaak-sync";
+
+export const maxDuration = 120;
 
 // Seller "Refresh tracking" for Shipdaak shipments (Delhivery-direct ones use /api/seller/deliveries/refresh-tracking).
 export async function POST(req: NextRequest) {
@@ -10,23 +10,6 @@ export async function POST(req: NextRequest) {
   if (!session || session.user.role !== "SELLER") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  if (!shipdaakConfigured()) return NextResponse.json({ updated: 0, checked: 0 });
-
-  const orders = await prisma.order.findMany({
-    where: {
-      sellerId:  session.user.id,
-      awbNumber: { not: null },
-      courier:   { startsWith: SHIPDAAK_COURIER_PREFIX },
-      ...trackableWhere(),
-    },
-    select: SHIPDAAK_SYNC_SELECT,
-    orderBy: { updatedAt: "asc" },
-    take: 40,
-  });
-
-  let updated = 0;
-  for (const o of orders) {
-    try { if (await syncShipdaakOrder(o)) updated++; } catch { /* keep going */ }
-  }
-  return NextResponse.json({ updated, checked: orders.length });
+  const r = await runShipdaakTracking({ sellerId: session.user.id, limit: 60 });
+  return NextResponse.json({ updated: r.updated, checked: r.checked });
 }

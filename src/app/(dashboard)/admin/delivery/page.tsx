@@ -45,6 +45,9 @@ export default function ShipmentsPage() {
   const [drawerId, setDrawerId] = useState<string | null>(null);
   const [shipOrder, setShipOrder] = useState<ShipOrder | null>(null);
   const [awbOrder, setAwbOrder] = useState<ShipOrder | null>(null);
+  const [lastRun, setLastRun] = useState<{ at: string; checked: number; updated: number; booked?: number; manual?: number; notShipdaak?: number; errors?: string[] } | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -54,6 +57,17 @@ export default function ShipmentsPage() {
   }, [sellerId]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => { fetch("/api/admin/sellers").then(r => r.json()).then(d => setSellers(d.sellers ?? [])).catch(() => {}); }, []);
+  const loadRun = useCallback(() => fetch("/api/admin/shipdaak/tracking").then(r => r.json()).then(d => setLastRun(d.lastRun ?? null)).catch(() => {}), []);
+  useEffect(() => { loadRun(); }, [loadRun]);
+  async function syncNow() {
+    setSyncing(true); setSyncMsg(null);
+    const res = await fetch("/api/admin/shipdaak/tracking", { method: "POST" });
+    const d = await res.json().catch(() => ({}));
+    setSyncing(false);
+    if (!res.ok || d.configured === false) { setSyncMsg({ ok: false, text: d.error ?? "Shipdaak isn't set up in Vercel (SHIPDAAK_EMAIL / SHIPDAAK_PASSWORD)." }); return; }
+    setSyncMsg({ ok: !(d.errors?.length), text: `Checked ${d.checked} shipments with Shipdaak, ${d.updated} updated.${d.notShipdaak ? ` ${d.notShipdaak} AWBs aren't Shipdaak shipments.` : ""}${d.errors?.length ? ` ${d.errors.length} failed, e.g. ${d.errors[0]}` : ""}` });
+    loadRun(); load();
+  }
 
   const list = useMemo(() => {
     if (!data) return [];
@@ -96,11 +110,16 @@ export default function ShipmentsPage() {
             <option value="">All sellers</option>
             {sellers.map(s => <option key={s.id} value={s.id}>{s.name || s.email}</option>)}
           </select>
-          <button onClick={load} disabled={loading} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12.5px] font-semibold border border-[#E8EDF6] bg-white text-[#374151] hover:border-[#C7D2FE] disabled:opacity-60">
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> Refresh
+          <button onClick={syncNow} disabled={syncing} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12.5px] font-bold text-white bg-[#4361EE] disabled:opacity-60">
+            <RefreshCw className={`w-3.5 h-3.5 ${syncing ? "animate-spin" : ""}`} /> {syncing ? "Syncing with Shipdaak…" : "Sync tracking now"}
           </button>
         </div>
       </div>
+
+      <p className="text-[12px] text-[#6B7280] -mt-2">
+        {lastRun ? <>Last Shipdaak sync {new Date(lastRun.at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}: {lastRun.checked} checked, {lastRun.updated} updated{lastRun.errors?.length ? <span className="text-[#B91C1C]"> · {lastRun.errors.length} errors, e.g. {lastRun.errors[0]}</span> : null}. Runs automatically every 2 hours.</> : "No Shipdaak sync recorded yet. It runs every 2 hours, or use Sync tracking now."}
+      </p>
+      {syncMsg && <div className="px-4 py-2.5 rounded-xl text-[13px]" style={{ background: syncMsg.ok ? "#ECFDF5" : "#FEF2F2", color: syncMsg.ok ? "#047857" : "#B91C1C" }}>{syncMsg.text}</div>}
 
       {error ? <p className="py-24 text-center text-[13px] text-[#B91C1C]">Couldn&apos;t load shipments. Refresh to try again.</p>
         : !data ? <div className="flex items-center justify-center gap-2 py-24 text-[13px] text-[#9CA3AF]"><Loader2 className="w-5 h-5 animate-spin" /> Loading shipments…</div>

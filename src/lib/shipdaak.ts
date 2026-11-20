@@ -167,8 +167,60 @@ export type ShipdaakTracking = {
   history?: { statusCode: string; location: string; eventTime: string; message: string }[];
 };
 
+/** Raw Shipdaak tracking reply (used by the admin tracking check). */
+export async function trackShipmentRaw(awb: string) {
+  return call<unknown>(`${API}/shipments/track-shipment/${encodeURIComponent(awb)}`);
+}
+
+type Loose = Record<string, unknown>;
+const pickStr = (o: Loose, ...keys: string[]) => {
+  for (const k of keys) { const v = o[k]; if (v != null && String(v).trim()) return String(v).trim(); }
+  return "";
+};
+const isObj = (v: unknown): v is Loose => !!v && typeof v === "object" && !Array.isArray(v);
+
+/**
+ * Shipdaak's tracking reply isn't documented field by field, so read it leniently:
+ * the shipment may sit at data, data[0] or one level deeper, and scans may be called
+ * history / scans / tracking / track_history / activities with snake_case or camelCase fields.
+ */
+export function normalizeShipdaakTracking(raw: unknown, awb: string): ShipdaakTracking | null {
+  let d: unknown = raw;
+  if (Array.isArray(d)) d = d[0];
+  if (!isObj(d)) return null;
+  for (const k of ["shipment", "tracking", "tracking_data", "trackingData", "shipment_track", "data"]) {
+    const inner = (d as Loose)[k];
+    const cand = Array.isArray(inner) && isObj(inner[0]) && !("location" in (inner[0] as Loose)) ? inner[0] : inner;
+    if (isObj(cand) && (pickStr(cand, "status", "current_status", "currentStatus", "shipment_status") || Array.isArray((cand as Loose).history))) { d = cand; break; }
+  }
+  const o = d as Loose;
+  const listKey = ["history", "scans", "tracking", "track_history", "trackHistory", "scan_history", "activities", "shipment_track_activities", "tracking_history", "events"]
+    .find(k => Array.isArray(o[k]));
+  const list = (listKey ? (o[listKey] as unknown[]) : []).filter(isObj).map(h => ({
+    statusCode: pickStr(h, "statusCode", "status_code", "status", "activity", "scan", "scan_type", "current_status"),
+    location: pickStr(h, "location", "scan_location", "scanLocation", "city", "hub"),
+    eventTime: pickStr(h, "eventTime", "event_time", "date", "datetime", "date_time", "scan_date_time", "scanDateTime", "time", "updated_at", "created_at"),
+    message: pickStr(h, "message", "remarks", "remark", "instructions", "description", "activity", "status"),
+  })).filter(h => h.eventTime);
+  // Newest first, whatever order Shipdaak used
+  list.sort((a, b) => new Date(b.eventTime).getTime() - new Date(a.eventTime).getTime());
+  const status = pickStr(o, "status", "current_status", "currentStatus", "shipment_status", "shipmentStatus", "status_name") || list[0]?.statusCode || "";
+  if (!status && !list.length) return null;
+  return {
+    awbNumber: pickStr(o, "awbNumber", "awb_number", "awb") || awb,
+    status,
+    rtoStatus: pickStr(o, "rtoStatus", "rto_status") || undefined,
+    rtoAwb: pickStr(o, "rtoAwb", "rto_awb", "rto_awb_number") || undefined,
+    courierName: pickStr(o, "courierName", "courier_name", "courier") || undefined,
+    deliveredDate: pickStr(o, "deliveredDate", "delivered_date") || null,
+    rtoInitiateDate: pickStr(o, "rtoInitiateDate", "rto_initiate_date", "rto_initiated_date") || null,
+    history: list,
+  };
+}
+
 export async function trackShipment(awb: string) {
-  return (await call<ShipdaakTracking>(`${API}/shipments/track-shipment/${encodeURIComponent(awb)}`)).data ?? null;
+  const d = await trackShipmentRaw(awb);
+  return normalizeShipdaakTracking(d.data ?? d, awb);
 }
 
 export async function cancelShipment(awb: string) {
@@ -221,8 +273,8 @@ export function mapShipdaakStatus(t: ShipdaakTracking): { status: "SHIPPED" | "I
   if (/cancel/.test(s)) return { status: "CANCELLED", ndr: false };
   if (/\bdelivered\b/.test(s) && !/undelivered|not delivered/.test(s)) return { status: "DELIVERED", ndr: false };
   if (/undelivered|not delivered|ndr|delivery failed|failed attempt/.test(s)) return { status: "IN_TRANSIT", ndr: true };
-  if (/transit|out for delivery|reached|arrived/.test(s)) return { status: "IN_TRANSIT", ndr: false };
-  if (/picked|shipped|dispatched/.test(s)) return { status: "SHIPPED", ndr: false };
+  if (/transit|out for delivery|\bofd\b|reached|arrived|in scan|destination/.test(s)) return { status: "IN_TRANSIT", ndr: false };
+  if (/picked up|pickup done|shipped|dispatched|manifested and picked/.test(s)) return { status: "SHIPPED", ndr: false };
   return { status: null, ndr: false }; // booked / pending pickup etc. — no change
 }
 

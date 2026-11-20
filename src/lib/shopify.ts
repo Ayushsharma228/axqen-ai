@@ -4,7 +4,7 @@ import { encrypt, decrypt } from "@/lib/encrypt";
 
 // ── Access tokens ─────────────────────────────────────────────────────────────
 // New public apps must use expiring offline tokens (~1h) plus a refresh token.
-// Older custom-app connections have non-expiring tokens (no accessTokenExpiresAt) and are used as-is.
+// Older connections with non-expiring tokens are swapped for an expiring pair on first use (see migrateToExpiringToken).
 
 type TokenResponse = {
   access_token?: string;
@@ -36,18 +36,65 @@ export async function exchangeCodeForToken(shop: string, clientId: string, clien
   return (await res.json().catch(() => ({}))) as TokenResponse;
 }
 
+// Stores whose old token Shopify refused to swap (for example tokens made in the store admin); retried after a restart.
+const migrationFailed = new Set<string>();
+
+/**
+ * Swaps a non-expiring offline token for an expiring token pair (Shopify token exchange).
+ * The old token stops working once this succeeds, so the new pair is saved before it is used.
+ * If saving fails, retrying with the same old token within 7 days returns the same pair.
+ */
+async function migrateToExpiringToken(storeId: string, shop: string, clientId: string, clientSecret: string, oldToken: string): Promise<string | null> {
+  try {
+    const res = await fetch(`https://${shop}/admin/oauth/access_token`, {
+      method:  "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body:    new URLSearchParams({
+        grant_type:           "urn:ietf:params:oauth:grant-type:token-exchange",
+        client_id:            clientId,
+        client_secret:        clientSecret,
+        subject_token:        oldToken,
+        subject_token_type:   "urn:shopify:params:oauth:token-type:offline-access-token",
+        requested_token_type: "urn:shopify:params:oauth:token-type:offline-access-token",
+        expiring:             "1",
+      }),
+    });
+    const t = (await res.json().catch(() => ({}))) as TokenResponse;
+    if (!res.ok || !t.access_token || !t.refresh_token) {
+      console.warn(`[shopify] token migration skipped for ${shop}: ${t.error_description || t.error || `HTTP ${res.status}`}`);
+      return null;
+    }
+    await prisma.shopifyStore.update({ where: { id: storeId }, data: { ...tokenFields(t), lastSyncError: null } });
+    console.log(`[shopify] migrated ${shop} to an expiring offline token`);
+    return t.access_token;
+  } catch (err) {
+    console.warn(`[shopify] token migration failed for ${shop}:`, err);
+    return null;
+  }
+}
+
 /** Returns a usable access token for the store, refreshing it first if it is about to expire. */
 export async function getShopifyAccessToken(storeId: string): Promise<string> {
   const store = await prisma.shopifyStore.findUnique({ where: { id: storeId } });
   if (!store) throw new Error("Shopify store not found");
 
+  const clientId = store.clientId || process.env.SHOPIFY_API_KEY;
+  const clientSecret = store.clientSecret || process.env.SHOPIFY_API_SECRET;
+
   const expiresAt = store.accessTokenExpiresAt?.getTime();
-  if (!expiresAt || expiresAt - Date.now() > 2 * 60_000 || !store.refreshToken) {
+  if (!expiresAt) {
+    // Old non-expiring token: Shopify now blocks these, so swap it once for an expiring pair.
+    if (store.accessToken && clientId && clientSecret && !migrationFailed.has(storeId)) {
+      const migrated = await migrateToExpiringToken(storeId, store.storeUrl, clientId, clientSecret, decrypt(store.accessToken));
+      if (migrated) return migrated;
+      migrationFailed.add(storeId);
+    }
+    return decrypt(store.accessToken);
+  }
+  if (expiresAt - Date.now() > 2 * 60_000 || !store.refreshToken) {
     return decrypt(store.accessToken);
   }
 
-  const clientId = store.clientId || process.env.SHOPIFY_API_KEY;
-  const clientSecret = store.clientSecret || process.env.SHOPIFY_API_SECRET;
   if (!clientId || !clientSecret) throw new Error("Shopify app credentials are not configured");
 
   const res = await fetch(`https://${store.storeUrl}/admin/oauth/access_token`, {

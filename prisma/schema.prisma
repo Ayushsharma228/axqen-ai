@@ -1706,3 +1706,27 @@ model PayoutHold {
   @@map("payout_holds")
 }
 
+
+// Blog posts written in Admin → Growth → Blog. Published posts appear on /blog next to the code-based ones.
+model BlogPost {
+  id             String    @id @default(cuid())
+  slug           String    @unique
+  title          String
+  summary        String    @default("")
+  coverImage     String?
+  category       String?
+  authorName     String    @default("AXQEN Team")
+  contentHtml    String    @default("")
+  seoTitle       String?
+  seoDescription String?
+  keywords       String[]  @default([])
+  status         String    @default("DRAFT") // DRAFT | PUBLISHED
+  publishedAt    DateTime?
+  createdById    String?
+  updatedById    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([status, publishedAt])
+  @@map("blog_posts")
+}

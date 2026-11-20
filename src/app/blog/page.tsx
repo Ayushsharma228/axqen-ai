@@ -6,6 +6,10 @@ import { C } from "@/components/landing/constants";
 import { SOCIALS } from "@/components/landing/content";
 import { AXQ_ROOT } from "@/components/landing/theme";
 import { POSTS, formatDate } from "./posts";
+import { getPublishedPosts } from "@/lib/blog";
+
+// Admin-written posts appear within a minute of publishing.
+export const revalidate = 60;
 
 export const metadata: Metadata = {
   title: "Blog",
@@ -13,8 +17,14 @@ export const metadata: Metadata = {
   alternates: { canonical: "https://www.axqen.app/blog" },
 };
 
-export default function BlogPage() {
-  const posts = [...POSTS].sort((a, b) => b.date.localeCompare(a.date));
+type Card = { slug: string; title: string; excerpt: string; date: string; readingMinutes: number; image: string; imageAlt: string };
+
+export default async function BlogPage() {
+  const dbPosts = await getPublishedPosts();
+  const posts: Card[] = [
+    ...POSTS.map(p => ({ slug: p.slug, title: p.title, excerpt: p.excerpt, date: p.date, readingMinutes: p.readingMinutes, image: `/blog/${p.slug}/opengraph-image`, imageAlt: p.imageAlt })),
+    ...dbPosts.map(p => ({ slug: p.slug, title: p.title, excerpt: p.summary, date: p.publishedAt.slice(0, 10), readingMinutes: p.readingMinutes, image: p.coverImage ?? `/blog/${p.slug}/opengraph-image`, imageAlt: p.title })),
+  ].sort((a, b) => b.date.localeCompare(a.date));
 
   return (
     <div className={AXQ_ROOT} style={{ minHeight: "100vh" }}>
@@ -38,7 +48,7 @@ export default function BlogPage() {
           <div className="max-w-[1100px] mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
             {posts.map((p) => (
               <a key={p.slug} href={`/blog/${p.slug}`} className="axq-card axq-card-hover group flex flex-col overflow-hidden">
-                <img src={`/blog/${p.slug}/opengraph-image`} alt={p.imageAlt} width={1200} height={630} loading="lazy" className="w-full aspect-[1200/630] object-cover" />
+                <img src={p.image} alt={p.imageAlt} width={1200} height={630} loading="lazy" className="w-full aspect-[1200/630] object-cover" />
                 <div className="p-6 md:p-7 flex flex-col flex-1">
                   <p className="text-sm mb-3" style={{ color: C.body }}>
                     <time dateTime={p.date}>{formatDate(p.date)}</time> · {p.readingMinutes} min read

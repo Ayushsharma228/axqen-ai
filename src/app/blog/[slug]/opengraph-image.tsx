@@ -1,5 +1,6 @@
 import { ImageResponse } from "next/og";
 import { POSTS, getPost } from "../posts";
+import { getPublishedPost } from "@/lib/blog";
 
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
@@ -10,8 +11,9 @@ export function generateStaticParams() {
 }
 
 export default async function Image({ params }: { params: Promise<{ slug: string }> }) {
-  const post = getPost((await params).slug);
-  const title = post?.title ?? "AXQEN AI Blog";
+  const slug = (await params).slug;
+  const post = getPost(slug);
+  const title = post?.title ?? (await getPublishedPost(slug))?.title ?? "AXQEN AI Blog";
   const flow = post?.flow ?? [];
 
   return new ImageResponse(

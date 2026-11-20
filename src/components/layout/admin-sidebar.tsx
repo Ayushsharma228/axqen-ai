@@ -45,7 +45,10 @@ const NAV: Entry[] = [
     { label: "Reconciliation",     href: "/admin/reconciliation" },
     { label: "Platform Analytics", href: "/admin/analytics" },
   ]},
-  { id: "growth", label: "Meta Ads", icon: Megaphone, href: "/admin/ad-spend" },
+  { id: "growth", label: "Growth", icon: Megaphone, children: [
+    { label: "Meta Ads", href: "/admin/ad-spend" },
+    { label: "Blog",     href: "/admin/blog" },
+  ]},
   { id: "support", label: "Support", icon: LifeBuoy, children: [
     { label: "Support Tickets", href: "/admin/support", badge: "support" },
     { label: "Notifications",   href: "/admin/notifications" },

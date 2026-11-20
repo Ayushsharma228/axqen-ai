@@ -1,9 +1,12 @@
 import type { MetadataRoute } from "next";
 import { POSTS } from "./blog/posts";
+import { getPublishedPosts } from "@/lib/blog";
+
+export const revalidate = 3600;
 
 const baseUrl = "https://www.axqen.app";
 
-export default function sitemap(): MetadataRoute.Sitemap {
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const publicRoutes = [
     "",
     "/about",
@@ -30,5 +33,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
     priority: 0.8,
   }));
 
-  return [...pages, ...posts];
+  const dbPosts: MetadataRoute.Sitemap = (await getPublishedPosts()).map((p) => ({
+    url: `${baseUrl}/blog/${p.slug}`,
+    lastModified: new Date(p.updatedAt),
+    changeFrequency: "monthly",
+    priority: 0.8,
+  }));
+
+  return [...pages, ...posts, ...dbPosts];
 }

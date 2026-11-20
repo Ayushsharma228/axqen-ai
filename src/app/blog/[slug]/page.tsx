@@ -6,18 +6,34 @@ import { C } from "@/components/landing/constants";
 import { AXQ_ROOT } from "@/components/landing/theme";
 import { POSTS, getPost, postUrl, formatDate, SITE } from "../posts";
 import { BODIES } from "../_posts";
+import { getPublishedPost } from "@/lib/blog";
+import { DbPostView } from "../_components/DbPost";
 
 type Props = { params: Promise<{ slug: string }> };
 
-export const dynamicParams = false;
+// Built-in posts are prebuilt; posts written in the admin editor render on request and refresh every minute.
+export const dynamicParams = true;
+export const revalidate = 60;
 
 export function generateStaticParams() {
   return POSTS.map((p) => ({ slug: p.slug }));
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const post = getPost((await params).slug);
-  if (!post) return {};
+  const slug = (await params).slug;
+  const post = getPost(slug);
+  if (!post) {
+    const db = await getPublishedPost(slug);
+    if (!db) return {};
+    const url = postUrl(db.slug);
+    const title = db.seoTitle || db.title, description = db.seoDescription || db.summary;
+    return {
+      title: { absolute: title }, description, keywords: db.keywords, authors: [{ name: db.authorName }],
+      alternates: { canonical: url },
+      openGraph: { type: "article", url, title, description, siteName: "AXQEN AI", locale: "en_IN", publishedTime: db.publishedAt, authors: [db.authorName], ...(db.coverImage ? { images: [{ url: db.coverImage, width: 1200, height: 630, alt: db.title }] } : {}) },
+      twitter: { card: "summary_large_image", title, description, ...(db.coverImage ? { images: [db.coverImage] } : {}) },
+    };
+  }
   const url = postUrl(post.slug);
   return {
     title: { absolute: post.seoTitle },
@@ -43,7 +59,11 @@ export default async function BlogPostPage({ params }: Props) {
   const { slug } = await params;
   const post = getPost(slug);
   const Body = BODIES[slug];
-  if (!post || !Body) notFound();
+  if (!post || !Body) {
+    const db = await getPublishedPost(slug);
+    if (!db) notFound();
+    return <DbPostView post={db} />;
+  }
 
   const url = postUrl(post.slug);
   const jsonLd = {

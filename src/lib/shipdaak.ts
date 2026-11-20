@@ -204,7 +204,8 @@ export function normalizeShipdaakTracking(raw: unknown, awb: string): ShipdaakTr
   })).filter(h => h.eventTime);
   // Newest first, whatever order Shipdaak used
   list.sort((a, b) => new Date(b.eventTime).getTime() - new Date(a.eventTime).getTime());
-  const status = pickStr(o, "status", "current_status", "currentStatus", "shipment_status", "shipmentStatus", "status_name") || list[0]?.statusCode || "";
+  const wordy = (...keys: string[]) => keys.map(k => pickStr(o, k)).find(v => /[a-z]/i.test(v)) ?? "";
+  const status = wordy("current_status", "currentStatus", "status_name", "statusName", "status_text", "shipment_status", "shipmentStatus", "status", "current_status_code") || list[0]?.statusCode || "";
   if (!status && !list.length) return null;
   return {
     awbNumber: pickStr(o, "awbNumber", "awb_number", "awb") || awb,
@@ -267,14 +268,26 @@ export async function ndrAction(awb: string, a: NdrAction) {
 // Shipdaak's full status list isn't documented; keyword matching mirrors the Delhivery mapper.
 // Raw statuses are written to the order timeline so the mapping can be refined from real data.
 export function mapShipdaakStatus(t: ShipdaakTracking): { status: "SHIPPED" | "IN_TRANSIT" | "DELIVERED" | "RTO" | "CANCELLED" | null; ndr: boolean } {
-  const s = `${t.status ?? ""}`.toLowerCase().replace(/[_-]+/g, " ");
-  const rto = `${t.rtoStatus ?? ""}`.trim();
-  if (rto || t.rtoInitiateDate || /\brto\b|return to origin|returned/.test(s)) return { status: "RTO", ndr: false };
+  const norm = (v: unknown) => `${v ?? ""}`.toLowerCase().replace(/[_-]+/g, " ").trim();
+  const s = norm(t.status);
+  const last = t.history?.[0];
+  const scan = norm(`${last?.statusCode ?? ""} ${last?.message ?? ""}`);
+  const rtoRaw = norm(t.rtoStatus);
+  const rtoReal = !!rtoRaw && !/^(0|false|no|na|n a|n\/a|none|null|nil|not applicable|-|)$/.test(rtoRaw);
+  const isRto = (x: string) => /\brto\b|return to origin|returned to (origin|shipper|seller)|rto (initiated|in transit|delivered)/.test(x);
+  const isDelivered = (x: string) => /\bdelivered\b/.test(x) && !/undelivered|not delivered|out for delivery/.test(x);
+  const isNdr = (x: string) => /undelivered|not delivered|\bndr\b|delivery (failed|attempted|exception)|failed (delivery|attempt)|consignee (not available|unavailable|refused|not reachable)|customer (not available|refused|not reachable)|refused|door locked|address (issue|incomplete|not found)|premises closed|future delivery|reschedul/.test(x);
+
+  if (rtoReal || t.rtoInitiateDate || isRto(s)) return { status: "RTO", ndr: false };
   if (/cancel/.test(s)) return { status: "CANCELLED", ndr: false };
-  if (/\bdelivered\b/.test(s) && !/undelivered|not delivered/.test(s)) return { status: "DELIVERED", ndr: false };
-  if (/undelivered|not delivered|ndr|delivery failed|failed attempt/.test(s)) return { status: "IN_TRANSIT", ndr: true };
-  if (/transit|out for delivery|\bofd\b|reached|arrived|in scan|destination/.test(s)) return { status: "IN_TRANSIT", ndr: false };
-  if (/picked up|pickup done|shipped|dispatched|manifested and picked/.test(s)) return { status: "SHIPPED", ndr: false };
+  if (isDelivered(s)) return { status: "DELIVERED", ndr: false };
+  if (isNdr(s)) return { status: "IN_TRANSIT", ndr: true };
+  // The shipment status can lag behind the scans: read the latest scan too.
+  if (isRto(scan)) return { status: "RTO", ndr: false };
+  if (isDelivered(scan) && !s) return { status: "DELIVERED", ndr: false };
+  if (isNdr(scan)) return { status: "IN_TRANSIT", ndr: true };
+  if (/transit|out for delivery|\bofd\b|reached|arrived|in scan|destination/.test(s) || /out for delivery|\bofd\b|in transit|reached|arrived/.test(scan)) return { status: "IN_TRANSIT", ndr: false };
+  if (/picked up|pickup done|shipped|dispatched|manifested and picked/.test(s) || /picked up|pickup done/.test(scan)) return { status: "SHIPPED", ndr: false };
   return { status: null, ndr: false }; // booked / pending pickup etc. — no change
 }
 

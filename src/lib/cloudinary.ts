@@ -6,7 +6,7 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-export async function uploadImageToCloudinary(file: File): Promise<string> {
+export async function uploadImageToCloudinary(file: File, folder = "vrinandya/products"): Promise<string> {
   const bytes = await file.arrayBuffer();
   const buffer = Buffer.from(bytes);
 
@@ -14,7 +14,7 @@ export async function uploadImageToCloudinary(file: File): Promise<string> {
     cloudinary.uploader
       .upload_stream(
         {
-          folder: "vrinandya/products",
+          folder,
           resource_type: "image",
           transformation: [{ quality: "auto", fetch_format: "auto" }],
         },

@@ -1,166 +1,125 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useParams, useRouter } from "next/navigation";
-import {
-  ArrowLeft, Loader2, Send, CheckCircle2, Lock,
-  HelpCircle, AlertCircle,
-} from "lucide-react";
+import { useParams } from "next/navigation";
+import Link from "next/link";
+import { ArrowLeft, Loader2, Send, CheckCircle2, Lock, AlertCircle, Clock, ThumbsUp, ThumbsDown } from "lucide-react";
+import { MessageBody, useAttachments } from "@/components/support/ticket-ui";
+import { parseMessage } from "@/lib/ticket-content";
 
-interface Author { id: string; name: string | null; role: string; }
-interface Message { id: string; message: string; isInternal: boolean; createdAt: string; author: Author; }
+interface Author { id: string; name: string | null; role: string }
+interface Message { id: string; message: string; isInternal: boolean; createdAt: string; author: Author }
 interface TicketDetail {
-  id: string; ticketNumber: number; subject: string;
-  category: string; priority: string; status: string;
-  relatedOrderId: string | null; createdAt: string; updatedAt: string;
-  resolvedAt: string | null; closedAt: string | null;
+  id: string; ticketNumber: number; subject: string; category: string; priority: string; status: string;
+  relatedOrderId: string | null; createdAt: string; updatedAt: string; resolvedAt: string | null; closedAt: string | null;
   assignedTo: { id: string; name: string | null } | null;
   messages: Message[];
 }
 
-const STATUS_CONFIG: Record<string, { label: string; bg: string; color: string }> = {
-  OPEN:              { label: "Open",          bg: "#EFF6FF", color: "#2563EB" },
-  IN_PROGRESS:       { label: "In Progress",   bg: "#FFF7ED", color: "#C2410C" },
-  WAITING_ON_SELLER: { label: "Awaiting You",  bg: "#F5F3FF", color: "#7C3AED" },
-  RESOLVED:          { label: "Resolved",      bg: "#F0FDF4", color: "#16A34A" },
-  CLOSED:            { label: "Closed",        bg: "#F9FAFB", color: "#6B7280" },
-};
+const SUPPORT_HOURS = "Monday to Saturday, 11 AM – 8 PM";
+const REPLY_TIME = "within 30 working minutes";
+const BLUE = "#1D5CFF";
 
-const CAT_LABEL: Record<string, string> = {
-  ORDER_ISSUE: "Order Issue", PAYMENT: "Payment", PRODUCT: "Product",
-  ACCOUNT: "Account", TECHNICAL: "Technical", OTHER: "General",
+const STATUS: Record<string, [string, string, string]> = {
+  OPEN: ["Open", "#E6EEFF", BLUE], IN_PROGRESS: ["In progress", "#FFF7ED", "#C2410C"], WAITING_ON_SELLER: ["Waiting for you", "#FEF3C7", "#B45309"],
+  RESOLVED: ["Resolved", "#DCFCE7", "#047857"], CLOSED: ["Closed", "#F3F4F6", "#6B7280"],
 };
-
-function timeAgo(s: string) {
-  const d = Math.floor((Date.now() - new Date(s).getTime()) / 1000);
-  if (d < 60) return "Just now";
-  if (d < 3600) return `${Math.floor(d/60)}m ago`;
-  if (d < 86400) return `${Math.floor(d/3600)}h ago`;
-  return new Date(s).toLocaleDateString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
-}
+const CAT_LABEL: Record<string, string> = { ORDER_ISSUE: "Order", PAYMENT: "Payment", PRODUCT: "Product", ACCOUNT: "Account", TECHNICAL: "Technical", OTHER: "General" };
+const when = (s: string) => new Date(s).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 
 export default function SellerTicketPage() {
   const { id } = useParams<{ id: string }>();
-  const router = useRouter();
   const [ticket, setTicket] = useState<TicketDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [reply, setReply]     = useState("");
+  const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
   const [closing, setClosing] = useState(false);
+  const [err, setErr] = useState("");
+  const [rating, setRating] = useState<"up" | "down" | null>(null);
+  const [comment, setComment] = useState("");
+  const [rateBusy, setRateBusy] = useState(false);
+  const shots = useAttachments();
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetch(`/api/seller/support/${id}`)
-      .then((r) => r.json())
-      .then((d) => { setTicket(d.ticket ?? null); setLoading(false); });
+    fetch(`/api/seller/support/${id}`).then(r => r.json()).then(d => setTicket(d.ticket ?? null)).finally(() => setLoading(false));
   }, [id]);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [ticket?.messages]);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ block: "end" }); }, [ticket?.messages.length]);
 
   async function sendReply() {
-    if (!reply.trim()) return;
-    setSending(true);
+    if (!reply.trim() && !shots.urls.length) return;
+    setSending(true); setErr("");
     const res = await fetch(`/api/seller/support/${id}/messages`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: reply.trim() }),
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: reply.trim(), attachments: shots.urls }),
     });
-    if (res.ok) {
-      const data = await res.json();
-      setTicket((t) => t ? { ...t, messages: [...t.messages, data.message] } : t);
-      setReply("");
-    }
+    const d = await res.json().catch(() => ({}));
     setSending(false);
+    if (!res.ok) { setErr(d.error ?? "Couldn't send. Try again."); return; }
+    setTicket(t => t ? { ...t, status: "OPEN", messages: [...t.messages, d.message] } : t);
+    setReply(""); shots.reset();
   }
 
   async function closeTicket() {
+    if (!confirm("Close this ticket? Only close it if your issue is sorted.")) return;
     setClosing(true);
-    await fetch(`/api/seller/support/${id}`, {
-      method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "close" }),
-    });
-    setTicket((t) => t ? { ...t, status: "CLOSED" } : t);
+    await fetch(`/api/seller/support/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "close" }) });
+    setTicket(t => t ? { ...t, status: "CLOSED" } : t);
     setClosing(false);
   }
 
-  if (loading) return (
-    <div className="flex items-center justify-center py-24">
-      <Loader2 className="w-8 h-8 animate-spin" style={{ color: "var(--accent)" }} />
-    </div>
-  );
+  async function rate() {
+    if (!rating) return;
+    setRateBusy(true); setErr("");
+    const res = await fetch(`/api/seller/support/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "rate", rating, comment }) });
+    const d = await res.json().catch(() => ({}));
+    setRateBusy(false);
+    if (!res.ok) { setErr(d.error ?? "Couldn't save your rating"); return; }
+    setTicket(t => t ? { ...t, messages: [...t.messages, d.message] } : t);
+  }
+
+  if (loading) return <div className="flex items-center justify-center py-24"><Loader2 className="w-7 h-7 animate-spin" style={{ color: BLUE }} /></div>;
   if (!ticket) return (
-    <div className="flex flex-col items-center justify-center py-24 gap-3">
-      <AlertCircle className="w-10 h-10" style={{ color: "var(--border)" }} />
-      <p style={{ color: "var(--text-muted)" }}>Ticket not found</p>
+    <div className="flex flex-col items-center justify-center py-24 gap-3 text-[13px] text-[#6B7280]">
+      <AlertCircle className="w-9 h-9 text-[#D3DEF7]" /> This ticket wasn&apos;t found.
+      <Link href="/seller/support" className="font-semibold" style={{ color: BLUE }}>Back to Help & Support</Link>
     </div>
   );
 
-  const st = STATUS_CONFIG[ticket.status] ?? STATUS_CONFIG.OPEN;
+  const st = STATUS[ticket.status] ?? STATUS.OPEN;
   const isClosed = ticket.status === "CLOSED" || ticket.status === "RESOLVED";
+  const rated = ticket.messages.some(m => parseMessage(m.message).rating);
 
   return (
-    <div className="min-h-screen" style={{ background: "var(--bg-page)" }}>
+    <div className="px-4 py-5 md:px-8 md:py-7 space-y-5" style={{ background: "#EEF1F6", minHeight: "100vh" }}>
+      <Link href="/seller/support" className="inline-flex items-center gap-1.5 text-[13px] font-semibold" style={{ color: BLUE }}><ArrowLeft className="w-4 h-4" /> Help & Support</Link>
 
-      {/* Header */}
-      <div className="px-4 md:px-8 py-5 flex items-start gap-4 flex-wrap"
-        style={{ borderBottom: "1px solid var(--border)", background: "var(--bg-card)" }}>
-        <button onClick={() => router.push("/seller/support")}
-          className="flex items-center gap-1.5 text-sm font-medium flex-shrink-0 mt-0.5"
-          style={{ color: "var(--text-muted)" }}>
-          <ArrowLeft className="w-4 h-4" /> Support
-        </button>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap mb-1">
-            <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded"
-              style={{ background: "var(--bg-muted)", color: "var(--text-muted)" }}>
-              #{ticket.ticketNumber}
-            </span>
-            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
-              style={{ background: st.bg, color: st.color }}>{st.label}</span>
-            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
-              style={{ background: "var(--bg-muted)", color: "var(--text-muted)" }}>
-              {CAT_LABEL[ticket.category] ?? ticket.category}
-            </span>
-          </div>
-          <h1 className="text-base font-bold truncate" style={{ color: "var(--text-primary)" }}>{ticket.subject}</h1>
-          <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
-            Opened {timeAgo(ticket.createdAt)}
-            {ticket.assignedTo && ` · Assigned to ${ticket.assignedTo.name ?? "Support"}`}
-          </p>
+      <div className="bg-white rounded-[20px] p-5 md:p-6">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[12px] font-mono text-[#9AA3B5]">#{ticket.ticketNumber}</span>
+          <span className="text-[11.5px] font-bold px-2.5 py-0.5 rounded-full" style={{ background: st[1], color: st[2] }}>{st[0]}</span>
+          <span className="text-[11.5px] font-semibold px-2.5 py-0.5 rounded-full bg-[#F3F4F6] text-[#6B7280]">{CAT_LABEL[ticket.category] ?? ticket.category}</span>
+          {ticket.relatedOrderId && <span className="text-[11.5px] font-semibold px-2.5 py-0.5 rounded-full bg-[#EEF3FF]" style={{ color: BLUE }}>Order {ticket.relatedOrderId}</span>}
         </div>
+        <h1 className="text-[22px] font-bold text-[#0F1623] mt-2">{ticket.subject}</h1>
+        <p className="text-[12.5px] text-[#6B7488] mt-1">Opened {when(ticket.createdAt)}{ticket.assignedTo ? ` · handled by ${ticket.assignedTo.name ?? "AXQEN support"}` : ""}</p>
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-0 lg:gap-6 px-4 md:px-8 py-6 max-w-5xl mx-auto">
-
-        {/* ── Conversation ──────────────────────────────────────────────────── */}
-        <div className="flex-1 min-w-0">
-          <div className="space-y-4 mb-4">
-            {ticket.messages.map((msg) => {
-              const isAdmin = msg.author.role === "ADMIN";
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_280px] gap-5 items-start">
+        <div className="space-y-4">
+          <div className="bg-white rounded-[20px] p-5 md:p-6 space-y-4">
+            {ticket.messages.map(m => {
+              const team = m.author.role === "ADMIN";
+              const isRating = !!parseMessage(m.message).rating;
               return (
-                <div key={msg.id} className={`flex gap-3 ${isAdmin ? "" : "flex-row-reverse"}`}>
-                  {/* Avatar */}
-                  <div className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold text-white"
-                    style={{ background: isAdmin ? "#4361EE" : "#16A34A" }}>
-                    {isAdmin ? "S" : (msg.author.name?.[0]?.toUpperCase() ?? "U")}
-                  </div>
-                  {/* Bubble */}
-                  <div className={`max-w-[80%] ${isAdmin ? "" : ""}`}>
-                    <p className={`text-[10px] font-semibold mb-1 ${isAdmin ? "" : "text-right"}`}
-                      style={{ color: "var(--text-muted)" }}>
-                      {isAdmin ? "Support Team" : (msg.author.name ?? "You")}
-                      {" · "}{timeAgo(msg.createdAt)}
-                    </p>
-                    <div className="rounded-2xl px-4 py-3 text-sm leading-relaxed"
-                      style={{
-                        background: isAdmin ? "var(--bg-card)" : "rgba(67,97,238,0.1)",
-                        border: `1px solid ${isAdmin ? "var(--border)" : "rgba(67,97,238,0.2)"}`,
-                        color: "var(--text-primary)",
-                        borderTopLeftRadius: isAdmin ? 4 : undefined,
-                        borderTopRightRadius: isAdmin ? undefined : 4,
-                      }}>
-                      {msg.message}
+                <div key={m.id} className={`flex gap-3 ${team ? "" : "flex-row-reverse"}`}>
+                  <span className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-[12px] font-bold text-white" style={{ background: team ? "#0F1623" : BLUE }}>
+                    {team ? "A" : (m.author.name?.[0]?.toUpperCase() ?? "Y")}
+                  </span>
+                  <div className={`max-w-[82%] ${team ? "" : "text-right"}`}>
+                    <p className="text-[11.5px] text-[#9AA3B5] mb-1">{team ? "AXQEN support" : "You"} · {when(m.createdAt)}</p>
+                    <div className={`inline-block text-left rounded-2xl px-4 py-3 text-[13.5px] leading-relaxed ${isRating ? "bg-[#F7F8FB] text-[#0F1623]" : team ? "bg-[#F3F5F9] text-[#0F1623] rounded-tl-md" : "text-white rounded-tr-md"}`}
+                      style={!team && !isRating ? { background: BLUE } : undefined}>
+                      <MessageBody raw={m.message} onDark={!team && !isRating} />
                     </div>
                   </div>
                 </div>
@@ -169,74 +128,81 @@ export default function SellerTicketPage() {
             <div ref={bottomRef} />
           </div>
 
-          {/* Resolved/closed banner */}
+          {err && <p className="text-[12.5px] text-[#B91C1C] bg-[#FEF2F2] rounded-xl px-4 py-2.5">{err}</p>}
+
           {isClosed ? (
-            <div className="rounded-2xl p-4 flex items-center gap-3"
-              style={{ background: ticket.status === "RESOLVED" ? "#F0FDF4" : "var(--bg-muted)",
-                       border: `1px solid ${ticket.status === "RESOLVED" ? "#BBF7D0" : "var(--border)"}` }}>
-              <CheckCircle2 className="w-5 h-5 flex-shrink-0" style={{ color: ticket.status === "RESOLVED" ? "#16A34A" : "var(--text-muted)" }} />
-              <div>
-                <p className="text-sm font-semibold" style={{ color: ticket.status === "RESOLVED" ? "#16A34A" : "var(--text-secondary)" }}>
-                  This ticket is {ticket.status === "RESOLVED" ? "resolved" : "closed"}
-                </p>
-                <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                  If you need further help, open a new ticket.
-                </p>
+            <div className="bg-white rounded-[20px] p-5 md:p-6 space-y-4">
+              <div className="flex items-start gap-3">
+                <CheckCircle2 className="w-5 h-5 mt-0.5" style={{ color: ticket.status === "RESOLVED" ? "#047857" : "#6B7280" }} />
+                <div>
+                  <p className="text-[14px] font-semibold text-[#0F1623]">This ticket is {ticket.status === "RESOLVED" ? "resolved" : "closed"}</p>
+                  <p className="text-[12.5px] text-[#6B7488]">Still need help? <Link href="/seller/support" className="font-semibold" style={{ color: BLUE }}>Raise a new ticket</Link>.</p>
+                </div>
               </div>
+              {!rated && (
+                <div className="rounded-2xl bg-[#F7F8FB] p-4 space-y-3">
+                  <p className="text-[14px] font-semibold text-[#0F1623]">Was your issue solved?</p>
+                  <div className="flex gap-2">
+                    {([["up", "Yes, solved", ThumbsUp], ["down", "No, not really", ThumbsDown]] as const).map(([v, l, Icon]) => (
+                      <button key={v} type="button" onClick={() => setRating(v)} aria-pressed={rating === v}
+                        className="flex items-center gap-2 h-10 px-4 rounded-full text-[13px] font-semibold border transition-colors"
+                        style={rating === v ? { background: v === "up" ? "#047857" : "#B91C1C", color: "#fff", borderColor: "transparent" } : { background: "#fff", color: "#374151", borderColor: "#E2E7F0" }}>
+                        <Icon className="w-4 h-4" /> {l}
+                      </button>
+                    ))}
+                  </div>
+                  {rating && (
+                    <>
+                      <textarea id="rate-comment" rows={2} value={comment} onChange={e => setComment(e.target.value)} maxLength={500}
+                        placeholder={rating === "up" ? "Anything we did well? (optional)" : "What could we have done better? (optional)"}
+                        className="w-full px-3 py-2.5 text-[13px] rounded-xl border border-[#E2E7F0] bg-white outline-none focus:border-[#1D5CFF] resize-none" />
+                      <button onClick={rate} disabled={rateBusy} className="flex items-center gap-1.5 h-10 px-4 rounded-full text-[13px] font-bold text-white disabled:opacity-60" style={{ background: BLUE }}>
+                        {rateBusy && <Loader2 className="w-4 h-4 animate-spin" />} Send rating
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+              {rated && <p className="text-[12.5px] text-[#047857]">Thanks for rating. It helps us improve.</p>}
             </div>
           ) : (
-            <div className="card p-4">
-              <textarea value={reply} onChange={(e) => setReply(e.target.value)}
-                placeholder="Type your reply…"
-                rows={4}
-                onKeyDown={(e) => { if (e.key === "Enter" && e.metaKey) sendReply(); }}
-                className="w-full px-3 py-2.5 text-sm rounded-xl outline-none resize-none mb-3"
-                style={{ border: "1px solid var(--border)", background: "var(--bg-muted)", color: "var(--text-primary)" }} />
-              <div className="flex justify-end">
-                <button onClick={sendReply} disabled={sending || !reply.trim()}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
-                  style={{ background: "var(--accent)" }}>
-                  {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                  Send reply
+            <div className="bg-white rounded-[20px] p-5 md:p-6 space-y-3">
+              <label htmlFor="reply" className="text-[13px] font-semibold text-[#0F1623]">Reply</label>
+              <textarea id="reply" rows={4} value={reply} onChange={e => setReply(e.target.value)} placeholder="Type your reply…"
+                onKeyDown={e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) sendReply(); }}
+                className="w-full px-3.5 py-3 text-[13.5px] rounded-xl border border-[#E2E7F0] outline-none focus:border-[#1D5CFF] resize-none" />
+              {shots.picker("reply-shots")}
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="text-[11.5px] text-[#9AA3B5]">Ctrl + Enter to send</span>
+                <button onClick={sendReply} disabled={sending || shots.uploading || (!reply.trim() && !shots.urls.length)}
+                  className="flex items-center gap-2 h-10 px-5 rounded-full text-[13px] font-bold text-white disabled:opacity-50" style={{ background: BLUE }}>
+                  {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} Send reply
                 </button>
               </div>
             </div>
           )}
         </div>
 
-        {/* ── Sidebar ───────────────────────────────────────────────────────── */}
-        <div className="lg:w-64 flex-shrink-0 space-y-4 mt-6 lg:mt-0">
-          <div className="card p-4 space-y-3">
-            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>Ticket Details</p>
+        <aside className="space-y-4">
+          <div className="bg-white rounded-[20px] p-5 space-y-2.5 text-[13px]">
+            <p className="text-[14px] font-semibold text-[#0F1623] mb-1">Ticket details</p>
             {[
-              { label: "Status",   value: st.label },
-              { label: "Category", value: CAT_LABEL[ticket.category] ?? ticket.category },
-              { label: "Priority", value: ticket.priority },
-              { label: "Ticket #", value: `#${ticket.ticketNumber}` },
-              ...(ticket.relatedOrderId ? [{ label: "Order",  value: ticket.relatedOrderId }] : []),
-              ...(ticket.assignedTo     ? [{ label: "Agent",  value: ticket.assignedTo.name ?? "Support" }] : []),
-            ].map((row) => (
-              <div key={row.label} className="flex justify-between text-xs">
-                <span style={{ color: "var(--text-muted)" }}>{row.label}</span>
-                <span className="font-semibold" style={{ color: "var(--text-primary)" }}>{row.value}</span>
-              </div>
+              ["Status", st[0]], ["Topic", CAT_LABEL[ticket.category] ?? ticket.category], ["Ticket", `#${ticket.ticketNumber}`],
+              ...(ticket.relatedOrderId ? [["Order", ticket.relatedOrderId]] : []),
+            ].map(([k, v]) => (
+              <div key={k} className="flex justify-between gap-3"><span className="text-[#6B7488]">{k}</span><span className="font-semibold text-[#0F1623] text-right">{v}</span></div>
             ))}
           </div>
-
+          <div className="bg-white rounded-[20px] p-5 text-[13px]">
+            <p className="text-[14px] font-semibold text-[#0F1623] flex items-center gap-1.5"><Clock className="w-4 h-4" style={{ color: BLUE }} /> When we reply</p>
+            <p className="text-[#6B7488] mt-1.5">We reply <b className="text-[#0F1623]">{REPLY_TIME}</b>, {SUPPORT_HOURS}. You&apos;ll get a notification and an email.</p>
+          </div>
           {!isClosed && (
-            <button onClick={closeTicket} disabled={closing}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold disabled:opacity-50"
-              style={{ border: "1px solid var(--border)", color: "var(--text-secondary)" }}>
-              {closing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
-              Close ticket
+            <button onClick={closeTicket} disabled={closing} className="w-full flex items-center justify-center gap-2 h-10 rounded-full text-[13px] font-semibold border border-[#E2E7F0] bg-white text-[#374151] disabled:opacity-50">
+              {closing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />} My issue is sorted, close ticket
             </button>
           )}
-
-          <div className="card p-4 text-xs" style={{ color: "var(--text-muted)" }}>
-            <p className="font-semibold mb-1" style={{ color: "var(--text-secondary)" }}>Response time</p>
-            <p>We typically reply within <strong>4–12 hours</strong> during business hours (Mon–Sat, 10am–7pm IST).</p>
-          </div>
-        </div>
+        </aside>
       </div>
     </div>
   );

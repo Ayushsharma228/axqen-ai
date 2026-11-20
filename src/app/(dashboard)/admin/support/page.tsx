@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Loader2, Search, Send, Lock, Phone, Mail, ExternalLink, ArrowLeft, CheckCircle2, Clock, MessageSquare } from "lucide-react";
+import { MessageBody, useAttachments } from "@/components/support/ticket-ui";
+import { previewText, parseMessage } from "@/lib/ticket-content";
 
 type Status = "OPEN" | "IN_PROGRESS" | "WAITING_ON_SELLER" | "RESOLVED" | "CLOSED";
 type Priority = "LOW" | "NORMAL" | "HIGH" | "URGENT";
@@ -30,7 +32,7 @@ const PRIORITY: Record<Priority, [string, string]> = { URGENT: ["Urgent", "#B91C
 const CATEGORY: Record<string, string> = { ORDER_ISSUE: "Order", PAYMENT: "Payment", PRODUCT: "Product", ACCOUNT: "Account", TECHNICAL: "Technical", OTHER: "Other" };
 const ago = (s: string) => { const m = Math.floor((Date.now() - new Date(s).getTime()) / 60000); return m < 1 ? "now" : m < 60 ? `${m}m` : m < 1440 ? `${Math.floor(m / 60)}h` : `${Math.floor(m / 1440)}d`; };
 const when = (s: string) => new Date(s).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
-const needsReply = (t: Ticket) => (t.status === "OPEN" || t.status === "IN_PROGRESS") && (t.messages[0]?.author.role ?? "SELLER") === "SELLER";
+const needsReply = (t: Ticket) => (t.status === "OPEN" || t.status === "IN_PROGRESS") && (t.messages[0]?.author.role ?? "SELLER") === "SELLER" && !parseMessage(t.messages[0]?.message ?? "").rating;
 
 export default function AdminSupportPage() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -124,7 +126,7 @@ export default function AdminSupportPage() {
                     </div>
                     <p className={`text-[13px] truncate ${waiting ? "font-bold text-[#0C1220]" : "font-medium text-[#374151]"}`}>{t.subject}</p>
                     <p className="text-[11.5px] text-[#6B7280] truncate">{t.seller.brandName || t.seller.name || t.seller.email} · {CATEGORY[t.category] ?? t.category}</p>
-                    {last && <p className="text-[11.5px] text-[#9CA3AF] truncate mt-0.5">{last.author.role === "SELLER" ? "" : "You: "}{last.message}</p>}
+                    {last && <p className="text-[11.5px] text-[#9CA3AF] truncate mt-0.5">{last.author.role === "SELLER" ? "" : "You: "}{previewText(last.message)}</p>}
                   </button>
                 );
               })}
@@ -145,6 +147,7 @@ function TicketPane({ id, team, onBack, onChanged }: { id: string; team: { id: s
   const [internal, setInternal] = useState(false);
   const [sending, setSending] = useState(false);
   const [busy, setBusy] = useState(false);
+  const shots = useAttachments();
   const endRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(() => {
@@ -161,13 +164,13 @@ function TicketPane({ id, team, onBack, onChanged }: { id: string; team: { id: s
     load(); onChanged();
   }
   async function send(thenStatus?: Status) {
-    if (!reply.trim()) return;
+    if (!reply.trim() && !shots.urls.length) return;
     setSending(true); setErr("");
-    const res = await fetch(`/api/admin/support/${id}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: reply.trim(), isInternal: internal }) });
+    const res = await fetch(`/api/admin/support/${id}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: reply.trim(), isInternal: internal, attachments: shots.urls }) });
     const d = await res.json().catch(() => ({}));
     setSending(false);
     if (!res.ok) { setErr(d.error ?? "Couldn't send"); return; }
-    setReply("");
+    setReply(""); shots.reset();
     if (thenStatus) await patch({ status: thenStatus }); else { load(); onChanged(); }
   }
 
@@ -220,7 +223,7 @@ function TicketPane({ id, team, onBack, onChanged }: { id: string; team: { id: s
           return (
             <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
               <div className={`max-w-[80%] rounded-2xl px-3.5 py-2.5 text-[13px] ${m.isInternal ? "bg-[#FFFBEB] border border-dashed border-[#FCD34D] text-[#78350F]" : mine ? "bg-[#4361EE] text-white" : "bg-white border border-[#E8EDF6] text-[#0C1220]"}`}>
-                <p className="whitespace-pre-wrap break-words">{m.message}</p>
+                <MessageBody raw={m.message} onDark={mine && !m.isInternal} />
                 <p className={`text-[10.5px] mt-1 flex items-center gap-1 ${m.isInternal ? "text-[#B45309]" : mine ? "text-white/70" : "text-[#9CA3AF]"}`}>
                   {m.isInternal && <Lock className="w-3 h-3" />}{m.isInternal ? "Internal note · " : ""}{m.author.name ?? (mine ? "AXQEN team" : "Seller")} · {when(m.createdAt)}
                 </p>
@@ -238,6 +241,7 @@ function TicketPane({ id, team, onBack, onChanged }: { id: string; team: { id: s
         <textarea id="tk-reply" rows={3} value={reply} onChange={e => setReply(e.target.value)} placeholder={internal ? "Internal note, only your team sees this" : "Reply to the seller"}
           onKeyDown={e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) send(); }}
           className={`w-full px-3 py-2 text-[13px] rounded-lg border outline-none resize-none ${internal ? "border-[#FCD34D] bg-[#FFFBEB] focus:border-[#F59E0B]" : "border-[#E8EDF6] focus:border-[#4361EE]"}`} />
+        {shots.picker("tk-shots")}
         <div className="flex items-center gap-2 flex-wrap">
           <label className="flex items-center gap-1.5 text-[12px] text-[#374151] cursor-pointer">
             <input id="tk-internal" type="checkbox" checked={internal} onChange={e => setInternal(e.target.checked)} className="accent-[#F59E0B]" /> <Lock className="w-3 h-3" /> Internal note
@@ -246,11 +250,11 @@ function TicketPane({ id, team, onBack, onChanged }: { id: string; team: { id: s
           <div className="ml-auto flex items-center gap-2">
             {!internal && (
               <>
-                <button onClick={() => send("WAITING_ON_SELLER")} disabled={sending || !reply.trim()} className="flex items-center gap-1 px-3 py-2 rounded-lg text-[12.5px] font-semibold border border-[#E8EDF6] text-[#374151] disabled:opacity-40"><Clock className="w-3.5 h-3.5" /> Send, wait for seller</button>
-                <button onClick={() => send("RESOLVED")} disabled={sending || !reply.trim()} className="flex items-center gap-1 px-3 py-2 rounded-lg text-[12.5px] font-semibold border border-[#BBF7D0] text-[#047857] disabled:opacity-40"><CheckCircle2 className="w-3.5 h-3.5" /> Send and resolve</button>
+                <button onClick={() => send("WAITING_ON_SELLER")} disabled={sending || shots.uploading || (!reply.trim() && !shots.urls.length)} className="flex items-center gap-1 px-3 py-2 rounded-lg text-[12.5px] font-semibold border border-[#E8EDF6] text-[#374151] disabled:opacity-40"><Clock className="w-3.5 h-3.5" /> Send, wait for seller</button>
+                <button onClick={() => send("RESOLVED")} disabled={sending || shots.uploading || (!reply.trim() && !shots.urls.length)} className="flex items-center gap-1 px-3 py-2 rounded-lg text-[12.5px] font-semibold border border-[#BBF7D0] text-[#047857] disabled:opacity-40"><CheckCircle2 className="w-3.5 h-3.5" /> Send and resolve</button>
               </>
             )}
-            <button onClick={() => send()} disabled={sending || !reply.trim()} className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-[12.5px] font-bold text-white disabled:opacity-40 ${internal ? "bg-[#D97706]" : "bg-[#4361EE]"}`}>
+            <button onClick={() => send()} disabled={sending || shots.uploading || (!reply.trim() && !shots.urls.length)} className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-[12.5px] font-bold text-white disabled:opacity-40 ${internal ? "bg-[#D97706]" : "bg-[#4361EE]"}`}>
               {sending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />} {internal ? "Add note" : "Send"}
             </button>
           </div>

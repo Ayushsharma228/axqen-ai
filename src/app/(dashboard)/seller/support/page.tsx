@@ -3,14 +3,14 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import {
-  MessageCircle, Mail, Plus, X, Loader2, ChevronDown, ChevronRight, Search, AlertCircle, LifeBuoy,
+  Mail, Plus, X, Loader2, ChevronDown, ChevronRight, Search, AlertCircle, LifeBuoy,
   ShoppingCart, CreditCard, Package, User, Wrench, MessageSquare, Clock,
 } from "lucide-react";
-import { WA_LINK } from "@/components/landing/constants";
+import { useAttachments } from "@/components/support/ticket-ui";
 
 // Fill these in to show them on the page; left empty they stay hidden (never guessed).
-const SUPPORT_HOURS = "";      // e.g. "Mon–Sat, 10 AM – 7 PM"
-const REPLY_TIME = "";         // e.g. "within 4 working hours"
+const SUPPORT_HOURS = "Monday to Saturday, 11 AM – 8 PM";
+const REPLY_TIME = "within 30 working minutes";
 const SUPPORT_EMAIL = "connect@vrinandyaventures.in";
 
 interface Ticket {
@@ -88,15 +88,7 @@ export default function SupportPage() {
       </div>
 
       {/* Contact row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <a href={`${WA_LINK}?text=${encodeURIComponent("Hi AXQEN team, I need help with ")}`} target="_blank" rel="noopener noreferrer"
-          className="bg-white rounded-xl border border-[#E8EDF6] p-4 flex items-center gap-3 hover:border-[#BBF7D0]">
-          <span className="w-10 h-10 rounded-xl bg-[#ECFDF5] flex items-center justify-center"><MessageCircle className="w-5 h-5 text-[#16A34A]" /></span>
-          <div>
-            <p className="text-[14px] font-bold text-[#0C1220]">WhatsApp us</p>
-            <p className="text-[12px] text-[#6B7280]">Fastest for quick questions</p>
-          </div>
-        </a>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <a href={`mailto:${SUPPORT_EMAIL}`} className="bg-white rounded-xl border border-[#E8EDF6] p-4 flex items-center gap-3 hover:border-[#C7D2FE]">
           <span className="w-10 h-10 rounded-xl bg-[#EEF2FF] flex items-center justify-center"><Mail className="w-5 h-5 text-[#4361EE]" /></span>
           <div className="min-w-0">
@@ -212,6 +204,7 @@ function NewTicket({ onClose, onCreated }: { onClose: () => void; onCreated: (t:
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const shots = useAttachments();
 
   const cat = CATEGORIES.find(c => c.value === category);
 
@@ -233,7 +226,7 @@ function NewTicket({ onClose, onCreated }: { onClose: () => void; onCreated: (t:
     const priority = urgent ? "URGENT" : cat?.priority ?? "NORMAL";
     const res = await fetch("/api/seller/support", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ category, priority, subject: subject.trim(), description: description.trim(), relatedOrderId: order ? `#${order.externalOrderId}` : "" }),
+      body: JSON.stringify({ category, priority, subject: subject.trim(), description: description.trim(), relatedOrderId: order ? `#${order.externalOrderId}` : "", attachments: shots.urls }),
     });
     const d = await res.json().catch(() => ({}));
     setSaving(false);
@@ -309,13 +302,17 @@ function NewTicket({ onClose, onCreated }: { onClose: () => void; onCreated: (t:
             <label htmlFor="ticket-desc" className="block text-[12px] font-semibold text-[#374151] mb-1.5">What happened?</label>
             <textarea id="ticket-desc" rows={4} value={description} onChange={e => setDescription(e.target.value)} placeholder="Tell us what you expected, what happened instead, and anything you've already tried." className={`${input} resize-none`} />
           </div>
+          <div>
+            <p className="text-[12px] font-semibold text-[#374151] mb-1.5">Screenshots <span className="font-normal text-[#9CA3AF]">(proof helps us fix it faster)</span></p>
+            {shots.picker("ticket-shots")}
+          </div>
           <label className="flex items-start gap-2 text-[12.5px] text-[#374151] cursor-pointer">
             <input id="ticket-urgent" type="checkbox" checked={urgent} onChange={e => setUrgent(e.target.checked)} className="mt-0.5 accent-[#DC2626]" />
             <span><b>This is stopping my business today</b><span className="block text-[11.5px] text-[#9CA3AF]">For example orders not coming in at all, or a payout that bounced. Please use it only for real emergencies.</span></span>
           </label>
           {error && <p className="text-[12.5px] text-[#DC2626]">{error}</p>}
           <div className="flex items-center gap-2 pt-1">
-            <button type="button" onClick={submit} disabled={saving} className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-[13px] font-bold text-white bg-[#4361EE] disabled:opacity-60">
+            <button type="button" onClick={submit} disabled={saving || shots.uploading} className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-[13px] font-bold text-white bg-[#4361EE] disabled:opacity-60">
               {saving && <Loader2 className="w-4 h-4 animate-spin" />} Send to AXQEN team
             </button>
             <button type="button" onClick={onClose} className="px-4 py-2.5 rounded-lg text-[13px] font-semibold text-[#6B7280] hover:bg-[#F3F4F6]">Cancel</button>

@@ -309,3 +309,24 @@ export async function emailBankDetailsChanged(opts: { to: string; name: string; 
     `),
   );
 }
+
+const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+export async function emailTicketReply(opts: {
+  to: string; name: string; ticketNumber: number; subject: string; ticketId: string; reply: string; screenshots: number;
+}): Promise<void> {
+  const quoted = esc(opts.reply.length > 1200 ? `${opts.reply.slice(0, 1200)}…` : opts.reply).replace(/\n/g, "<br>");
+  await send(
+    opts.to,
+    `Re: ${opts.subject} [Ticket #${opts.ticketNumber}]`,
+    base(`
+      ${h2("You have a reply from AXQEN support")}
+      ${p(`Hi ${esc(opts.name)}, our team replied to your ticket <b>#${opts.ticketNumber}: ${esc(opts.subject)}</b>.`)}
+      <div style="margin:0 0 16px;padding:14px 16px;background:#F5F8FF;border-left:3px solid #1D5CFF;border-radius:8px;font-size:14px;color:#111827;line-height:1.6">${quoted}</div>
+      ${opts.screenshots ? p(`📎 ${opts.screenshots} screenshot${opts.screenshots > 1 ? "s" : ""} attached. Open the ticket to see ${opts.screenshots > 1 ? "them" : "it"}.`) : ""}
+      ${p(`<a href="${DASH}/seller/support/${opts.ticketId}" style="display:inline-block;background:#1D5CFF;color:#fff;font-weight:bold;padding:10px 20px;border-radius:8px;text-decoration:none">Open the ticket</a>`)}
+      ${hr()}
+      ${p("Reply from your dashboard so everything stays in one place. Support hours: Monday to Saturday, 11 AM to 8 PM.")}
+    `),
+  );
+}

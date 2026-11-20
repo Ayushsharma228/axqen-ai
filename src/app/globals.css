@@ -113,3 +113,25 @@ body {
 .pill-rejected     { background:rgba(239,68,68,0.1);  color:#EF4444; }
 
 input, select, textarea { color-scheme: light; }
+
+/* ── Dashboards (seller + admin): AXQEN design system type ─────────────────── */
+.app-ui {
+  font-family: var(--font-dm-sans), system-ui, -apple-system, sans-serif;
+  font-feature-settings: "ss01";
+}
+.app-ui h1,
+.app-ui h2 {
+  font-family: var(--font-syne), var(--font-dm-sans), sans-serif;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+/* Big figures (tiles, totals) are set in Syne, as the design system's "display numbers" */
+.app-ui .font-black {
+  font-family: var(--font-syne), var(--font-dm-sans), sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.app-ui .font-mono {
+  font-family: var(--font-plex-mono), ui-monospace, SFMono-Regular, monospace;
+}
+.app-ui .tabular-nums { font-variant-numeric: tabular-nums; }

@@ -15,7 +15,7 @@ export default async function SellerLayout({ children }: { children: React.React
   if (!session.user.plan && status === undefined) redirect("/onboarding");
 
   return (
-    <div className="min-h-screen flex" style={{ background: "var(--bg-page)" }}>
+    <div className="app-ui min-h-screen flex" style={{ background: "var(--bg-page)" }}>
       {/* Sidebar — desktop only */}
       <SellerSidebar
         plan={session.user.plan ?? undefined}

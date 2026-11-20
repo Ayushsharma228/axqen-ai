@@ -56,6 +56,7 @@ const NAV: Entry[] = [
   { id: "system", label: "System", icon: Settings2, children: [
     { label: "Team & Roles",          href: "/admin/users" },
     { label: "Integrations & Config", href: "/admin/config" },
+    { label: "Audit Log & Errors",    href: "/admin/system" },
   ]},
 ];
 

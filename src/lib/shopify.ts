@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { encrypt, decrypt } from "@/lib/encrypt";
+import { reportError } from "@/lib/errors";
 
 // ── Access tokens ─────────────────────────────────────────────────────────────
 // New public apps must use expiring offline tokens (~1h) plus a refresh token.
@@ -62,6 +63,7 @@ async function migrateToExpiringToken(storeId: string, shop: string, clientId: s
     const t = (await res.json().catch(() => ({}))) as TokenResponse;
     if (!res.ok || !t.access_token || !t.refresh_token) {
       console.warn(`[shopify] token migration skipped for ${shop}: ${t.error_description || t.error || `HTTP ${res.status}`}`);
+      await reportError("Shopify token upgrade", new Error(`Old token could not be upgraded: ${t.error_description || t.error || `HTTP ${res.status}`}`), shop);
       return null;
     }
     await prisma.shopifyStore.update({ where: { id: storeId }, data: { ...tokenFields(t), lastSyncError: null } });

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { mapShipdaakStatus, trackShipment, SHIPDAAK_COURIER_PREFIX, shipdaakConfigured } from "@/lib/shipdaak";
 import { recordCourierScans, scansFromShipdaak } from "@/lib/courier-scans";
 import { failedAgainAfterAction } from "@/lib/ndr";
+import { reportError } from "@/lib/errors";
 
 const RANK: Record<string, number> = { NEW: 0, PROCESSING: 1, SHIPPED: 2, IN_TRANSIT: 3, DELIVERED: 4, RTO: 4, CANCELLED: 4 };
 
@@ -137,6 +138,7 @@ export async function runShipdaakTracking(opts: { sellerId?: string; limit?: num
       if (isManual) notShipdaak++; else errors.push(`${o.awbNumber}: ${msg}`);
     }
   }
+  if (errors.length) await reportError("Shipdaak tracking", new Error(`${errors.length} shipment(s) failed to track, e.g. ${errors[0]}`));
   const result = { configured: true, checked: booked.length + manual.length, booked: booked.length, manual: manual.length, updated, notShipdaak, errors: errors.slice(0, 20) };
   if (opts.record) {
     await prisma.platformConfig.upsert({

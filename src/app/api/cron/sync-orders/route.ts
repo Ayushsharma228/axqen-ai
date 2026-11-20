@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { syncShopifyOrders } from "@/app/api/seller/shopify/sync-orders/route";
 import { syncForSeller as syncAmazonOrders } from "@/app/api/seller/amazon/sync-orders/route";
+import { reportError } from "@/lib/errors";
 
 export async function GET(req: NextRequest) {
   const auth = req.headers.get("authorization");
@@ -30,6 +31,7 @@ export async function GET(req: NextRequest) {
         row.shopify = await syncShopifyOrders(sellerId);
       } catch (err) {
         row.shopify = err instanceof Error ? err.message : "error";
+        await reportError("cron sync-orders · Shopify", err, `seller ${sellerId}`);
       }
     }
 
@@ -39,6 +41,7 @@ export async function GET(req: NextRequest) {
         row.amazon = r.created + r.updated;
       } catch (err) {
         row.amazon = err instanceof Error ? err.message : "error";
+        await reportError("cron sync-orders · Amazon", err, `seller ${sellerId}`);
       }
     }
 

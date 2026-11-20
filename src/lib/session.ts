@@ -1,11 +1,12 @@
 import { getToken } from "next-auth/jwt";
 import { NextRequest } from "next/server";
 import { Role, Plan, AccountStatus } from "@prisma/client";
+import { recordAdminRequest } from "@/lib/audit";
 
 export async function getRouteSession(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
   if (!token) return null;
-  return {
+  const session = {
     user: {
       id:              token.id as string,
       role:            token.role as Role,
@@ -16,4 +17,7 @@ export async function getRouteSession(req: NextRequest) {
       onboardingDone:  token.onboardingDone as boolean,
     },
   };
+  // Audit trail: every admin change request is logged (who, what, when). GETs are skipped inside.
+  if (session.user.role === "ADMIN") await recordAdminRequest(req, { id: session.user.id, email: session.user.email, role: session.user.role });
+  return session;
 }

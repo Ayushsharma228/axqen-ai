@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { syncSellerAdSpend } from "@/app/api/seller/meta/sync/route";
+import { reportError } from "@/lib/errors";
 
 export async function GET(req: NextRequest) {
   const auth = req.headers.get("authorization");
@@ -25,6 +26,7 @@ export async function GET(req: NextRequest) {
       results.push({ sellerId: seller.id, synced });
     } catch (err) {
       results.push({ sellerId: seller.id, error: err instanceof Error ? err.message : "Unknown error" });
+      await reportError("cron sync-meta-ads", err, `seller ${seller.id}`);
     }
   }
 

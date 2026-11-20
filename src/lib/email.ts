@@ -345,3 +345,27 @@ export async function emailPasswordReset(opts: { to: string; name: string; link:
     `),
   );
 }
+
+/** Alert to the team when a new server error appears (sent at most once an hour per error). */
+export async function emailErrorAlert(opts: {
+  to: string; source: string; message: string; path?: string | null; count: number; firstSeen: Date;
+}): Promise<void> {
+  const ist = (d: Date) => d.toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" });
+  await send(
+    opts.to,
+    `AXQEN error: ${opts.source} — ${opts.message.slice(0, 70)}`,
+    base(
+      badge("ERROR", "#DC2626") +
+      h2("Something failed on AXQEN") +
+      kv([
+        ["Where", esc(opts.source)],
+        ...(opts.path ? [["Path", esc(opts.path)] as [string, string]] : []),
+        ["Times seen", String(opts.count)],
+        ["First seen", ist(opts.firstSeen)],
+      ]) +
+      p(`<code style="font-size:12px;background:#f3f4f6;padding:8px;display:block;white-space:pre-wrap">${esc(opts.message.slice(0, 600))}</code>`) +
+      hr() +
+      p(`See all errors in ${link("Admin → System → Errors", "/admin/system?tab=errors")}.`)
+    ),
+  );
+}

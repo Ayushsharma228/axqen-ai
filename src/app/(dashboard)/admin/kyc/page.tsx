@@ -93,7 +93,7 @@ export default function KycApprovalsPage() {
       ) : (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           {list.map(s => {
-            const missing = [!s.aadhaarNumber && "Aadhaar number", !s.aadhaarDocUrl && "Aadhaar document", !s.bankHolder && "bank details", !s.businessAddress && "address"].filter(Boolean) as string[];
+            const missing = [!s.aadhaarNumber && "Aadhaar number", !s.bankHolder && "bank details", !s.businessAddress && "address"].filter(Boolean) as string[];
             return (
               <article key={s.id} className="bg-white rounded-xl border border-[#E8EDF6] p-5 space-y-4">
                 <header className="flex items-start gap-3">

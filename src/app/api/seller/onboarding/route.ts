@@ -73,15 +73,16 @@ export async function PATCH(req: NextRequest) {
 
   // ── Verification (Agreement + Aadhaar) ────────────────────────────────────
   if (step === "verification") {
-    if (!body.aadhaarNumber)
-      return NextResponse.json({ error: "Aadhaar number is required" }, { status: 400 });
+    // Only the last 4 digits are kept (privacy policy section 4); the full number is never stored.
+    const aadhaarDigits = String(body.aadhaarNumber ?? "").replace(/\D/g, "");
+    if (aadhaarDigits.length !== 12)
+      return NextResponse.json({ error: "Enter your 12-digit Aadhaar number" }, { status: 400 });
     await prisma.user.update({
       where: { id: session.user.id },
       data: {
         agreementAccepted:   true,
         agreementAcceptedAt: new Date(),
-        aadhaarNumber:       body.aadhaarNumber,
-        aadhaarDocUrl:       body.aadhaarDocUrl || null,
+        aadhaarNumber:       `XXXX XXXX ${aadhaarDigits.slice(-4)}`,
         kycStatus:           "SUBMITTED",
       },
     });

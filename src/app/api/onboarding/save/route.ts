@@ -50,13 +50,14 @@ export async function POST(req: NextRequest) {
     }
 
     if (step === "kyc") {
-      const { aadhaarNumber, aadhaarDocUrl } = body;
-      if (!aadhaarNumber || aadhaarNumber.replace(/\s/g, "").length !== 12) {
+      // Only the last 4 digits are kept; the full number and document images are never stored.
+      const digits = String(body.aadhaarNumber ?? "").replace(/\D/g, "");
+      if (digits.length !== 12) {
         return NextResponse.json({ error: "Enter valid 12-digit Aadhaar number" }, { status: 400 });
       }
       await prisma.user.update({
         where: { id: userId },
-        data: { aadhaarNumber, aadhaarDocUrl, kycStatus: "SUBMITTED" },
+        data: { aadhaarNumber: `XXXX XXXX ${digits.slice(-4)}`, kycStatus: "SUBMITTED" },
       });
       return NextResponse.json({ success: true });
     }

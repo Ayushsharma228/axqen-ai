@@ -6,7 +6,7 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import {
   Building2, ShieldCheck, CheckCircle2, ChevronRight, ChevronLeft,
-  Upload, Loader2, Check, ArrowRight, Sparkles,
+  Loader2, Check, ArrowRight, Sparkles,
   Package, Zap, ShoppingCart, BarChart3, Wallet, Store,
   MapPin, Briefcase,
 } from "lucide-react";
@@ -72,8 +72,6 @@ export default function OnboardingPage() {
   // Step 3 – Verification
   const [agreed,          setAgreed]         = useState(false);
   const [aadhaarNumber,   setAadhaarNumber]  = useState("");
-  const [aadhaarDocUrl,   setAadhaarDocUrl]  = useState("");
-  const [uploading,       setUploading]      = useState(false);
 
 
   useEffect(() => {
@@ -123,17 +121,6 @@ export default function OnboardingPage() {
     return true;
   }, []);
 
-  async function handleAadhaarUpload(file: File) {
-    setUploading(true);
-    const form = new FormData();
-    form.append("file", file);
-    try {
-      const res  = await fetch("/api/upload", { method: "POST", body: form });
-      const data = await res.json() as { url?: string };
-      if (data.url) setAadhaarDocUrl(data.url);
-    } catch {}
-    setUploading(false);
-  }
 
   async function handleNext() {
     setError("");
@@ -148,7 +135,7 @@ export default function OnboardingPage() {
     } else if (step === 3) {
       if (!agreed) { setError("Please accept the agreement to continue."); return; }
       if (!aadhaarNumber) { setError("Aadhaar number is required."); return; }
-      const ok = await save({ aadhaarNumber, aadhaarDocUrl }, "verification");
+      const ok = await save({ aadhaarNumber }, "verification");
       if (ok) {
         await fetch("/api/seller/onboarding", {
           method:  "PATCH",
@@ -475,41 +462,11 @@ export default function OnboardingPage() {
             </div>
 
             {/* Aadhaar */}
-            <Field label="Aadhaar Number" hint="12-digit Aadhaar number — required for identity verification as per RBI guidelines">
+            <Field label="Aadhaar Number" hint="Used to verify your identity. We keep only the last 4 digits, never the full number.">
               <input value={aadhaarNumber} onChange={(e) => setAadhaarNumber(e.target.value)}
                 placeholder="XXXX XXXX XXXX" className={inputCls} style={inputStyle} />
             </Field>
 
-            <Field label="Aadhaar Document" optional hint="Upload a clear photo or scan of your Aadhaar card (front side)">
-              {aadhaarDocUrl ? (
-                <div className="flex items-center gap-3 px-4 py-3 rounded-xl"
-                  style={{ background: "rgba(0,72,223,0.05)", border: "1px solid rgba(0,72,223,0.2)" }}>
-                  <CheckCircle2 className="w-5 h-5 flex-shrink-0" style={{ color: "#0048DF" }} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium" style={{ color: "#0A0E1A" }}>Document uploaded</p>
-                    <p className="text-xs truncate" style={{ color: "#9CA3AF" }}>{aadhaarDocUrl}</p>
-                  </div>
-                  <button onClick={() => setAadhaarDocUrl("")}
-                    className="text-xs underline flex-shrink-0" style={{ color: "#EF4444" }}>Remove</button>
-                </div>
-              ) : (
-                <label className="flex flex-col items-center gap-2 px-4 py-6 rounded-xl cursor-pointer"
-                  style={{ background: "#f8f9fa", border: "2px dashed #d1d5db" }}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleAadhaarUpload(f); }}>
-                  {uploading
-                    ? <Loader2 className="w-6 h-6 animate-spin" style={{ color: "#0048DF" }} />
-                    : <Upload className="w-6 h-6" style={{ color: "#9CA3AF" }} />
-                  }
-                  <p className="text-sm font-medium" style={{ color: "#6B7280" }}>
-                    {uploading ? "Uploading..." : "Click to upload or drag & drop"}
-                  </p>
-                  <p className="text-xs" style={{ color: "#9CA3AF" }}>JPG, PNG or PDF · Max 5MB</p>
-                  <input type="file" className="hidden" accept="image/*,.pdf"
-                    onChange={(e) => { const f = e.target.files?.[0]; if (f) handleAadhaarUpload(f); }} />
-                </label>
-              )}
-            </Field>
           </div>
         )}
 
@@ -522,7 +479,7 @@ export default function OnboardingPage() {
             style={{ color: "#6B7280", border: "1px solid #e5e7eb" }}>
             <ChevronLeft className="w-4 h-4" /> Back
           </button>
-          <button onClick={handleNext} disabled={saving || uploading}
+          <button onClick={handleNext} disabled={saving}
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-60"
             style={{ background: "#0048DF" }}>
             {saving

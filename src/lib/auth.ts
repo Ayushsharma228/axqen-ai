@@ -4,6 +4,39 @@ import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { Role, Plan, AccountStatus } from "@prisma/client";
 
+// ── Login lockout: 10 wrong passwords for one email locks it for 15 minutes (PlatformConfig, no schema change) ──
+const MAX_FAILURES = 10;
+const LOCK_MINUTES = 15;
+export const LOCKED_MESSAGE = `Too many wrong attempts. Try again in ${LOCK_MINUTES} minutes or reset your password.`;
+const failKey = (email: string) => `LOGIN_FAIL:${email}`;
+type FailState = { count: number; first: number; lockedUntil?: number };
+
+async function readFailures(email: string): Promise<FailState | null> {
+  const row = await prisma.platformConfig.findUnique({ where: { key: failKey(email) }, select: { value: true } }).catch(() => null);
+  if (!row) return null;
+  try { return JSON.parse(row.value) as FailState; } catch { return null; }
+}
+
+async function isLoginLocked(email: string) {
+  const s = await readFailures(email);
+  return !!s?.lockedUntil && s.lockedUntil > Date.now();
+}
+
+async function recordLoginFailure(email: string) {
+  const now = Date.now();
+  const prev = await readFailures(email);
+  // Count failures within a rolling 15-minute window.
+  const fresh = !prev || now - prev.first > LOCK_MINUTES * 60_000 || (prev.lockedUntil && prev.lockedUntil <= now);
+  const next: FailState = fresh ? { count: 1, first: now } : { ...prev!, count: prev!.count + 1 };
+  if (next.count >= MAX_FAILURES) next.lockedUntil = now + LOCK_MINUTES * 60_000;
+  const value = JSON.stringify(next);
+  await prisma.platformConfig.upsert({ where: { key: failKey(email) }, create: { key: failKey(email), value, label: "Failed login attempts" }, update: { value } }).catch(() => null);
+}
+
+async function clearLoginFailures(email: string) {
+  await prisma.platformConfig.deleteMany({ where: { key: failKey(email) } }).catch(() => null);
+}
+
 export const authOptions: NextAuthOptions = {
   session: {
     strategy: "jwt",
@@ -24,22 +57,22 @@ export const authOptions: NextAuthOptions = {
           throw new Error("Email and password required");
         }
 
+        const email = credentials.email.trim().toLowerCase();
+        if (await isLoginLocked(email)) {
+          throw new Error(LOCKED_MESSAGE);
+        }
+
         const user = await prisma.user.findUnique({
           where: { email: credentials.email },
         });
 
-        if (!user) {
-          throw new Error("No account found with this email");
+        // Same message whether the email exists or not, so nobody can find out who has an account.
+        const isPasswordValid = user ? await bcrypt.compare(credentials.password, user.password) : false;
+        if (!user || !isPasswordValid) {
+          await recordLoginFailure(email);
+          throw new Error("Invalid email or password");
         }
-
-        const isPasswordValid = await bcrypt.compare(
-          credentials.password,
-          user.password
-        );
-
-        if (!isPasswordValid) {
-          throw new Error("Invalid password");
-        }
+        await clearLoginFailures(email);
 
         return {
           id: user.id,

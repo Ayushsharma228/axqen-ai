@@ -29,10 +29,6 @@
       "schedule": "30 13 * * 1"
     },
     {
-      "path": "/api/cron/auto-awb-delhivery",
-      "schedule": "*/5 * * * *"
-    },
-    {
       "path": "/api/cron/track-shipdaak",
       "schedule": "15 */2 * * *"
     },

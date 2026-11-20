@@ -17,5 +17,7 @@ export async function POST(req: NextRequest) {
   const p = String(password ?? "");
   if (p.length < 8 || !/[A-Za-z]/.test(p) || !/\d/.test(p)) return NextResponse.json({ error: "Use at least 8 characters with letters and a number" }, { status: 400 });
   await prisma.user.update({ where: { id: user.id }, data: { password: await bcrypt.hash(p, 12) } });
+  // A successful reset also lifts any wrong-password lockout.
+  await prisma.platformConfig.deleteMany({ where: { key: `LOGIN_FAIL:${user.email.trim().toLowerCase()}` } }).catch(() => null);
   return NextResponse.json({ ok: true });
 }

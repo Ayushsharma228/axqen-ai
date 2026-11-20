@@ -24,7 +24,7 @@ export default function AdminLoginPage() {
     });
 
     if (result?.error) {
-      setError("Invalid credentials");
+      setError(result.error.startsWith("Too many") ? result.error : "Invalid credentials");
       setLoading(false);
       return;
     }

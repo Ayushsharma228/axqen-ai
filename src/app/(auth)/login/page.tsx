@@ -72,7 +72,7 @@ function LoginContent() {
     setError("");
     const result = await signIn("credentials", { email: email.trim(), password, redirect: false });
     if (result?.error) {
-      setError("That email and password don't match. Check them and try again.");
+      setError(result.error.startsWith("Too many") ? result.error : "That email and password don't match. Check them and try again.");
       setLoading(false);
       return;
     }

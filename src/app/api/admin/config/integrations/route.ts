@@ -11,7 +11,6 @@ const JOBS: { path: string; schedule: string; what: string }[] = [
   { path: "sync-orders", schedule: "Every hour", what: "Pulls new Shopify orders for every connected store" },
   { path: "verify-cod-orders", schedule: "Every hour", what: "Scores new COD orders for RTO risk" },
   { path: "issue-invoices", schedule: "Every hour (:40)", what: "Issues AXP invoices for newly delivered orders" },
-  { path: "auto-awb-delhivery", schedule: "Every 5 minutes", what: "Books Delhivery AWBs for orders set to auto-ship" },
   { path: "track-shipdaak", schedule: "Every 2 hours", what: "Updates Shipdaak shipment status and courier scans" },
   { path: "refresh-tracking", schedule: "Daily 11:30 AM IST", what: "Refreshes tracking for shipped orders" },
   { path: "sync-ndr", schedule: "Daily 12:30 PM IST", what: "Pulls failed deliveries (NDR) from couriers" },

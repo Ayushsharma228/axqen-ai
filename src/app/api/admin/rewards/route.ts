@@ -17,9 +17,9 @@ export async function GET(req: NextRequest) {
     getRewardConfig(), getGiven(),
     prisma.user.findMany({ where: { role: "SELLER", accountStatus: { not: "SUSPENDED" } }, select: { id: true, name: true, email: true, brandName: true, phone: true, createdAt: true } }),
   ]);
-  const prog = await sellerProgress(sellers.map(s => s.id));
+  const prog = await sellerProgress(sellers.map(s => s.id), config);
   const rows = sellers.map(s => {
-    const p = prog.get(s.id) ?? { steps: [], setupDone: false, delivered: 0 };
+    const p = prog.get(s.id) ?? { steps: [], setupDone: false, delivered: 0, deliveredAll: 0, rtoPct: null, rtoOk: true };
     const reached = [
       ...(config.setup.enabled && p.setupDone ? [{ id: SETUP_ID, label: "Setup complete", reward: config.setup.reward }] : []),
       ...config.milestones.filter(m => p.delivered >= m.orders).map(m => ({ id: m.id, label: `${m.orders} delivered orders`, reward: m.reward })),
@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
     const next = config.milestones.find(m => p.delivered < m.orders) ?? null;
     return {
       id: s.id, name: s.brandName || s.name || s.email, email: s.email, phone: s.phone, joined: s.createdAt.toISOString(),
-      delivered: p.delivered, setupDone: p.setupDone, stepsDone: p.steps.filter(x => x.done).length, stepsTotal: p.steps.length,
+      delivered: p.delivered, deliveredAll: p.deliveredAll, rtoPct: p.rtoPct, rtoOk: p.rtoOk, setupDone: p.setupDone, stepsDone: p.steps.filter(x => x.done).length, stepsTotal: p.steps.length,
       reached, pending: reached.filter(r => !r.given).length,
       next: next ? { orders: next.orders, reward: next.reward, left: next.orders - p.delivered } : null,
     };
@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   if (!(await admin(req))) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const b = await req.json().catch(() => null) as { setup?: { enabled?: boolean; reward?: string }; milestones?: Partial<Milestone>[] } | null;
+  const b = await req.json().catch(() => null) as { setup?: { enabled?: boolean; reward?: string }; milestones?: Partial<Milestone>[]; countFrom?: string | null; rto?: { enabled?: boolean; maxPct?: number | string; days?: number | string } } | null;
   if (!b) return NextResponse.json({ error: "Nothing to save" }, { status: 400 });
   const milestones: Milestone[] = [];
   const seen = new Set<number>();
@@ -52,7 +52,21 @@ export async function PUT(req: NextRequest) {
   }
   const setupReward = String(b.setup?.reward ?? "").trim().slice(0, 120);
   if (b.setup?.enabled && !setupReward) return NextResponse.json({ error: "Add the setup reward, or switch it off" }, { status: 400 });
-  await saveRewardConfig({ setup: { enabled: !!b.setup?.enabled, reward: setupReward }, milestones: milestones.sort((a, c) => a.orders - c.orders) });
+  let countFrom: string | null = null;
+  if (b.countFrom) {
+    const d = new Date(b.countFrom);
+    if (isNaN(d.getTime())) return NextResponse.json({ error: "Pick a valid start date" }, { status: 400 });
+    countFrom = d.toISOString().slice(0, 10);
+  }
+  const maxPct = Math.round(Number(b.rto?.maxPct ?? 30)), days = Math.round(Number(b.rto?.days ?? 90));
+  if (b.rto?.enabled && !(maxPct >= 1 && maxPct <= 100)) return NextResponse.json({ error: "RTO limit should be between 1 and 100%" }, { status: 400 });
+  if (b.rto?.enabled && !(days >= 7 && days <= 365)) return NextResponse.json({ error: "RTO period should be 7 to 365 days" }, { status: 400 });
+  await saveRewardConfig({
+    setup: { enabled: !!b.setup?.enabled, reward: setupReward },
+    milestones: milestones.sort((a, c) => a.orders - c.orders),
+    countFrom,
+    rto: { enabled: !!b.rto?.enabled, maxPct: maxPct || 30, days: days || 90 },
+  });
   return NextResponse.json({ ok: true });
 }
 

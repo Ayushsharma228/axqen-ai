@@ -6,6 +6,9 @@ import { Check, Gift, Trophy, Flag } from "lucide-react";
 
 interface Journey {
   delivered: number;
+  deliveredAll: number;
+  countFrom: string | null;
+  rto: { enabled: boolean; maxPct: number; days: number; pct: number | null; ok: boolean };
   setup: { enabled: boolean; reward: string; steps: { key: string; label: string; done: boolean; href: string }[]; done: boolean; given: boolean };
   milestones: { id: string; orders: number; reward: string; note?: string; reached: boolean; given: boolean }[];
   next: { orders: number; reward: string; left: number; progress: number } | null;
@@ -20,7 +23,7 @@ export function RewardsJourney() {
   if (!j) return null;
 
   // ── New seller (nothing delivered yet): setup path ──────────────────────
-  if (!j.setup.done && j.delivered === 0) {
+  if (!j.setup.done && j.deliveredAll === 0) {
     const steps = j.setup.steps;
     const doneCount = steps.filter(s => s.done).length;
     const nextIdx = steps.findIndex(s => !s.done);
@@ -81,9 +84,16 @@ export function RewardsJourney() {
         <div>
           <h2 className="text-[20px] font-bold" style={{ color: C.ink }}>Your milestone journey</h2>
           <p className="text-[13px] mt-1" style={{ color: C.muted }}>
-            <b className="tabular-nums" style={{ color: C.ink }}>{j.delivered.toLocaleString("en-IN")}</b> delivered orders
+            <b className="tabular-nums" style={{ color: C.ink }}>{j.delivered.toLocaleString("en-IN")}</b> delivered orders{j.countFrom ? ` since ${new Date(j.countFrom).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}` : ""}
             {j.next ? <> · <b style={{ color: C.blue }}>{j.next.left.toLocaleString("en-IN")} more</b> to unlock {j.next.reward}</> : " · every milestone reached"}
           </p>
+          {j.rto.enabled && (
+            <p className="text-[12.5px] mt-1.5 font-medium" style={{ color: j.rto.ok ? "#047857" : "#B91C1C" }}>
+              {j.rto.ok
+                ? `Rewards need RTO under ${j.rto.maxPct}%${j.rto.pct != null ? `. Yours is ${j.rto.pct}% over the last ${j.rto.days} days. Keep it up.` : "."}`
+                : `Your RTO is ${j.rto.pct}% over the last ${j.rto.days} days. Bring it under ${j.rto.maxPct}% to claim your rewards. Confirming COD orders helps most.`}
+            </p>
+          )}
         </div>
         {j.setup.enabled && j.setup.reward && (
           j.setup.done ? (
@@ -116,7 +126,7 @@ export function RewardsJourney() {
                   <span className="text-[12px] leading-snug mt-0.5 max-w-[150px]" style={{ color: m.reached || isNext ? C.muted : C.faint }}>{m.reward}</span>
                   {m.reached && (
                     <span className="mt-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full" style={m.given ? { background: "#ECFDF5", color: "#047857" } : { background: "#FFFBEB", color: "#92400E" }}>
-                      {m.given ? "Received" : "Unlocked · on its way"}
+                      {m.given ? "Received" : j.rto.ok ? "Unlocked · on its way" : `Unlocked · RTO under ${j.rto.maxPct}% to claim`}
                     </span>
                   )}
                   {isNext && <span className="mt-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ background: C.tint, color: C.blue }}>{j.next!.left} to go</span>}

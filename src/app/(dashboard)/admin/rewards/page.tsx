@@ -5,10 +5,10 @@ import Link from "next/link";
 import { Loader2, Plus, Trash2, Gift, CheckCircle2, Search, Save, Flag, Trophy } from "lucide-react";
 
 interface Milestone { id?: string; orders: number | string; reward: string; note?: string }
-interface Config { setup: { enabled: boolean; reward: string }; milestones: Milestone[] }
+interface Config { setup: { enabled: boolean; reward: string }; milestones: Milestone[]; countFrom: string | null; rto: { enabled: boolean; maxPct: number | string; days: number | string } }
 interface Reached { id: string; label: string; reward: string; given: boolean; givenAt: string | null }
 interface Row {
-  id: string; name: string; email: string; phone: string | null; joined: string; delivered: number;
+  id: string; name: string; email: string; phone: string | null; joined: string; delivered: number; deliveredAll: number; rtoPct: number | null; rtoOk: boolean;
   setupDone: boolean; stepsDone: number; stepsTotal: number; reached: Reached[]; pending: number;
   next: { orders: number; reward: string; left: number } | null;
 }
@@ -72,7 +72,30 @@ export default function AdminRewardsPage() {
             <section className="bg-white rounded-xl border border-[#E8EDF6] p-5 space-y-5">
               <div>
                 <h2 className="text-[15px] font-bold text-[#0C1220]">Milestones</h2>
-                <p className="text-[12px] text-[#9CA3AF] mt-0.5">Counted on each seller&apos;s delivered orders, all time.</p>
+                <p className="text-[12px] text-[#9CA3AF] mt-0.5">Counted on each seller&apos;s delivered orders{config.countFrom ? ` placed since ${new Date(config.countFrom).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}` : ", all time"}.</p>
+              </div>
+
+              <div className="rounded-xl border border-[#EEF1F8] p-4 space-y-3">
+                <p className="text-[13px] font-semibold text-[#0C1220]">Counting rules</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="rw-from" className="block text-[11.5px] font-semibold text-[#374151] mb-1">Count delivered orders from</label>
+                    <input id="rw-from" type="date" value={config.countFrom ?? ""} onChange={e => setConfig({ ...config, countFrom: e.target.value || null })} className={input} />
+                    <p className="text-[11px] text-[#9CA3AF] mt-1">{config.countFrom ? "Only orders placed on or after this date count. Existing sellers start fresh." : "Empty = all orders ever. Existing sellers would unlock past milestones at once."}</p>
+                  </div>
+                  <div>
+                    <label className="flex items-center gap-2 text-[11.5px] font-semibold text-[#374151] mb-1 cursor-pointer">
+                      <input id="rw-rto" type="checkbox" checked={config.rto.enabled} onChange={e => setConfig({ ...config, rto: { ...config.rto, enabled: e.target.checked } })} className="accent-[#1D5CFF]" /> Only while RTO is under a limit
+                    </label>
+                    <div className="flex items-center gap-1.5 text-[12.5px] text-[#374151]">
+                      <input id="rw-rto-max" aria-label="Maximum RTO %" inputMode="numeric" disabled={!config.rto.enabled} value={config.rto.maxPct} onChange={e => setConfig({ ...config, rto: { ...config.rto, maxPct: e.target.value.replace(/\D/g, "") } })} className={`${input} w-[64px] text-right`} />
+                      <span>% in the last</span>
+                      <input id="rw-rto-days" aria-label="Days" inputMode="numeric" disabled={!config.rto.enabled} value={config.rto.days} onChange={e => setConfig({ ...config, rto: { ...config.rto, days: e.target.value.replace(/\D/g, "") } })} className={`${input} w-[64px] text-right`} />
+                      <span>days</span>
+                    </div>
+                    <p className="text-[11px] text-[#9CA3AF] mt-1">Sellers above the limit see &quot;keep RTO under {config.rto.maxPct || 30}% to claim&quot;. Needs 5+ completed orders to judge.</p>
+                  </div>
+                </div>
               </div>
 
               <div className="rounded-xl border border-[#EEF1F8] p-4 space-y-3 bg-[#FAFBFF]">
@@ -164,7 +187,8 @@ export default function AdminRewardsPage() {
                       <p className="text-[11.5px] text-[#9CA3AF] truncate">{r.email} · joined {fmt(r.joined)}</p>
                     </div>
                     <div className="w-[170px]">
-                      <p className="text-[12.5px] text-[#0C1220]"><b className="tabular-nums">{r.delivered.toLocaleString("en-IN")}</b> delivered</p>
+                      <p className="text-[12.5px] text-[#0C1220]"><b className="tabular-nums">{r.delivered.toLocaleString("en-IN")}</b> delivered{config.countFrom && r.deliveredAll !== r.delivered ? <span className="text-[11px] text-[#9CA3AF]"> ({r.deliveredAll} all time)</span> : null}</p>
+                      {config.rto.enabled && r.rtoPct != null && <p className="text-[11.5px] font-semibold" style={{ color: r.rtoOk ? "#047857" : "#B91C1C" }}>RTO {r.rtoPct}%{r.rtoOk ? "" : " · not eligible"}</p>}
                       <p className="text-[11.5px] text-[#6B7280]">{r.setupDone ? (r.next ? `${r.next.left} to ${r.next.orders}` : "All milestones reached") : `Setup ${r.stepsDone}/${r.stepsTotal}`}</p>
                     </div>
                     <div className="flex-1 min-w-[240px] flex flex-wrap gap-2">
@@ -176,7 +200,7 @@ export default function AdminRewardsPage() {
                             <CheckCircle2 className="w-3.5 h-3.5" /> {m.reward}
                           </button>
                         ) : (
-                          <button key={m.id} onClick={() => markGiven(r, m, true)} disabled={busy === k} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[12px] font-semibold border border-[#FDE68A] bg-[#FFFBEB] text-[#92400E] hover:border-[#F59E0B] disabled:opacity-50">
+                          <button key={m.id} onClick={() => { if (!r.rtoOk && !confirm(`${r.name}'s RTO is ${r.rtoPct}%, above your limit. Give the reward anyway?`)) return; markGiven(r, m, true); }} disabled={busy === k} title={r.rtoOk ? undefined : "RTO above your limit"} className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[12px] font-semibold border disabled:opacity-50 ${r.rtoOk ? "border-[#FDE68A] bg-[#FFFBEB] text-[#92400E] hover:border-[#F59E0B]" : "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]"}`}>
                             {busy === k ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Gift className="w-3.5 h-3.5" />} {m.reward} · <span className="underline">Mark given</span>
                           </button>
                         );

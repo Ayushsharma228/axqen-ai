@@ -17,6 +17,7 @@ export default function TermsOfServicePage() {
           <div>
             <h2 className="text-lg font-semibold text-gray-900 mb-2">1. Acceptance of Terms</h2>
             <p>By accessing or using the AXQEN platform (&quot;Service&quot;) at <strong>axqen.app</strong>, you agree to be bound by these Terms of Service. If you do not agree, do not use the Service.</p>
+            <p className="mt-2">The Service is owned and operated by <strong>Vrinandya Ventures Private Limited</strong> (CIN: U63112UP2025PTC239392, GSTIN: 09AALCV7054P1ZD), 4/210 Unt Gali, Kacheri Ghat, Taj Nagari, Agra – 282004, Uttar Pradesh, India.</p>
           </div>
 
           <div>
@@ -88,7 +89,7 @@ export default function TermsOfServicePage() {
             <h2 className="text-lg font-semibold text-gray-900 mb-2">12. Contact</h2>
             <p>For any questions about these Terms, contact us at:<br />
             <strong>AXQEN</strong><br />
-            Email: <a href="mailto:vrinandyaventures@gmail.com" className="text-blue-600 underline">vrinandyaventures@gmail.com</a>
+            Email: <a href="mailto:connect@vrinandyaventures.in" className="text-blue-600 underline">connect@vrinandyaventures.in</a>
             </p>
           </div>
 

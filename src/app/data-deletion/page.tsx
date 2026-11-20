@@ -18,7 +18,7 @@ export default function DataDeletionPage() {
           <div id="account" className="bg-gray-50 border border-gray-200 rounded-xl p-5 space-y-3">
             <h2 className="text-base font-semibold text-gray-900">Delete your AXQEN account</h2>
             <p><strong>In the app or on the website:</strong> log in → Profile &amp; Settings → <a href="/seller/profile?tab=delete" className="text-blue-600 underline">Delete account</a>. Confirm with your password and type DELETE.</p>
-            <p><strong>By email:</strong> write to <a href="mailto:vrinandyaventures@gmail.com" className="text-blue-600 underline">vrinandyaventures@gmail.com</a> from your registered email with the subject <strong>&quot;Account Deletion Request&quot;</strong>.</p>
+            <p><strong>By email:</strong> write to <a href="mailto:connect@vrinandyaventures.in" className="text-blue-600 underline">connect@vrinandyaventures.in</a> from your registered email with the subject <strong>&quot;Account Deletion Request&quot;</strong>.</p>
             <ul className="list-disc pl-5 space-y-1">
               <li>We settle any pending payouts, then close the account within 7 working days and email you when it&apos;s done.</li>
               <li>Deleted: your login, profile, bank details, KYC documents, store connections and access tokens.</li>
@@ -47,7 +47,7 @@ export default function DataDeletionPage() {
             Log in to Seller Central → Apps &amp; Services → Manage Your Apps → find AXQEN → Revoke access. Amazon will also notify us to stop using the token.
             </p>
             <p><strong>Option 3 — Email us:</strong><br />
-            Send an email to <a href="mailto:vrinandyaventures@gmail.com" className="text-blue-600 underline">vrinandyaventures@gmail.com</a> with subject <strong>&quot;Amazon Data Deletion Request&quot;</strong> and your registered email. We will process within 7 business days.
+            Send an email to <a href="mailto:connect@vrinandyaventures.in" className="text-blue-600 underline">connect@vrinandyaventures.in</a> with subject <strong>&quot;Amazon Data Deletion Request&quot;</strong> and your registered email. We will process within 7 business days.
             </p>
           </div>
 

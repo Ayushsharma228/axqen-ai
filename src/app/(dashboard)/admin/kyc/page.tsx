@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { KycApprovePanel } from "@/components/admin/kyc-approve-panel";
-import { Loader2, ShieldCheck, ShieldAlert, FileText, Eye, EyeOff, ExternalLink, Phone, Mail, Landmark, Building2, Search } from "lucide-react";
+import { Loader2, ShieldCheck, ShieldAlert, FileText, ExternalLink, Phone, Mail, Landmark, Building2, Search } from "lucide-react";
 
 type Status = "SUBMITTED" | "APPROVED" | "REJECTED" | "NOT_SUBMITTED";
 interface Seller {
@@ -21,7 +21,6 @@ const TABS: { key: Status; label: string }[] = [
 const fmt = (s: string) => new Date(s).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 const isImage = (u: string) => /\.(png|jpe?g|webp|gif)(\?|$)/i.test(u) || u.startsWith("data:image");
 const maskAadhaar = (a: string) => { const d = a.replace(/\D/g, ""); return d.length >= 4 ? `XXXX XXXX ${d.slice(-4)}` : a; };
-const spaced = (a: string) => a.replace(/\D/g, "").replace(/(\d{4})(?=\d)/g, "$1 ");
 
 export default function KycApprovalsPage() {
   const [tab, setTab] = useState<Status>("SUBMITTED");
@@ -29,7 +28,6 @@ export default function KycApprovalsPage() {
   const [counts, setCounts] = useState<Partial<Record<Status, number>>>({});
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
-  const [reveal, setReveal] = useState<Record<string, boolean>>({});
   const [preview, setPreview] = useState<Record<string, boolean>>({});
   const [reason, setReason] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
@@ -112,12 +110,7 @@ export default function KycApprovalsPage() {
                   <div className="rounded-lg bg-[#FAFBFF] border border-[#EEF1F8] p-3">
                     <p className="text-[11px] font-bold uppercase tracking-wide text-[#9CA3AF] flex items-center gap-1.5"><ShieldCheck className="w-3.5 h-3.5" /> Aadhaar</p>
                     {s.aadhaarNumber ? (
-                      <p className="text-[14px] font-mono text-[#0C1220] mt-1 flex items-center gap-2">
-                        {reveal[s.id] ? spaced(s.aadhaarNumber) : maskAadhaar(s.aadhaarNumber)}
-                        <button onClick={() => setReveal(r => ({ ...r, [s.id]: !r[s.id] }))} aria-label={reveal[s.id] ? "Hide number" : "Show full number"} className="text-[#9CA3AF] hover:text-[#4361EE]">
-                          {reveal[s.id] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                        </button>
-                      </p>
+                      <p className="text-[14px] font-mono text-[#0C1220] mt-1">{maskAadhaar(s.aadhaarNumber)}</p>
                     ) : <p className="text-[12.5px] text-[#B45309] mt-1">Not provided</p>}
                     {s.aadhaarDocUrl ? (
                       <div className="flex items-center gap-3 mt-2 text-[12px]">

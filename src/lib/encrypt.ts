@@ -33,3 +33,10 @@ export function decrypt(value: string): string {
     return value; // decryption failed — treat as legacy plaintext
   }
 }
+
+/** "1234 5678 9012" or "XXXX XXXX 9012" → "XXXX XXXX 9012". Full Aadhaar numbers never leave the server. */
+export function maskAadhaar(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const d = value.replace(/\D/g, "");
+  return d.length >= 4 ? `XXXX XXXX ${d.slice(-4)}` : "XXXX XXXX XXXX";
+}

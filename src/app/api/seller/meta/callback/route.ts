@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { encrypt } from "@/lib/encrypt";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -44,7 +45,7 @@ export async function GET(req: NextRequest) {
   await prisma.user.update({
     where: { id: sellerId },
     data: {
-      metaAccessToken:    accessToken,
+      metaAccessToken:    encrypt(accessToken),
       metaAdAccountId:    adAccount?.id ?? null,
       metaTokenExpiresAt: new Date(Date.now() + expiresIn * 1000),
     },

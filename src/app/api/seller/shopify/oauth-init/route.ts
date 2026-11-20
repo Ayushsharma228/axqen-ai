@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
+import { encrypt } from "@/lib/encrypt";
 import { appUrl, normalizeShopDomain, signState } from "@/lib/shopify";
 
 export async function POST(req: NextRequest) {
@@ -20,8 +21,8 @@ export async function POST(req: NextRequest) {
   // Store credentials so callback can use them
   await prisma.shopifyStore.upsert({
     where: { sellerId: session.user.id },
-    update: { storeUrl: domain, clientId, clientSecret, accessToken: "" },
-    create: { sellerId: session.user.id, storeUrl: domain, storeName: domain, accessToken: "", clientId, clientSecret },
+    update: { storeUrl: domain, clientId, clientSecret: encrypt(clientSecret), accessToken: "" },
+    create: { sellerId: session.user.id, storeUrl: domain, storeName: domain, accessToken: "", clientId, clientSecret: encrypt(clientSecret) },
   });
 
   const scopes = "read_products,write_products,read_orders,write_orders,read_inventory,write_inventory";

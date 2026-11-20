@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
+import { decrypt } from "@/lib/encrypt";
 
 // Syncing 30 days of campaign spend can take a while on large accounts.
 export const maxDuration = 60;
@@ -34,7 +35,9 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function syncSellerAdSpend(sellerId: string, adAccountId: string, accessToken: string): Promise<number> {
+export async function syncSellerAdSpend(sellerId: string, adAccountId: string, storedToken: string): Promise<number> {
+  // Tokens are stored encrypted; older plain-text tokens are returned unchanged by decrypt().
+  const accessToken = decrypt(storedToken);
   const since = new Date();
   since.setDate(since.getDate() - 30);
   const sinceStr = since.toISOString().split("T")[0];

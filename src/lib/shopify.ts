@@ -81,7 +81,7 @@ export async function getShopifyAccessToken(storeId: string): Promise<string> {
   if (!store) throw new Error("Shopify store not found");
 
   const clientId = store.clientId || process.env.SHOPIFY_API_KEY;
-  const clientSecret = store.clientSecret || process.env.SHOPIFY_API_SECRET;
+  const clientSecret = (store.clientSecret ? decrypt(store.clientSecret) : "") || process.env.SHOPIFY_API_SECRET;
 
   const expiresAt = store.accessTokenExpiresAt?.getTime();
   if (!expiresAt) {
@@ -212,7 +212,7 @@ export async function verifyWebhook(rawBody: string, hmacHeader: string | null, 
   if (process.env.SHOPIFY_WEBHOOK_SECRET) secrets.add(process.env.SHOPIFY_WEBHOOK_SECRET);
   if (shopDomain) {
     const store = await prisma.shopifyStore.findFirst({ where: { storeUrl: shopDomain }, select: { clientSecret: true } });
-    if (store?.clientSecret) secrets.add(store.clientSecret);
+    if (store?.clientSecret) secrets.add(decrypt(store.clientSecret));
   }
   for (const secret of secrets) {
     const digest = createHmac("sha256", secret).update(rawBody, "utf8").digest("base64");

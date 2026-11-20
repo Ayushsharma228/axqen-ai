@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { encrypt, decrypt } from "@/lib/encrypt";
 import { getRouteSession } from "@/lib/session";
 import { SHOPIFY_API_VERSION, appUrl, exchangeCodeForToken, normalizeShopDomain, registerWebhooks, tokenFields, verifyOAuthHmac, verifyState } from "@/lib/shopify";
 
@@ -25,7 +26,7 @@ export async function GET(req: NextRequest) {
     const stored = await prisma.shopifyStore.findUnique({ where: { sellerId }, select: { clientId: true, clientSecret: true } });
     if (!stored?.clientId || !stored.clientSecret) return fail("error");
     clientId = stored.clientId;
-    clientSecret = stored.clientSecret;
+    clientSecret = decrypt(stored.clientSecret);
   }
   if (!clientId || !clientSecret) return fail("not_configured");
   if (!verifyOAuthHmac(searchParams, clientSecret)) return fail("error");
@@ -44,7 +45,7 @@ export async function GET(req: NextRequest) {
   const shopData = (await shopRes.json().catch(() => ({}))) as { shop?: { name?: string } };
   const storeName = shopData.shop?.name ?? shop;
 
-  const creds = state.mode === "platform" ? { clientId: null, clientSecret: null } : { clientId, clientSecret };
+  const creds = state.mode === "platform" ? { clientId: null, clientSecret: null } : { clientId, clientSecret: encrypt(clientSecret) };
   await prisma.shopifyStore.upsert({
     where:  { sellerId },
     create: { sellerId, storeName, storeUrl: shop, ...tokenFields(tokenData), ...creds },

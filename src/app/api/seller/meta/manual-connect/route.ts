@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
+import { encrypt } from "@/lib/encrypt";
 
 export async function POST(req: NextRequest) {
   const session = await getRouteSession(req);
@@ -32,7 +33,7 @@ export async function POST(req: NextRequest) {
   await prisma.user.update({
     where: { id: session.user.id },
     data: {
-      metaAccessToken:    accessToken.trim(),
+      metaAccessToken:    encrypt(accessToken.trim()),
       metaAdAccountId:    normalizedAccountId,
       metaTokenExpiresAt: expiresAt,
     },

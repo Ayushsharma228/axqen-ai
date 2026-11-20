@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
+import { maskAadhaar } from "@/lib/encrypt";
 
 export async function GET(
   req: NextRequest,
@@ -108,7 +109,7 @@ export async function GET(
   const upcomingAmount = upcoming.filter(t => t.type === "CREDIT").reduce((s, t) => s + t.amount, 0);
 
   return NextResponse.json({
-    seller,
+    seller: { ...seller, aadhaarNumber: maskAadhaar(seller.aadhaarNumber) },
     orderSummary: { totalOrders, totalRevenue, deliveredCount, rtoCount, cancelledCount, orderStats },
     recentOrders,
     settlementSummary: {

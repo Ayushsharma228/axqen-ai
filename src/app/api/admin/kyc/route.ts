@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
+import { maskAadhaar } from "@/lib/encrypt";
 
 export async function GET(req: NextRequest) {
   const session = await getRouteSession(req);
@@ -28,5 +29,6 @@ export async function GET(req: NextRequest) {
     _count: { id: true },
   });
 
-  return NextResponse.json({ sellers, counts });
+  // Only the last 4 Aadhaar digits are ever sent to the browser.
+  return NextResponse.json({ sellers: sellers.map(s => ({ ...s, aadhaarNumber: maskAadhaar(s.aadhaarNumber) })), counts });
 }

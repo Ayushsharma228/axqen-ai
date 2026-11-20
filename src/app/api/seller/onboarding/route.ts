@@ -153,13 +153,14 @@ export async function PATCH(req: NextRequest) {
   }
 
   if (step === "kyc") {
-    if (!body.aadhaarNumber)
-      return NextResponse.json({ error: "Aadhaar number is required" }, { status: 400 });
+    // Only the last 4 digits are kept; the full number and document images are never stored.
+    const kycDigits = String(body.aadhaarNumber ?? "").replace(/\D/g, "");
+    if (kycDigits.length !== 12)
+      return NextResponse.json({ error: "Enter your 12-digit Aadhaar number" }, { status: 400 });
     const updated = await prisma.user.update({
       where: { id: session.user.id },
       data: {
-        aadhaarNumber: body.aadhaarNumber,
-        aadhaarDocUrl: body.aadhaarDocUrl || null,
+        aadhaarNumber: `XXXX XXXX ${kycDigits.slice(-4)}`,
         kycStatus:     "SUBMITTED",
         onboardingDone: true,
       },

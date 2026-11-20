@@ -138,6 +138,16 @@ export default function MetaAdsPage() {
 
   function changeRange(d: number) { setDays(d); load(d); }
 
+  // Removes the seller's Meta access token (privacy policy: disconnecting deletes it immediately).
+  const [disconnecting, setDisconnecting] = useState(false);
+  async function disconnectMeta() {
+    if (!confirm("Disconnect your Meta ad account? AXQEN will stop syncing your ad spend. Spend already recorded stays.")) return;
+    setDisconnecting(true);
+    await fetch("/api/seller/meta/disconnect", { method: "POST" }).catch(() => null);
+    setDisconnecting(false);
+    load();
+  }
+
   // ── Blended metrics (store revenue vs ad spend) ────────────────────────
   // last30DaysRevenue = ALL non-cancelled/RTO orders in period (not just attributed)
   const blendedRoas = summary && summary.totalSpend > 0 && storeRevenue > 0
@@ -189,6 +199,15 @@ export default function MetaAdsPage() {
               <span className="w-1.5 h-1.5 rounded-full" style={{ background: connected ? "#059669" : "#EF4444" }} />
               {connected ? "Meta connected" : "Ad account not linked yet"}
             </span>
+          )}
+          {connected && (
+            <button
+              onClick={disconnectMeta}
+              disabled={disconnecting}
+              className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold border border-[#E8EDF6] bg-white text-[#6B7280] hover:text-[#B91C1C] disabled:opacity-50"
+            >
+              {disconnecting ? "Disconnecting…" : "Disconnect Meta"}
+            </button>
           )}
           <div className="flex items-center bg-white border border-[#E8EDF6] rounded-lg overflow-hidden">
             {DATE_PRESETS.map(p => (

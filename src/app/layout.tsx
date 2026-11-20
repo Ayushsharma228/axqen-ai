@@ -23,6 +23,24 @@ const playfair = localFont({
   preload: false,
 });
 
+// Dashboard typefaces (AXQEN design system): Syne for headings and big numbers, DM Sans for UI text, IBM Plex Mono for codes and IDs.
+const syne = localFont({ src: "../fonts/syne.woff2", variable: "--font-syne", weight: "400 800", display: "swap", preload: false });
+const dmSans = localFont({
+  src: [
+    { path: "../fonts/dm-sans.woff2", weight: "100 1000", style: "normal" },
+    { path: "../fonts/dm-sans-italic.woff2", weight: "100 1000", style: "italic" },
+  ],
+  variable: "--font-dm-sans", display: "swap", preload: false,
+});
+const plexMono = localFont({
+  src: [
+    { path: "../fonts/plex-mono-400.woff2", weight: "400", style: "normal" },
+    { path: "../fonts/plex-mono-500.woff2", weight: "500", style: "normal" },
+    { path: "../fonts/plex-mono-600.woff2", weight: "600", style: "normal" },
+  ],
+  variable: "--font-plex-mono", display: "swap", preload: false,
+});
+
 const spaceGrotesk = localFont({
   src: "../fonts/space-grotesk.woff2",
   variable: "--font-space",
@@ -76,7 +94,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${playfair.variable} ${spaceGrotesk.variable} h-full antialiased`}
+      className={`${inter.variable} ${playfair.variable} ${spaceGrotesk.variable} ${syne.variable} ${dmSans.variable} ${plexMono.variable} h-full antialiased`}
     >
       <head>
         <script

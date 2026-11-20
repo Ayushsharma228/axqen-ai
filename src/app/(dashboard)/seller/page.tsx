@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { PlanDueNotice, useBilling } from "@/components/billing/plan-payments-panel";
 import { PincodeRtoCard } from "@/components/dashboard/pincode-rto-card";
+import { RewardsJourney } from "@/components/dashboard/rewards-journey";
 import {
   Search, RefreshCw, ArrowUpRight, ArrowDownRight, ClipboardCheck, AlertTriangle, PackageOpen, Store, ChevronRight, Package,
 } from "lucide-react";
@@ -299,6 +300,8 @@ export default function SellerDashboard() {
         <Kpi label="Net profit" value={compact(cur?.earnings?.netProfit ?? 0)} prev={prev ? compact(prev.earnings?.netProfit ?? 0) : undefined}
           delta={pctChange(cur?.earnings?.netProfit, prev?.earnings?.netProfit)} prevLabel={R.prevLabel} />
       </div>
+
+      <RewardsJourney />
 
       {/* Chart + money */}
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-4">

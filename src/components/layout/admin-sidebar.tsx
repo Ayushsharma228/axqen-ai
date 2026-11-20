@@ -21,6 +21,7 @@ const NAV: Entry[] = [
     { label: "KYC Approvals",     href: "/admin/kyc",          badge: "kyc" },
     { label: "Seller Activation", href: "/admin/activation" },
     { label: "Plan Billing",      href: "/admin/plan-billing", badge: "plan" },
+    { label: "Rewards",           href: "/admin/rewards" },
   ]},
   { id: "orders", label: "Orders", icon: ShoppingCart, children: [
     { label: "All Orders",    href: "/admin/orders" },

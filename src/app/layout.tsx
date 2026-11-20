@@ -23,15 +23,7 @@ const playfair = localFont({
   preload: false,
 });
 
-// Dashboard typefaces (AXQEN design system): Syne for headings and big numbers, DM Sans for UI text, IBM Plex Mono for codes and IDs.
-const syne = localFont({ src: "../fonts/syne.woff2", variable: "--font-syne", weight: "400 800", display: "swap", preload: false });
-const dmSans = localFont({
-  src: [
-    { path: "../fonts/dm-sans.woff2", weight: "100 1000", style: "normal" },
-    { path: "../fonts/dm-sans-italic.woff2", weight: "100 1000", style: "italic" },
-  ],
-  variable: "--font-dm-sans", display: "swap", preload: false,
-});
+// Monospace for codes and IDs in the dashboards (order IDs, AWBs, SKUs). UI text uses Inter.
 const plexMono = localFont({
   src: [
     { path: "../fonts/plex-mono-400.woff2", weight: "400", style: "normal" },
@@ -94,7 +86,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${playfair.variable} ${spaceGrotesk.variable} ${syne.variable} ${dmSans.variable} ${plexMono.variable} h-full antialiased`}
+      className={`${inter.variable} ${playfair.variable} ${spaceGrotesk.variable} ${plexMono.variable} h-full antialiased`}
     >
       <head>
         <script

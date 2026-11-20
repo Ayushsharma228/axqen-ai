@@ -114,22 +114,22 @@ body {
 
 input, select, textarea { color-scheme: light; }
 
-/* ── Dashboards (seller + admin): AXQEN design system type ─────────────────── */
+/* ── Dashboards (seller + admin) and login: one minimal typeface (Inter) ──── */
 .app-ui {
-  font-family: var(--font-dm-sans), system-ui, -apple-system, sans-serif;
-  font-feature-settings: "ss01";
+  font-family: var(--font-inter), "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif;
+  font-feature-settings: "cv11", "ss03";
 }
 .app-ui h1,
 .app-ui h2 {
-  font-family: var(--font-syne), var(--font-dm-sans), sans-serif;
-  letter-spacing: -0.015em;
+  font-family: inherit;
+  letter-spacing: -0.02em;
   text-wrap: balance;
 }
-/* Big figures (tiles, totals) are set in Syne, as the design system's "display numbers" */
+/* Big figures (tiles, totals): bold, not black, with tight tracking */
 .app-ui .font-black {
-  font-family: var(--font-syne), var(--font-dm-sans), sans-serif;
+  font-family: inherit;
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.025em;
 }
 .app-ui .font-mono {
   font-family: var(--font-plex-mono), ui-monospace, SFMono-Regular, monospace;

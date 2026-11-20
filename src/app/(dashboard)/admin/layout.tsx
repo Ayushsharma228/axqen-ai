@@ -14,7 +14,7 @@ export default async function AdminLayout({
   if (session.user.role !== "ADMIN") redirect("/login");
 
   return (
-    <div className="flex min-h-screen" style={{ background: "var(--bg-page)" }}>
+    <div className="app-ui flex min-h-screen" style={{ background: "var(--bg-page)" }}>
       <AdminSidebar userName={session.user.name ?? ""} />
       <main className="flex-1 min-w-0 min-h-screen pt-14 md:pt-0 md:ml-[var(--admin-nav-w,248px)] transition-[margin] duration-200">
         {children}

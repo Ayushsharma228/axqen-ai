@@ -95,8 +95,8 @@ export default function SellerOrdersPage() {
   const [payment, setPayment] = useState("");
   const [source,  setSource]  = useState(searchParams.get("source")?.toUpperCase() ?? "");
   const [product, setProduct] = useState("");
-  const [searchInput, setSearchInput] = useState("");
-  const [search,  setSearch]  = useState("");
+  const [searchInput, setSearchInput] = useState(searchParams.get("search") ?? "");
+  const [search,  setSearch]  = useState(searchParams.get("search") ?? "");
   const [page,    setPage]    = useState(1);
 
   const [cancelling,   setCancelling]   = useState<string | null>(null);

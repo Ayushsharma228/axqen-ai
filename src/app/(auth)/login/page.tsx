@@ -25,7 +25,7 @@ function DashboardPreview() {
           {[["Orders", "1,284", "#0C1220"], ["Delivered", "82%", "#047857"], ["RTO", "11%", "#B91C1C"]].map(([l, v, c]) => (
             <div key={l} className="rounded-xl bg-[#F6F8FC] px-2.5 py-2">
               <p className="text-[9.5px] text-[#6B7280]">{l}</p>
-              <p className="text-[15px] font-bold tabular-nums" style={{ color: c, fontFamily: "var(--font-syne), sans-serif" }}>{v}</p>
+              <p className="text-[15px] font-bold tabular-nums" style={{ color: c }}>{v}</p>
             </div>
           ))}
         </div>
@@ -94,7 +94,7 @@ function LoginContent() {
         <div className="flex flex-col px-6 py-8 sm:px-12 lg:px-16">
           <a href="/" aria-label="AXQEN home" className="flex items-center gap-2.5 self-start">
             <img src="/axqen-icon.png" alt="" className="w-8 h-8 rounded-lg object-cover" />
-            <span className="text-[17px] font-bold text-[#0C1220]" style={{ fontFamily: "var(--font-syne), sans-serif" }}>AXQEN</span>
+            <span className="text-[17px] font-bold text-[#0C1220]">AXQEN</span>
           </a>
 
           <div className="flex-1 flex flex-col justify-center py-10">

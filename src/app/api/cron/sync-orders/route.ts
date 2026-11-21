@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { syncShopifyOrders } from "@/app/api/seller/shopify/sync-orders/route";
+import { SellerActionError } from "@/lib/shopify";
 import { syncForSeller as syncAmazonOrders } from "@/app/api/seller/amazon/sync-orders/route";
 import { reportError } from "@/lib/errors";
 
@@ -31,7 +32,7 @@ export async function GET(req: NextRequest) {
         row.shopify = await syncShopifyOrders(sellerId);
       } catch (err) {
         row.shopify = err instanceof Error ? err.message : "error";
-        await reportError("cron sync-orders · Shopify", err, `seller ${sellerId}`);
+        if (!(err instanceof SellerActionError)) await reportError("cron sync-orders · Shopify", err, `seller ${sellerId}`);
       }
     }
 

@@ -81,8 +81,10 @@ export async function syncSellerAdSpend(sellerId: string, adAccountId: string, s
   const updates = wanted.filter(w => byKey.has(`${w.campaignId}|${w.date.toISOString().slice(0, 10)}`));
   const creates = wanted.filter(w => !byKey.has(`${w.campaignId}|${w.date.toISOString().slice(0, 10)}`));
 
-  for (let i = 0; i < updates.length; i += 50) {
-    await prisma.$transaction(updates.slice(i, i + 50).map(w => prisma.adSpend.update({
+  // Each update stands alone (re-running the sync gives the same result), so no transaction is needed;
+  // one transaction around 50 updates could pass the database's 5-second limit and roll back.
+  for (let i = 0; i < updates.length; i += 10) {
+    await Promise.all(updates.slice(i, i + 10).map(w => prisma.adSpend.update({
       where: { id: byKey.get(`${w.campaignId}|${w.date.toISOString().slice(0, 10)}`)! },
       data: { amount: w.amount, campaignName: w.campaignName, clicks: w.clicks, impressions: w.impressions, note },
     })));

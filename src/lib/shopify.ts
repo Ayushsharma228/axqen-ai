@@ -37,8 +37,18 @@ export async function exchangeCodeForToken(shop: string, clientId: string, clien
   return (await res.json().catch(() => ({}))) as TokenResponse;
 }
 
-// Stores whose old token Shopify refused to swap (for example tokens made in the store admin); retried after a restart.
-const migrationFailed = new Set<string>();
+// When Shopify refuses to swap a store's old token (store paused, or a token made in the store admin),
+// we wait a day before trying again, remembered in PlatformConfig so restarts don't retry every hour.
+const RETRY_UPGRADE_MS = 24 * 60 * 60_000;
+const upgradeKey = (storeId: string) => `SHOPIFY_TOKEN_UPGRADE_FAIL:${storeId}`;
+async function upgradeRecentlyFailed(storeId: string) {
+  const row = await prisma.platformConfig.findUnique({ where: { key: upgradeKey(storeId) }, select: { value: true } }).catch(() => null);
+  return !!row && Date.now() - Number(row.value) < RETRY_UPGRADE_MS;
+}
+async function rememberUpgradeFailure(storeId: string) {
+  const value = String(Date.now());
+  await prisma.platformConfig.upsert({ where: { key: upgradeKey(storeId) }, create: { key: upgradeKey(storeId), value, label: "Shopify token upgrade failed at" }, update: { value } }).catch(() => null);
+}
 
 /**
  * Swaps a non-expiring offline token for an expiring token pair (Shopify token exchange).
@@ -60,13 +70,19 @@ async function migrateToExpiringToken(storeId: string, shop: string, clientId: s
         expiring:             "1",
       }),
     });
-    const t = (await res.json().catch(() => ({}))) as TokenResponse;
+    const raw = await res.text();
+    let t: TokenResponse = {};
+    try { t = JSON.parse(raw) as TokenResponse; } catch { /* not JSON */ }
     if (!res.ok || !t.access_token || !t.refresh_token) {
-      console.warn(`[shopify] token migration skipped for ${shop}: ${t.error_description || t.error || `HTTP ${res.status}`}`);
-      await reportError("Shopify token upgrade", new Error(`Old token could not be upgraded: ${t.error_description || t.error || `HTTP ${res.status}`}`), shop);
+      const reason = t.error_description || t.error || `HTTP ${res.status}${raw ? ` ${raw.slice(0, 120)}` : ""}`;
+      console.warn(`[shopify] token migration skipped for ${shop}: ${reason}`);
+      await rememberUpgradeFailure(storeId);
+      await prisma.shopifyStore.update({ where: { id: storeId }, data: { lastSyncError: "Shopify needs you to reconnect your store. Open Shopify in AXQEN and connect again." } }).catch(() => null);
+      await reportError("Shopify token upgrade", new Error(`Old token could not be upgraded: ${reason}`), shop);
       return null;
     }
     await prisma.shopifyStore.update({ where: { id: storeId }, data: { ...tokenFields(t), lastSyncError: null } });
+    await prisma.platformConfig.deleteMany({ where: { key: upgradeKey(storeId) } }).catch(() => null);
     console.log(`[shopify] migrated ${shop} to an expiring offline token`);
     return t.access_token;
   } catch (err) {
@@ -86,10 +102,9 @@ export async function getShopifyAccessToken(storeId: string): Promise<string> {
   const expiresAt = store.accessTokenExpiresAt?.getTime();
   if (!expiresAt) {
     // Old non-expiring token: Shopify now blocks these, so swap it once for an expiring pair.
-    if (store.accessToken && clientId && clientSecret && !migrationFailed.has(storeId)) {
+    if (store.accessToken && clientId && clientSecret && !(await upgradeRecentlyFailed(storeId))) {
       const migrated = await migrateToExpiringToken(storeId, store.storeUrl, clientId, clientSecret, decrypt(store.accessToken));
       if (migrated) return migrated;
-      migrationFailed.add(storeId);
     }
     return decrypt(store.accessToken);
   }
@@ -124,6 +139,9 @@ export async function getShopifyAccessToken(storeId: string): Promise<string> {
   });
   return t.access_token;
 }
+
+/** A sync problem only the seller can fix (paused store, removed access). Shown to them; not a system error. */
+export class SellerActionError extends Error {}
 
 export const SHOPIFY_API_VERSION = "2026-10";
 

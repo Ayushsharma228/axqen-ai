@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { getShopifyAccessToken, SHOPIFY_API_VERSION } from "@/lib/shopify";
+import { getShopifyAccessToken, SHOPIFY_API_VERSION, SellerActionError } from "@/lib/shopify";
 import { OrderStatus, Prisma } from "@prisma/client";
 import { decrypt } from "@/lib/encrypt";
 import { inferPaymentMode } from "@/app/api/webhooks/shopify/orders/route";
@@ -48,7 +48,12 @@ async function fetchAllShopifyOrders(
     });
 
     if (!shopRes.ok) {
-      throw new Error(`Shopify ${shopRes.status}: ${await shopRes.text()}`);
+      const body = await shopRes.text();
+      // 402 = the seller's Shopify store is paused or closed (unpaid Shopify plan, frozen store). Only the seller can fix it.
+      if (shopRes.status === 402) throw new SellerActionError("Your Shopify store is paused or closed on Shopify. Reactivate your Shopify plan, then sync again.");
+      // 401/403 = AXQEN's access was removed or expired.
+      if (shopRes.status === 401 || shopRes.status === 403) throw new SellerActionError("Shopify access has ended. Open Shopify in AXQEN and connect your store again.");
+      throw new Error(`Shopify ${shopRes.status}: ${body}`);
     }
 
     const data = await shopRes.json() as { orders?: Record<string, unknown>[] };

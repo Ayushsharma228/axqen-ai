@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { issueInvoiceForOrder, runInvoiceIssuing } from "@/lib/invoices";
+import { issueInvoiceForOrder, runInvoiceIssuing, itemLinkKey } from "@/lib/invoices";
 
 export const maxDuration = 60;
 
@@ -14,6 +14,18 @@ async function admin(req: NextRequest) {
 export async function GET(req: NextRequest) {
   if (!(await admin(req))) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const sp = req.nextUrl.searchParams;
+
+  // Product picker for linking a held invoice's item: ?products=<search text>
+  if (sp.has("products")) {
+    const q = (sp.get("products") ?? "").trim();
+    const products = await prisma.product.findMany({
+      where: q ? { OR: [{ name: { contains: q, mode: "insensitive" } }, { sku: { contains: q, mode: "insensitive" } }] } : {},
+      select: { id: true, name: true, sku: true, invoicePrice: true, hsn: true, gstRate: true },
+      orderBy: { name: "asc" }, take: 20,
+    });
+    return NextResponse.json({ products });
+  }
+
   const status = (sp.get("status") ?? "ISSUED").toUpperCase();
   const sellerId = sp.get("sellerId") || undefined;
   const search = sp.get("search")?.trim();
@@ -55,7 +67,7 @@ export async function GET(req: NextRequest) {
 // POST { action: "run" } | { action: "retry", invoiceId } | { action: "retryAll" } | { action: "cancel", invoiceId, reason }
 export async function POST(req: NextRequest) {
   if (!(await admin(req))) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const body = await req.json().catch(() => ({})) as { action?: string; invoiceId?: string; reason?: string };
+  const body = await req.json().catch(() => ({})) as { action?: string; invoiceId?: string; reason?: string; itemName?: string; productId?: string };
 
   if (body.action === "run") return NextResponse.json(await runInvoiceIssuing(200));
 
@@ -71,6 +83,17 @@ export async function POST(req: NextRequest) {
 
   const inv = body.invoiceId ? await prisma.invoice.findUnique({ where: { id: body.invoiceId } }) : null;
   if (!inv) return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
+
+  // Link an unmatched order item (by name, for this seller) to a catalogue product, then retry the invoice.
+  if (body.action === "link") {
+    if (inv.status !== "HELD") return NextResponse.json({ error: "Only held invoices can be linked" }, { status: 400 });
+    const itemName = String(body.itemName ?? "").trim();
+    const product = body.productId ? await prisma.product.findUnique({ where: { id: String(body.productId) }, select: { id: true, name: true } }) : null;
+    if (!itemName || !product) return NextResponse.json({ error: "Pick a catalogue product" }, { status: 400 });
+    const key = itemLinkKey(inv.sellerId, itemName);
+    await prisma.platformConfig.upsert({ where: { key }, create: { key, value: product.id, label: `Invoice item link: ${itemName.slice(0, 80)} → ${product.name.slice(0, 80)}` }, update: { value: product.id } });
+    return NextResponse.json({ ...(await issueInvoiceForOrder(inv.orderId)), linked: product.name });
+  }
 
   if (body.action === "retry") {
     if (inv.status !== "HELD") return NextResponse.json({ error: "Only held invoices can be retried" }, { status: 400 });

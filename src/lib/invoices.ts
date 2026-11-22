@@ -150,12 +150,18 @@ export async function issueInvoiceForOrder(orderId: string): Promise<IssueResult
   const state = resolveState(seller?.state, seller?.gstNumber);
   if (!seller?.businessAddress?.trim() || !state) reasons.push("Seller's billing address or state is missing in KYC");
 
-  // Resolve each item to a catalogue product (by link, else by SKU)
+  // Resolve each item to a catalogue product: direct link, else SKU, else a name link an admin saved for this seller
   const skus = order.items.filter(i => !i.productId && i.sku).map(i => i.sku!) ;
   const bySku = skus.length
     ? new Map((await prisma.product.findMany({ where: { sku: { in: skus } }, select: { id: true, sku: true } })).map(p => [p.sku!, p.id]))
     : new Map<string, string>();
-  const productIds = [...new Set(order.items.map(i => i.productId ?? (i.sku ? bySku.get(i.sku) : undefined)).filter(Boolean) as string[])];
+  const nameKeys = order.items.filter(i => !i.productId && !(i.sku && bySku.has(i.sku))).map(i => itemLinkKey(order.sellerId, i.name));
+  const byName = nameKeys.length
+    ? new Map((await prisma.platformConfig.findMany({ where: { key: { in: nameKeys } }, select: { key: true, value: true } })).map(r => [r.key, r.value]))
+    : new Map<string, string>();
+  const resolve = (i: { productId: string | null; sku: string | null; name: string }) =>
+    i.productId ?? (i.sku ? bySku.get(i.sku) : undefined) ?? byName.get(itemLinkKey(order.sellerId, i.name));
+  const productIds = [...new Set(order.items.map(resolve).filter(Boolean) as string[])];
   const products = new Map((await prisma.product.findMany({
     where: { id: { in: productIds } },
     select: { id: true, name: true, hsn: true, gstRate: true, invoicePrice: true, invoiceShipping: true, invoicePacking: true },
@@ -164,7 +170,7 @@ export async function issueInvoiceForOrder(orderId: string): Promise<IssueResult
   const lines: InvoiceLine[] = [];
   let shippingTotal = 0, packingTotal = 0, productTotal = 0;
   for (const it of order.items) {
-    const pid = it.productId ?? (it.sku ? bySku.get(it.sku) : undefined);
+    const pid = resolve(it);
     const p = pid ? products.get(pid) : undefined;
     if (!p) { reasons.push(`"${it.name}" isn't linked to a catalogue product`); continue; }
     if (p.invoicePrice == null || p.gstRate == null || !p.hsn) { reasons.push(`Set invoice price, HSN and GST rate for "${p.name}"`); continue; }
@@ -302,3 +308,12 @@ export async function runInvoiceIssuing(limit = 200) {
   }
   return out;
 }
+
+/**
+ * Admin-saved link from an order item's name to a catalogue product, per seller (PlatformConfig, no schema change).
+ * Used when a Shopify item has no SKU or a SKU that isn't in the catalogue. Applies to that seller's future orders too.
+ */
+export function itemLinkKey(sellerId: string, itemName: string) {
+  return `ITEM_LINK:${sellerId}:${itemName.trim().toLowerCase().replace(/\s+/g, " ").slice(0, 150)}`;
+}
+

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { Loader2, Play, RefreshCw, Printer, Settings2, Tags, AlertTriangle, XCircle, Search } from "lucide-react";
+import { Loader2, Play, RefreshCw, Printer, Settings2, Tags, AlertTriangle, XCircle, Search, Link2 } from "lucide-react";
 
 type Status = "ISSUED" | "HELD" | "CANCELLED";
 interface Row {
@@ -27,6 +27,8 @@ export default function AdminInvoicesPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [flash, setFlash] = useState<{ ok: boolean; text: string } | null>(null);
+  // Link picker: which held invoice + item is being linked to a catalogue product
+  const [linking, setLinking] = useState<{ invoiceId: string; itemName: string } | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -44,6 +46,7 @@ export default function AdminInvoicesPage() {
     if (!res.ok) { setFlash({ ok: false, text: d.error ?? "Failed" }); return; }
     if (body.action === "run") setFlash({ ok: true, text: d.baseline ? `Invoicing started. ${d.exempted} orders delivered earlier were marked as before invoicing and won't be invoiced.` : `Checked ${d.checked}: ${d.issued} issued, ${d.held} held.` });
     else if (body.action === "retryAll") setFlash({ ok: true, text: `${d.issued} issued, ${d.held} still held.` });
+    else if (body.action === "link") { setLinking(null); setFlash({ ok: d.status === "ISSUED", text: d.status === "ISSUED" ? `Linked to ${d.linked}. Issued ${d.number}` : `Linked to ${d.linked}. Still held: ${d.reason}` }); }
     else if (body.action === "retry") setFlash({ ok: d.status === "ISSUED", text: d.status === "ISSUED" ? `Issued ${d.number}` : `Still held: ${d.reason}` });
     else setFlash({ ok: true, text: "Invoice cancelled. Its number stays on record." });
     load();
@@ -137,13 +140,27 @@ export default function AdminInvoicesPage() {
                 {rows.map(r => (
                   <tr key={r.id} className="align-top hover:bg-[#FAFBFF]">
                     <td className="px-4 py-2.5">
-                      {status === "HELD" ? <span className="font-semibold">#{r.orderNumber}</span> : <span className="font-mono font-semibold">{r.number}</span>}
-                      {status !== "HELD" && r.orderNumber && <p className="text-[11px] text-[#9CA3AF]">Order #{r.orderNumber}</p>}
+                      {status === "HELD" ? <span className="font-semibold">#{(r.orderNumber ?? "").replace(/^#/, "")}</span> : <span className="font-mono font-semibold">{r.number}</span>}
+                      {status !== "HELD" && r.orderNumber && <p className="text-[11px] text-[#9CA3AF]">Order #{r.orderNumber.replace(/^#/, "")}</p>}
                       {r.cancelReason && <p className="text-[11px] text-[#DC2626]">{r.cancelReason}</p>}
                     </td>
                     <td className="px-3 py-2.5 text-[#374151]">{r.seller}</td>
                     {status === "HELD" ? (
-                      <td className="px-3 py-2.5 text-[12px] text-[#92400E] max-w-[420px]">{r.heldReason}</td>
+                      <td className="px-3 py-2.5 text-[12px] text-[#92400E] max-w-[460px]">
+                        {r.heldReason}
+                        {unlinkedItems(r.heldReason).map(name => (
+                          <div key={name} className="mt-1.5">
+                            {linking?.invoiceId === r.id && linking.itemName === name ? (
+                              <ProductPicker itemName={name} busy={busy === r.id} onCancel={() => setLinking(null)}
+                                onPick={productId => act({ action: "link", invoiceId: r.id, itemName: name, productId }, r.id)} />
+                            ) : (
+                              <button onClick={() => setLinking({ invoiceId: r.id, itemName: name })} className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11.5px] font-semibold bg-[#EEF2FF] text-[#4361EE]">
+                                <Link2 className="w-3 h-3" /> Link “{name}” to a product
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </td>
                     ) : <>
                       <td className="px-3 py-2.5 text-[#6B7280] whitespace-nowrap">{r.issueDate ? new Date(r.issueDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—"}</td>
                       <td className="px-3 py-2.5 text-[#6B7280]">{r.placeOfSupply}</td>
@@ -181,3 +198,49 @@ export default function AdminInvoicesPage() {
     </div>
   );
 }
+
+/** Item names from a held reason like: "Flower seeds" isn't linked to a catalogue product */
+function unlinkedItems(reason: string | null): string[] {
+  if (!reason) return [];
+  return [...reason.matchAll(/"([^"]+)" isn't linked to a catalogue product/g)].map(m => m[1]);
+}
+
+interface PickProduct { id: string; name: string; sku: string | null; invoicePrice: number | null; hsn: string | null; gstRate: number | null }
+
+/** Search the catalogue and pick the product an order item really is. Saved for this seller's future orders too. */
+function ProductPicker({ itemName, busy, onPick, onCancel }: { itemName: string; busy: boolean; onPick: (productId: string) => void; onCancel: () => void }) {
+  const [q, setQ] = useState(itemName);
+  const [list, setList] = useState<PickProduct[] | null>(null);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      fetch(`/api/admin/invoices?products=${encodeURIComponent(q.trim())}`).then(r => r.json()).then(d => setList(d.products ?? [])).catch(() => setList([]));
+    }, 250);
+    return () => clearTimeout(t);
+  }, [q]);
+  return (
+    <div className="mt-1 p-2.5 rounded-lg border border-[#E8EDF6] bg-white text-[#374151] space-y-2">
+      <div className="flex items-center gap-2">
+        <label htmlFor="link-search" className="sr-only">Search products</label>
+        <input id="link-search" autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Search catalogue by name or SKU" className="flex-1 px-2.5 py-1.5 text-[12.5px] rounded-md border border-[#E8EDF6] outline-none focus:border-[#4361EE]" />
+        <button onClick={onCancel} className="text-[12px] text-[#6B7280] hover:text-[#111827]">Cancel</button>
+      </div>
+      {!list ? <Loader2 className="w-4 h-4 animate-spin text-[#9CA3AF]" />
+        : list.length === 0 ? <p className="text-[12px] text-[#9CA3AF]">No product found. Add it in Catalogue → Products first.</p>
+        : (
+          <ul className="max-h-[220px] overflow-y-auto divide-y divide-[#F3F4F6]">
+            {list.map(p => (
+              <li key={p.id}>
+                <button onClick={() => onPick(p.id)} disabled={busy} className="w-full text-left px-2 py-1.5 hover:bg-[#F5F7FF] disabled:opacity-50 flex items-center gap-2">
+                  <span className="flex-1 min-w-0 truncate text-[12.5px] font-semibold text-[#111827]">{p.name}</span>
+                  {p.sku && <span className="text-[11px] text-[#9CA3AF] font-mono">{p.sku}</span>}
+                  {(p.invoicePrice == null || !p.hsn || p.gstRate == null) && <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-[#FFFBEB] text-[#B45309]">needs pricing</span>}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      <p className="text-[11px] text-[#9CA3AF]">AXQEN remembers this for this seller&apos;s future orders of “{itemName}”.</p>
+    </div>
+  );
+}
+

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { Loader2, Play, RefreshCw, Printer, Settings2, Tags, AlertTriangle, XCircle, Search, Link2 } from "lucide-react";
+import { Loader2, Play, RefreshCw, Printer, Settings2, Tags, AlertTriangle, XCircle, Search, Link2, Pencil } from "lucide-react";
 
 type Status = "ISSUED" | "HELD" | "CANCELLED";
 interface Row {
@@ -211,12 +211,26 @@ interface PickProduct { id: string; name: string; sku: string | null; invoicePri
 function ProductPicker({ itemName, busy, onPick, onCancel }: { itemName: string; busy: boolean; onPick: (productId: string) => void; onCancel: () => void }) {
   const [q, setQ] = useState(itemName);
   const [list, setList] = useState<PickProduct[] | null>(null);
+  const [editing, setEditing] = useState<{ id: string; name: string } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
   useEffect(() => {
     const t = setTimeout(() => {
       fetch(`/api/admin/invoices?products=${encodeURIComponent(q.trim())}`).then(r => r.json()).then(d => setList(d.products ?? [])).catch(() => setList([]));
     }, 250);
     return () => clearTimeout(t);
   }, [q]);
+
+  async function saveName() {
+    if (!editing) return;
+    setSaving(true); setErr("");
+    const res = await fetch("/api/admin/invoices", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "renameProduct", productId: editing.id, name: editing.name }) });
+    const d = await res.json().catch(() => ({}));
+    setSaving(false);
+    if (!res.ok) { setErr(d.error ?? "Couldn't rename"); return; }
+    setList(l => (l ?? []).map(p => (p.id === editing.id ? { ...p, name: d.product.name } : p)));
+    setEditing(null);
+  }
   return (
     <div className="mt-1 p-2.5 rounded-lg border border-[#E8EDF6] bg-white text-[#374151] space-y-2">
       <div className="flex items-center gap-2">
@@ -229,17 +243,34 @@ function ProductPicker({ itemName, busy, onPick, onCancel }: { itemName: string;
         : (
           <ul className="max-h-[220px] overflow-y-auto divide-y divide-[#F3F4F6]">
             {list.map(p => (
-              <li key={p.id}>
-                <button onClick={() => onPick(p.id)} disabled={busy} className="w-full text-left px-2 py-1.5 hover:bg-[#F5F7FF] disabled:opacity-50 flex items-center gap-2">
-                  <span className="flex-1 min-w-0 truncate text-[12.5px] font-semibold text-[#111827]">{p.name}</span>
-                  {p.sku && <span className="text-[11px] text-[#9CA3AF] font-mono">{p.sku}</span>}
-                  {(p.invoicePrice == null || !p.hsn || p.gstRate == null) && <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-[#FFFBEB] text-[#B45309]">needs pricing</span>}
-                </button>
+              <li key={p.id} className="flex items-center gap-1">
+                {editing?.id === p.id ? (
+                  <div className="flex-1 flex items-center gap-1.5 px-1 py-1">
+                    <label htmlFor={`rename-${p.id}`} className="sr-only">Product name</label>
+                    <input id={`rename-${p.id}`} autoFocus value={editing.name} onChange={e => setEditing({ id: p.id, name: e.target.value })}
+                      onKeyDown={e => { if (e.key === "Enter") saveName(); if (e.key === "Escape") setEditing(null); }}
+                      className="flex-1 px-2 py-1 text-[12.5px] rounded-md border border-[#C7D2FE] outline-none focus:border-[#4361EE]" />
+                    <button onClick={saveName} disabled={saving} className="px-2 py-1 rounded-md text-[11.5px] font-bold text-white bg-[#4361EE] disabled:opacity-60">{saving ? "Saving…" : "Save"}</button>
+                    <button onClick={() => setEditing(null)} className="text-[11.5px] text-[#6B7280]">Cancel</button>
+                  </div>
+                ) : (
+                  <>
+                    <button onClick={() => onPick(p.id)} disabled={busy} className="flex-1 min-w-0 text-left px-2 py-1.5 hover:bg-[#F5F7FF] disabled:opacity-50 flex items-center gap-2">
+                      <span className="flex-1 min-w-0 truncate text-[12.5px] font-semibold text-[#111827]">{p.name}</span>
+                      {p.sku && <span className="text-[11px] text-[#9CA3AF] font-mono">{p.sku}</span>}
+                      {(p.invoicePrice == null || !p.hsn || p.gstRate == null) && <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded bg-[#FFFBEB] text-[#B45309]">needs pricing</span>}
+                    </button>
+                    <button onClick={() => { setErr(""); setEditing({ id: p.id, name: p.name }); }} title="Rename product" aria-label={`Rename ${p.name}`} className="p-1.5 rounded-md text-[#9CA3AF] hover:text-[#4361EE] hover:bg-[#F5F7FF]">
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  </>
+                )}
               </li>
             ))}
           </ul>
         )}
-      <p className="text-[11px] text-[#9CA3AF]">AXQEN remembers this for this seller&apos;s future orders of “{itemName}”.</p>
+      {err && <p className="text-[11.5px] text-[#DC2626]">{err}</p>}
+      <p className="text-[11px] text-[#9CA3AF]">Click a product to link it; AXQEN remembers this for this seller&apos;s future orders of “{itemName}”. The pencil renames the catalogue product everywhere, including invoices issued from now on.</p>
     </div>
   );
 }

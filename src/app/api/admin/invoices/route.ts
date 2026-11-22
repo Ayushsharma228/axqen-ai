@@ -67,9 +67,18 @@ export async function GET(req: NextRequest) {
 // POST { action: "run" } | { action: "retry", invoiceId } | { action: "retryAll" } | { action: "cancel", invoiceId, reason }
 export async function POST(req: NextRequest) {
   if (!(await admin(req))) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const body = await req.json().catch(() => ({})) as { action?: string; invoiceId?: string; reason?: string; itemName?: string; productId?: string };
+  const body = await req.json().catch(() => ({})) as { action?: string; invoiceId?: string; reason?: string; itemName?: string; productId?: string; name?: string };
 
   if (body.action === "run") return NextResponse.json(await runInvoiceIssuing(200));
+
+  // Rename a catalogue product from the link picker. The name shows on listings and on invoices issued from now on.
+  if (body.action === "renameProduct") {
+    const name = String((body as { name?: string }).name ?? "").trim().replace(/\s+/g, " ");
+    if (!body.productId || name.length < 2 || name.length > 200) return NextResponse.json({ error: "Enter a product name (2 to 200 characters)" }, { status: 400 });
+    const product = await prisma.product.update({ where: { id: String(body.productId) }, data: { name }, select: { id: true, name: true } }).catch(() => null);
+    if (!product) return NextResponse.json({ error: "Product not found" }, { status: 404 });
+    return NextResponse.json({ product });
+  }
 
   if (body.action === "retryAll") {
     const held = await prisma.invoice.findMany({ where: { status: "HELD" }, select: { orderId: true }, take: 300 });

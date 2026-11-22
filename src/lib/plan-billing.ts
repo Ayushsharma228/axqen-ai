@@ -12,6 +12,8 @@ const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 /** Plan prices are before GST; the seller pays price + 18% GST. Stored amountDue is the price before GST. */
 export const PLAN_GST_RATE = 18;
 export const withGst = (base: number) => r2(base * (1 + PLAN_GST_RATE / 100));
+/** What the seller pays for a bill: (plan price − discount) + GST. The discount comes off before GST. */
+export const payableOf = (p: { amountDue: number; discount?: number | null }) => withGst(Math.max(0, p.amountDue - (p.discount ?? 0)));
 
 export function planPrice(plan: string | null | undefined, tier: string | null | undefined): number | null {
   if (plan !== "DROPSHIPPING" && plan !== "MARKETPLACE") return null;
@@ -29,7 +31,9 @@ export interface PeriodView {
   id: string; periodNo: number; plan: string; tier: string | null;
   startDate: string; endDate: string | null; dueDate: string | null; note: string | null;
   amountDue: number;   // payable, GST included
-  base: number; gst: number; // plan price before GST, and the GST on it
+  listPrice: number;   // plan price before discount and GST
+  discount: number; discountNote: string | null; // discount before GST
+  base: number; gst: number; // price after discount (before GST), and the GST on it
   paid: number; pending: number;
   status: "PAID" | "PARTLY_PAID" | "UNPAID" | "OVERDUE" | "UPCOMING";
   payments: { id: string; amount: number; paidAt: string; transactionId: string | null; mode: string; note: string | null }[];
@@ -57,7 +61,8 @@ export async function getBilling(sellerId: string): Promise<Billing> {
   const views: PeriodView[] = periods.map(p => {
     const pays = payments.filter(x => x.periodId === p.id);
     const paid = r2(pays.reduce((s, x) => s + x.amount, 0));
-    const gross = withGst(p.amountDue);
+    const gross = payableOf(p);
+    const base = r2(Math.max(0, p.amountDue - p.discount));
     const pending = r2(Math.max(0, gross - paid));
     const started = p.startDate <= now;
     const status: PeriodView["status"] = pending <= 0 ? "PAID"
@@ -68,7 +73,8 @@ export async function getBilling(sellerId: string): Promise<Billing> {
       id: p.id, periodNo: p.periodNo, plan: p.plan, tier: p.tier,
       startDate: p.startDate.toISOString(), endDate: p.endDate?.toISOString() ?? null,
       dueDate: p.dueDate?.toISOString() ?? null, note: p.note,
-      amountDue: gross, base: p.amountDue, gst: r2(gross - p.amountDue), paid, pending, status,
+      amountDue: gross, listPrice: p.amountDue, discount: p.discount, discountNote: p.discountNote,
+      base, gst: r2(gross - base), paid, pending, status,
       payments: pays.map(x => ({ id: x.id, amount: x.amount, paidAt: x.paidAt.toISOString(), transactionId: x.transactionId, mode: x.mode, note: x.note })),
     };
   });
@@ -247,3 +253,17 @@ export async function mergeSplitPlanChange(sellerId: string) {
   }
   return { merged };
 }
+
+/** Set or clear the discount on a bill (before GST). Refused if the seller has already paid more than the new total. */
+export async function setPlanDiscount(periodId: string, discount: number, note: string | null) {
+  const period = await prisma.planPeriod.findUnique({ where: { id: periodId } });
+  if (!period) throw new Error("Bill not found");
+  const d = r2(discount);
+  if (!Number.isFinite(d) || d < 0) throw new Error("Enter a discount of ₹0 or more");
+  if (d > period.amountDue) throw new Error(`The discount can't be more than the plan price (₹${period.amountDue.toLocaleString("en-IN")})`);
+  if (d > 0 && !note?.trim()) throw new Error("Add a reason for the discount");
+  const paid = r2((await prisma.planPayment.aggregate({ where: { periodId }, _sum: { amount: true } }))._sum.amount ?? 0);
+  if (paid > payableOf({ amountDue: period.amountDue, discount: d }) + 0.5) throw new Error("The seller has already paid more than this bill would be after the discount");
+  return prisma.planPeriod.update({ where: { id: periodId }, data: { discount: d, discountNote: d > 0 ? note!.trim().slice(0, 200) : null } });
+}
+

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { RTO_RECEIVED, RTO_OVERDUE_DAYS } from "@/lib/rto";
-import { withGst } from "@/lib/plan-billing";
+import { payableOf } from "@/lib/plan-billing";
 import { platformFeePerOrder } from "@/lib/profit";
 import { pairRtoDebits } from "@/lib/payouts";
 import { productStats } from "@/lib/product-analytics";
@@ -40,8 +40,8 @@ export async function GET(req: NextRequest) {
       where: { status: { in: ["OPEN", "IN_PROGRESS"] } },
       select: { messages: { where: { isInternal: false }, orderBy: { createdAt: "desc" }, take: 1, select: { author: { select: { role: true } } } } },
     }),
-    prisma.planPeriod.findMany({ where: { dueDate: { lt: now } }, select: { id: true, sellerId: true, amountDue: true } }),
-    prisma.planPeriod.findMany({ where: { startDate: { lte: now } }, select: { id: true, sellerId: true, amountDue: true } }),
+    prisma.planPeriod.findMany({ where: { dueDate: { lt: now } }, select: { id: true, sellerId: true, amountDue: true, discount: true } }),
+    prisma.planPeriod.findMany({ where: { startDate: { lte: now } }, select: { id: true, sellerId: true, amountDue: true, discount: true } }),
     prisma.order.findMany({ where: { status: { not: "HIDDEN" }, createdAt: { gte: since } }, select: { status: true, totalAmount: true, packingCharge: true, sellerId: true } }),
     prisma.order.findMany({
       where: { status: { not: "HIDDEN" }, createdAt: { gte: since30 } },
@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
   const periodIds = [...new Set([...duePeriods, ...allPeriods].map(p => p.id))];
   const paid = periodIds.length ? await prisma.planPayment.groupBy({ by: ["periodId"], where: { periodId: { in: periodIds } }, _sum: { amount: true } }) : [];
   const paidBy = new Map(paid.map(p => [p.periodId, p._sum.amount ?? 0]));
-  const pendingOf = (p: { id: string; amountDue: number }) => Math.max(0, withGst(p.amountDue) - (paidBy.get(p.id) ?? 0));
+  const pendingOf = (p: { id: string; amountDue: number; discount: number }) => Math.max(0, payableOf(p) - (paidBy.get(p.id) ?? 0));
   const planOverdue = new Set(duePeriods.filter(p => pendingOf(p) > 0.5).map(p => p.sellerId));
   const toCollect = allPeriods.reduce((n, p) => n + pendingOf(p), 0);
 

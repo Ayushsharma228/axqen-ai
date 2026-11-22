@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { addMonths, changePlan, getBilling, mergeSplitPlanChange, RENEWAL_MONTHS, startPlanBilling } from "@/lib/plan-billing";
+import { addMonths, changePlan, getBilling, mergeSplitPlanChange, RENEWAL_MONTHS, setPlanDiscount, startPlanBilling } from "@/lib/plan-billing";
 
 async function admin(req: NextRequest) {
   const s = await getRouteSession(req);
@@ -43,6 +43,7 @@ export async function GET(req: NextRequest) {
 
 // POST actions:
 //  { action: "start", sellerId, startDate }
+//  { action: "setDiscount", periodId, discount (₹, before GST), note }   → 0 clears it
 //  { action: "setDueDate", periodId, dueDate | null }
 //  { action: "setStart", periodId, startDate }
 //  { action: "recordPayment", periodId, amount, paidAt, transactionId?, mode, note? }
@@ -72,6 +73,11 @@ export async function POST(req: NextRequest) {
       case "mergePlanChange": {
         const r = await mergeSplitPlanChange(String(b.sellerId ?? ""));
         return NextResponse.json({ ok: true, ...r });
+      }
+      case "setDiscount": {
+        const raw = b.discount === "" || b.discount == null ? 0 : Number(b.discount);
+        const p = await setPlanDiscount(String(b.periodId ?? ""), raw, b.note == null ? null : String(b.note));
+        return NextResponse.json({ ok: true, discount: p.discount });
       }
       case "setDueDate": {
         const dueDate = b.dueDate ? date(b.dueDate) : null;

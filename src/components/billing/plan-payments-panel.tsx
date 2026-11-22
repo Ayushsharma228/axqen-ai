@@ -8,7 +8,7 @@ export interface BillingView {
   plan: string | null; tier: string | null;
   periods: {
     id: string; periodNo: number; plan: string; tier: string | null; startDate: string; endDate: string | null; dueDate: string | null; note: string | null;
-    amountDue: number; base: number; gst: number; paid: number; pending: number; status: "PAID" | "PARTLY_PAID" | "UNPAID" | "OVERDUE" | "UPCOMING";
+    amountDue: number; listPrice?: number; discount?: number; base: number; gst: number; paid: number; pending: number; status: "PAID" | "PARTLY_PAID" | "UNPAID" | "OVERDUE" | "UPCOMING";
     payments: { id: string; amount: number; paidAt: string; transactionId: string | null; mode: string; note: string | null }[];
   }[];
   totals: { due: number; paid: number; pending: number };
@@ -119,7 +119,7 @@ export function PlanPaymentsPanel() {
                     {p.plan === "MARKETPLACE" ? `Period ${p.periodNo}: ${fmtD(p.startDate)} to ${p.endDate ? fmtD(p.endDate) : "—"}` : `${PLAN(p.plan, p.tier)} (one-time)`}
                   </p>
                   <p className="text-[12px] text-[#6B7280] mt-0.5">
-                    {inr(p.amountDue)} due ({inr(p.base)} + {inr(p.gst)} GST){p.dueDate ? ` by ${fmtD(p.dueDate)}` : ""} · {inr(p.paid)} paid{p.pending > 0 ? ` · ${inr(p.pending)} pending` : ""}
+                    {inr(p.amountDue)} due ({p.discount ? `${inr(p.listPrice ?? p.base)} − ${inr(p.discount)} discount = ` : ""}{inr(p.base)} + {inr(p.gst)} GST){p.dueDate ? ` by ${fmtD(p.dueDate)}` : ""} · {inr(p.paid)} paid{p.pending > 0 ? ` · ${inr(p.pending)} pending` : ""}
                   </p>
                 </div>
                 <span className="text-[11px] font-bold px-2.5 py-1 rounded-full" style={{ background: st.bg, color: st.color }}>{st.label}</span>

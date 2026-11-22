@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { withGst } from "@/lib/plan-billing";
+import { payableOf } from "@/lib/plan-billing";
 
 // READ-ONLY. All sellers with 30-day performance, unpaid delivered value and plan status, for Admin → All Sellers.
 export async function GET(req: NextRequest) {
@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
       where: { sellerId: { in: ids }, status: "DELIVERED", remittedAt: null },
       select: { sellerId: true, createdAt: true, totalAmount: true, productCost: true, shippingCharge: true, packingCharge: true },
     }),
-    prisma.planPeriod.findMany({ where: { sellerId: { in: ids } }, select: { id: true, sellerId: true, amountDue: true, dueDate: true } }),
+    prisma.planPeriod.findMany({ where: { sellerId: { in: ids } }, select: { id: true, sellerId: true, amountDue: true, discount: true, dueDate: true } }),
   ]);
   const paid = periods.length
     ? await prisma.planPayment.groupBy({ by: ["periodId"], where: { periodId: { in: periods.map(p => p.id) } }, _sum: { amount: true } })
@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
     const orders30 = by30.filter(g => g.sellerId === s.id).reduce((n, g) => n + g._count.id, 0);
     const delivered = st("DELIVERED"), rto = st("RTO"), done = delivered + rto;
     const mine = unpaid.filter(o => o.sellerId === s.id && (!s.dataStartDate || o.createdAt >= s.dataStartDate));
-    const ps = periods.filter(p => p.sellerId === s.id).map(p => ({ ...p, pending: Math.max(0, withGst(p.amountDue) - (paidBy.get(p.id) ?? 0)) }));
+    const ps = periods.filter(p => p.sellerId === s.id).map(p => ({ ...p, pending: Math.max(0, payableOf(p) - (paidBy.get(p.id) ?? 0)) }));
     const pending = ps.reduce((n, p) => n + p.pending, 0);
     const overdue = ps.some(p => p.pending > 0.5 && p.dueDate && p.dueDate < now);
     return {

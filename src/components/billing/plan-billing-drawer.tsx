@@ -5,7 +5,7 @@ import { Loader2, X, Plus, Trash2, Lock, Unlock, AlertTriangle, CalendarClock, P
 
 interface Period {
   id: string; periodNo: number; plan: string; tier: string | null; startDate: string; endDate: string | null; dueDate: string | null; note: string | null;
-  amountDue: number; base: number; gst: number; paid: number; pending: number; status: string;
+  amountDue: number; listPrice: number; discount: number; discountNote: string | null; base: number; gst: number; paid: number; pending: number; status: string;
   payments: { id: string; amount: number; paidAt: string; transactionId: string | null; mode: string; note: string | null }[];
 }
 interface Billing {
@@ -140,7 +140,8 @@ export function PlanBillingDrawer({ sellerId, onClose, onChanged }: { sellerId: 
                       <div className="flex items-start justify-between gap-2 flex-wrap">
                         <div>
                           <p className="text-[13.5px] font-bold text-[#0C1220]">{p.plan === "MARKETPLACE" ? `Period ${p.periodNo}` : "One-time plan"} · {inr2(p.amountDue)} <span className="text-[11px] font-medium text-[#9CA3AF]">with GST</span></p>
-                          <p className="text-[11.5px] text-[#6B7280]">{planName(p.plan, p.tier)} · {inr2(p.base)} + {inr2(p.gst)} GST ({GST_RATE}%)</p>
+                          <p className="text-[11.5px] text-[#6B7280]">{planName(p.plan, p.tier)} · {p.discount > 0 ? <>{inr2(p.listPrice)} − <span className="text-[#047857] font-semibold">{inr2(p.discount)} discount</span> = </> : null}{inr2(p.base)} + {inr2(p.gst)} GST ({GST_RATE}%)</p>
+                          {p.discount > 0 && p.discountNote && <p className="text-[11.5px] text-[#047857]">Discount reason: {p.discountNote}</p>}
                           <p className="text-[11.5px] text-[#6B7280]">{fmtD(p.startDate)}{p.endDate ? ` to ${fmtD(p.endDate)}` : ""} · paid {inr(p.paid)} · pending {inr(p.pending)}</p>
                         </div>
                         <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-full" style={{ background: p.status === "PAID" ? "#ECFDF5" : p.status === "OVERDUE" ? "#FEF2F2" : "#F3F4F6", color: p.status === "PAID" ? "#047857" : p.status === "OVERDUE" ? "#DC2626" : "#6B7280" }}>{p.status.replace("_", " ")}</span>
@@ -157,6 +158,9 @@ export function PlanBillingDrawer({ sellerId, onClose, onChanged }: { sellerId: 
                           </label>
                         )}
                       </div>
+
+                      <DiscountEditor period={p} busy={busy === `disc-${p.id}`}
+                        onSave={(discount, note) => act({ action: "setDiscount", periodId: p.id, discount, note }, `disc-${p.id}`)} />
 
                       {p.payments.length > 0 && (
                         <ul className="divide-y divide-[#F3F4F6] border-t border-[#F3F4F6]">
@@ -267,3 +271,48 @@ function ChangePlan({ current, started, busy, paidOnCurrent, onSubmit }: {
     </div>
   );
 }
+
+/** Discount on one bill, before GST, with a reason. Shows the new total before saving. */
+function DiscountEditor({ period, busy, onSave }: { period: Period; busy: boolean; onSave: (discount: string, note: string) => Promise<boolean> }) {
+  const [open, setOpen] = useState(false);
+  const [amount, setAmount] = useState(period.discount > 0 ? String(period.discount) : "");
+  const [note, setNote] = useState(period.discountNote ?? "");
+  const d = Math.max(0, Math.min(Number(amount) || 0, period.listPrice));
+  const base = period.listPrice - d;
+  const total = Math.round((base + gstOn(base)) * 100) / 100;
+  const input = "px-2.5 py-1.5 text-[12.5px] rounded-lg border border-[#E8EDF6] bg-white outline-none focus:border-[#4361EE]";
+
+  if (!open) return (
+    <button onClick={() => setOpen(true)} className="text-[12px] font-semibold text-[#4361EE] hover:underline">
+      {period.discount > 0 ? `Edit discount (${inr2(period.discount)})` : "+ Add discount"}
+    </button>
+  );
+  return (
+    <div className="rounded-lg border border-[#C7D2FE] bg-[#FAFBFF] p-3 space-y-2">
+      <p className="text-[12px] font-bold text-[#0C1220]">Discount (before GST)</p>
+      <div className="grid grid-cols-1 sm:grid-cols-[140px_1fr] gap-2">
+        <label htmlFor={`disc-amt-${period.id}`} className="sr-only">Discount amount</label>
+        <input id={`disc-amt-${period.id}`} inputMode="decimal" placeholder="₹ amount" value={amount} onChange={e => setAmount(e.target.value)} className={input} />
+        <label htmlFor={`disc-note-${period.id}`} className="sr-only">Reason</label>
+        <input id={`disc-note-${period.id}`} placeholder="Reason, e.g. Diwali offer, referral" value={note} onChange={e => setNote(e.target.value)} className={input} />
+      </div>
+      <div className="text-[12px] tabular-nums text-[#374151] space-y-0.5">
+        <div className="flex justify-between"><span>Plan price</span><span>{inr2(period.listPrice)}</span></div>
+        <div className="flex justify-between text-[#047857]"><span>Discount</span><span>− {inr2(d)}</span></div>
+        <div className="flex justify-between"><span>GST {GST_RATE}%</span><span>{inr2(gstOn(base))}</span></div>
+        <div className="flex justify-between font-bold text-[#0C1220] border-t border-[#E8EDF6] pt-1"><span>Seller pays</span><span>{inr2(total)}</span></div>
+      </div>
+      <div className="flex items-center gap-2">
+        <button disabled={busy} onClick={async () => { if (await onSave(amount || "0", note)) setOpen(false); }}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-bold text-white bg-[#4361EE] disabled:opacity-60">
+          {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Save discount
+        </button>
+        {period.discount > 0 && (
+          <button disabled={busy} onClick={async () => { if (await onSave("0", "")) { setAmount(""); setNote(""); setOpen(false); } }} className="text-[12px] font-semibold text-[#DC2626]">Remove discount</button>
+        )}
+        <button onClick={() => setOpen(false)} className="text-[12px] text-[#6B7280] ml-auto">Cancel</button>
+      </div>
+    </div>
+  );
+}
+

@@ -1662,6 +1662,9 @@ model PlanPeriod {
   startDate   DateTime
   endDate     DateTime? // null = one-time plan
   amountDue   Float
+  // Discount given by the AXQEN team, before GST: the seller pays (amountDue − discount) + 18% GST
+  discount     Float     @default(0)
+  discountNote String?
   dueDate     DateTime? // agreed with the seller, set by the AXQEN team
   note        String?
   createdById String?

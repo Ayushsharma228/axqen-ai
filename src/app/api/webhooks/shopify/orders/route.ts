@@ -158,7 +158,9 @@ export async function POST(req: NextRequest) {
   const utm = utmFromLandingSite(shopifyOrder.landing_site as string | undefined);
   const lineItems = (shopifyOrder.line_items as Array<Record<string, unknown>>) ?? [];
 
-  // Create order + items in one transaction
+  // Create order + items in one transaction.
+  // Shopify often sends orders/create and orders/updated at the same moment: if the other delivery
+  // created the order first (unique constraint P2002), treat this one as an update instead of failing.
   const order = await prisma.order.create({
     data: {
       sellerId,
@@ -182,7 +184,18 @@ export async function POST(req: NextRequest) {
         })),
       },
     },
+  }).catch(async (err: unknown) => {
+    if ((err as { code?: string })?.code !== "P2002") throw err;
+    return null;
   });
+  if (!order) {
+    const raced = await prisma.order.findUnique({
+      where: { sellerId_externalOrderId_source: { sellerId, externalOrderId, source: "SHOPIFY" } },
+      select: { id: true, status: true, awbNumber: true, courier: true, supplierId: true },
+    });
+    if (!raced) return NextResponse.json({ error: "Order could not be saved" }, { status: 500 });
+    return await handleExistingOrder(raced, shopifyOrder, topic, paymentMode, externalOrderId);
+  }
 
   await prisma.orderTimeline.create({
     data: {

@@ -7,6 +7,35 @@ import { appUrl, getPendingInstall, installAuthorizeUrl, normalizeShopDomain, si
 const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const when = (d: Date) => d.toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 
+// Refreshes the page's status from AXQEN using an App Bridge session token (Authorization: Bearer <JWT>).
+// While a store is waiting to be linked, it checks every few seconds and reloads once the seller has logged in.
+const LIVE_SCRIPT = `
+(async function () {
+  async function status() {
+    if (!window.shopify || !shopify.idToken) return null;
+    const token = await shopify.idToken();
+    const r = await fetch("/api/shopify/status", { headers: { Authorization: "Bearer " + token } });
+    return r.ok ? r.json() : null;
+  }
+  const waiting = !document.getElementById("live-orders");
+  for (let i = 0; i < (waiting ? 60 : 1); i++) {
+    try {
+      const s = await status();
+      if (s && waiting && s.connected) { location.reload(); return; }
+      if (s && !waiting && s.connected) {
+        document.getElementById("live-orders").textContent = String(s.orders);
+        const el = document.getElementById("live-status");
+        const p = document.createElement("p");
+        p.className = s.lastSyncError ? "warn" : "ok";
+        p.textContent = s.lastSyncError || ("Orders sync automatically every hour" + (s.lastSyncAt ? ". Last synced " + new Date(s.lastSyncAt).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }) : "") + ".");
+        el.replaceChildren(p);
+      }
+    } catch (e) { /* keep the server-rendered status */ }
+    if (waiting) await new Promise(r => setTimeout(r, 5000));
+  }
+})();
+`;
+
 export async function GET(req: NextRequest) {
   const sp = new URL(req.url).searchParams;
   const shop = normalizeShopDomain(sp.get("shop"));
@@ -35,8 +64,8 @@ export async function GET(req: NextRequest) {
       <p class="eyebrow">Connected</p>
       <h1>${esc(store.storeName)} is connected to AXQEN</h1>
       <p>AXQEN account: <b>${esc(who)}</b></p>
-      ${status}
-      <div class="stats"><div><span>${orders}</span>Shopify orders in AXQEN</div></div>
+      <div id="live-status">${status}</div>
+      <div class="stats"><div><span id="live-orders">${orders}</span>Shopify orders in AXQEN</div></div>
       <p>Order confirmation calls, shipping, NDR and returns, payouts and profit reports are run from your AXQEN dashboard.</p>
       <a class="btn" href="${base}/seller" target="_blank" rel="noopener">Open AXQEN dashboard</a>
       <a class="link" href="${base}/seller/shopify" target="_blank" rel="noopener">Store connection settings</a>`;
@@ -73,7 +102,9 @@ export async function GET(req: NextRequest) {
   .btn:focus-visible, .link:focus-visible { outline:2px solid var(--blue); outline-offset:2px; }
   .link { font-size:13px; color:var(--blue); font-weight:600; }
 </style>
-</head><body><main>${body}</main></body></html>`;
+</head><body><main>${body}</main>
+<script>${LIVE_SCRIPT}</script>
+</body></html>`;
 
   return new NextResponse(html, {
     headers: {

@@ -404,3 +404,27 @@ export function topLevelRedirectResponse(shop: string, url: string) {
 export function decryptToken(value: string) {
   return decrypt(value);
 }
+
+// ── App Bridge session tokens (embedded app authentication) ──────────────────
+// The AXQEN page inside Shopify admin calls AXQEN with a short-lived session token (JWT, HS256, signed with
+// the app secret). Returns the shop domain if the token is valid for this app, else null.
+export function verifySessionToken(authorization: string | null): string | null {
+  const token = authorization?.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
+  const secret = process.env.SHOPIFY_API_SECRET ?? "";
+  const parts = token.split(".");
+  if (!secret || parts.length !== 3) return null;
+  const [h, p, sig] = parts;
+  try {
+    const header = JSON.parse(Buffer.from(h, "base64url").toString("utf8")) as { alg?: string };
+    if (header.alg !== "HS256") return null;
+    const expected = createHmac("sha256", secret).update(`${h}.${p}`).digest("base64url");
+    if (!safeEqual(sig, expected)) return null;
+    const claims = JSON.parse(Buffer.from(p, "base64url").toString("utf8")) as { exp?: number; nbf?: number; aud?: string; dest?: string };
+    const now = Math.floor(Date.now() / 1000);
+    if (!claims.exp || claims.exp < now - 5 || (claims.nbf && claims.nbf > now + 5)) return null;
+    if (claims.aud !== process.env.SHOPIFY_API_KEY) return null;
+    return normalizeShopDomain(claims.dest ? new URL(claims.dest).hostname : null);
+  } catch {
+    return null;
+  }
+}

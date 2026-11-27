@@ -38,24 +38,22 @@ const ORDERS_QUERY = `query Orders($after: String) {
   orders(first: 100, after: $after, sortKey: CREATED_AT, reverse: true) {
     pageInfo { hasNextPage endCursor }
     nodes {
-      id legacyResourceId name createdAt email currencyCode
+      id legacyResourceId name createdAt email phone currencyCode
       displayFinancialStatus displayFulfillmentStatus paymentGatewayNames
       totalPriceSet { shopMoney { amount } }
       customerJourneySummary { firstVisit { landingPage } }
-      customer { firstName lastName defaultEmailAddress { emailAddress } defaultPhoneNumber { phoneNumber } }
-      shippingAddress { address1 address2 city province zip phone }
+      shippingAddress { firstName lastName address1 address2 city province zip phone }
       lineItems(first: 100) { nodes { title sku quantity originalUnitPriceSet { shopMoney { amount } } } }
     }
   }
 }`;
 
 type GqlOrder = {
-  id: string; legacyResourceId: string; name: string; createdAt: string; email: string | null; currencyCode: string;
+  id: string; legacyResourceId: string; name: string; createdAt: string; email: string | null; phone: string | null; currencyCode: string;
   displayFinancialStatus: string | null; displayFulfillmentStatus: string; paymentGatewayNames: string[];
   totalPriceSet: { shopMoney: { amount: string } };
   customerJourneySummary: { firstVisit: { landingPage: string | null } | null } | null;
-  customer: { firstName: string | null; lastName: string | null; defaultEmailAddress: { emailAddress: string } | null; defaultPhoneNumber: { phoneNumber: string } | null } | null;
-  shippingAddress: { address1: string | null; address2: string | null; city: string | null; province: string | null; zip: string | null; phone: string | null } | null;
+  shippingAddress: { firstName: string | null; lastName: string | null; address1: string | null; address2: string | null; city: string | null; province: string | null; zip: string | null; phone: string | null } | null;
   lineItems: { nodes: { title: string; sku: string | null; quantity: number; originalUnitPriceSet: { shopMoney: { amount: string } } }[] };
 };
 
@@ -73,7 +71,8 @@ function toRestOrder(o: GqlOrder): Record<string, unknown> {
     payment_details: { payment_method_name: gateways },
     total_price: o.totalPriceSet?.shopMoney?.amount ?? "0",
     landing_site: o.customerJourneySummary?.firstVisit?.landingPage ?? null,
-    customer: o.customer ? { first_name: o.customer.firstName, last_name: o.customer.lastName, email: o.customer.defaultEmailAddress?.emailAddress ?? null, phone: o.customer.defaultPhoneNumber?.phoneNumber ?? null } : null,
+    // Buyer details come from the order and its shipping address (the Customer object would need read_customers).
+    customer: { first_name: o.shippingAddress?.firstName ?? null, last_name: o.shippingAddress?.lastName ?? null, email: o.email, phone: o.phone ?? o.shippingAddress?.phone ?? null },
     shipping_address: o.shippingAddress,
     line_items: (o.lineItems?.nodes ?? []).map(li => ({ title: li.title, sku: li.sku, quantity: li.quantity, price: li.originalUnitPriceSet?.shopMoney?.amount ?? "0" })),
     source: "graphql",

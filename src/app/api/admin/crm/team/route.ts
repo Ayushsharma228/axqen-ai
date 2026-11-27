@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
+import { staffPasswordError } from "@/lib/password-policy";
 import bcrypt from "bcryptjs";
 
 export async function POST(req: NextRequest) {
@@ -17,7 +18,10 @@ export async function POST(req: NextRequest) {
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) return NextResponse.json({ error: "Email already in use" }, { status: 400 });
 
-  const hashed = await bcrypt.hash(password, 10);
+  const weak = staffPasswordError(password);
+  if (weak) return NextResponse.json({ error: weak }, { status: 400 });
+
+  const hashed = await bcrypt.hash(password, 12);
 
   const user = await prisma.user.create({
     data: {
@@ -47,7 +51,9 @@ export async function PATCH(req: NextRequest) {
     salesTarget: salesTarget !== undefined ? parseInt(salesTarget) : undefined,
   };
   if (password?.trim()) {
-    data.password = await bcrypt.hash(password.trim(), 10);
+    const weak = staffPasswordError(password.trim());
+    if (weak) return NextResponse.json({ error: weak }, { status: 400 });
+    data.password = await bcrypt.hash(password.trim(), 12);
   }
 
   const user = await prisma.user.update({

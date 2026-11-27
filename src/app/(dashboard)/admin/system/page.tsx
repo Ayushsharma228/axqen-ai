@@ -8,6 +8,7 @@ interface ErrorRow { id: string; source: string; message: string; stack: string 
 
 const when = (s: string) => new Date(s).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 const VERB: Record<string, { label: string; bg: string; color: string }> = {
+  GET:    { label: "Viewed",  bg: "#F3F4F6", color: "#4B5563" },
   POST:   { label: "Created", bg: "#E6EEFF", color: "#1D5CFF" },
   PATCH:  { label: "Changed", bg: "#FFF7E6", color: "#B45309" },
   PUT:    { label: "Changed", bg: "#FFF7E6", color: "#B45309" },
@@ -22,7 +23,7 @@ export default function SystemLogPage() {
     <div className="px-4 py-5 md:p-8 space-y-5" style={{ background: "var(--bg-page)", minHeight: "100vh" }}>
       <div>
         <h1 className="text-[22px] font-black text-[#0C1220]">Audit log &amp; errors</h1>
-        <p className="text-[12.5px] text-[#6B7280] mt-1">Every change made in the admin panel, and every server error, in one place. Nothing here can be edited or deleted.</p>
+        <p className="text-[12.5px] text-[#6B7280] mt-1">Every change made in the admin panel, every view of personal data, and every server error, in one place. Nothing here can be edited or deleted.</p>
       </div>
       <div className="flex gap-1.5">
         {([["audit", "Audit log", ShieldCheck], ["errors", "Errors", AlertTriangle]] as const).map(([k, l, I]) => (

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
+import { passwordErrorFor } from "@/lib/password-policy";
 import bcrypt from "bcryptjs";
 import { Role, Plan } from "@prisma/client";
 
@@ -57,6 +58,9 @@ export async function POST(req: NextRequest) {
   if (existing) {
     return NextResponse.json({ error: "Email already in use" }, { status: 409 });
   }
+
+  const weak = passwordErrorFor(role, password);
+  if (weak) return NextResponse.json({ error: weak }, { status: 400 });
 
   const hashed = await bcrypt.hash(password, 12);
 

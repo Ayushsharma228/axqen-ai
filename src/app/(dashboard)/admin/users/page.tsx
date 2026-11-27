@@ -172,7 +172,7 @@ function AddMember({ onClose, onAdded }: { onClose: () => void; onAdded: (text: 
               ))}
             </div>
           </div>
-          <div><label htmlFor="tm-pw" className={label}>Password (8+ characters, with a number)</label><PasswordField id="tm-pw" value={f.password} onChange={v => setF({ ...f, password: v })} /></div>
+          <div><label htmlFor="tm-pw" className={label}>Password (12+ characters: upper and lower case, a number and a symbol)</label><PasswordField id="tm-pw" value={f.password} onChange={v => setF({ ...f, password: v })} /></div>
         </div>
         <div className="px-5 py-3 border-t border-[#F3F4F6] flex justify-end gap-2">
           <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg text-[13px] text-[#374151] border border-[#E8EDF6]">Cancel</button>

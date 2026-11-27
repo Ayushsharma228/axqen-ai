@@ -42,10 +42,31 @@ function redact(value: unknown, depth = 0): unknown {
 
 const ID_AFTER = /\/(?:sellers|wallet|activation|kyc|plan-billing)\/([a-z0-9]{20,})/i;
 
+// Admin pages that show buyers' or sellers' personal data. Opening one (GET) is logged as a view,
+// so there is a record of who looked at personal data and when.
+const PERSONAL_DATA_VIEWS = [
+  "/api/admin/orders", "/api/admin/customers", "/api/admin/sellers", "/api/admin/kyc", "/api/admin/ndr", "/api/admin/rto",
+  "/api/admin/order-confirmation", "/api/admin/support", "/api/admin/delivery", "/api/admin/shipments", "/api/admin/remittance",
+  "/api/admin/wallet", "/api/admin/withdrawals", "/api/admin/invoices", "/api/admin/activation", "/api/admin/plan-billing",
+];
+
 export async function recordAdminRequest(req: NextRequest, actor: { id: string; email: string | null; role: string }) {
-  if (!WRITE_METHODS.has(req.method)) return;
   const url = req.nextUrl;
   if (!url.pathname.startsWith("/api/admin")) return;
+  if (req.method === "GET") {
+    if (!PERSONAL_DATA_VIEWS.some(p => url.pathname === p || url.pathname.startsWith(p + "/"))) return;
+    await prisma.auditLog.create({
+      data: {
+        actorId: actor.id, actorEmail: actor.email, actorRole: actor.role,
+        method: "GET", path: url.pathname + (url.search || ""), area: areaFor(url.pathname),
+        sellerId: url.pathname.match(ID_AFTER)?.[1] ?? url.searchParams.get("sellerId"),
+        details: { kind: "view" },
+        ip: (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || null,
+      },
+    }).catch(err => console.error("[audit] could not record view", err));
+    return;
+  }
+  if (!WRITE_METHODS.has(req.method)) return;
 
   let body: unknown = null;
   const type = req.headers.get("content-type") ?? "";

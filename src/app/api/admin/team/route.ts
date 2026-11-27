@@ -3,6 +3,7 @@ import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
+import { staffPasswordError } from "@/lib/password-policy";
 
 // AXQEN team accounts: Admin, Sales and the team's own Supplier account(s). Sellers are managed in Admin → Sellers.
 // No deletes: removing access replaces the password with a random one and marks the account SUSPENDED.
@@ -14,12 +15,8 @@ async function admin(req: NextRequest) {
   const s = await getRouteSession(req);
   return s?.user.role === "ADMIN" ? s : null;
 }
-function checkPassword(p: unknown): string | null {
-  const s = typeof p === "string" ? p : "";
-  if (s.length < 8) return "Password should be at least 8 characters";
-  if (!/[A-Za-z]/.test(s) || !/\d/.test(s)) return "Use letters and at least one number";
-  return null;
-}
+// Team accounts can see customer data, so they use the stronger staff password rule.
+const checkPassword = staffPasswordError;
 
 export async function GET(req: NextRequest) {
   const session = await admin(req);

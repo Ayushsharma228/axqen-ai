@@ -240,28 +240,65 @@ export async function verifyWebhook(rawBody: string, hmacHeader: string | null, 
   return false;
 }
 
-/** Registers order + uninstall webhooks on a store, pointing at the canonical app URL. Idempotent. */
+// ── GraphQL Admin API (Shopify requires new public apps to use GraphQL only) ──
+type GqlResponse<T> = { data?: T; errors?: { message: string; extensions?: { code?: string } }[] };
+
+/** Runs a GraphQL Admin API call. Retries when Shopify throttles; paused stores and lost access become SellerActionError. */
+export async function shopifyGraphql<T>(shop: string, accessToken: string, query: string, variables: Record<string, unknown> = {}): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(`https://${shop}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": accessToken },
+      body: JSON.stringify({ query, variables }),
+    });
+    if (res.status === 402) throw new SellerActionError("Your Shopify store is paused or closed on Shopify. Reactivate your Shopify plan, then sync again.");
+    if (res.status === 401 || res.status === 403) throw new SellerActionError("Shopify access has ended. Open Shopify in AXQEN and connect your store again.");
+    if (res.status === 429 && attempt < 4) { await new Promise(r => setTimeout(r, 1500 * (attempt + 1))); continue; }
+    const text = await res.text();
+    if (!res.ok) throw new Error(`Shopify ${res.status}: ${text.slice(0, 300)}`);
+    const json = JSON.parse(text) as GqlResponse<T>;
+    if (json.errors?.length) {
+      if (json.errors.some(e => e.extensions?.code === "THROTTLED") && attempt < 4) { await new Promise(r => setTimeout(r, 1500 * (attempt + 1))); continue; }
+      throw new Error(`Shopify GraphQL: ${json.errors.map(e => e.message).join("; ").slice(0, 300)}`);
+    }
+    return json.data as T;
+  }
+}
+
+/** The store's display name. */
+export async function fetchShopName(shop: string, accessToken: string): Promise<string> {
+  try {
+    const d = await shopifyGraphql<{ shop: { name: string } }>(shop, accessToken, `{ shop { name } }`);
+    return d.shop?.name || shop;
+  } catch {
+    return shop;
+  }
+}
+
+const TOPIC_ENUM: Record<string, string> = {
+  "orders/create": "ORDERS_CREATE", "orders/updated": "ORDERS_UPDATED", "orders/cancelled": "ORDERS_CANCELLED", "app/uninstalled": "APP_UNINSTALLED",
+};
+
+/** Registers order + uninstall webhooks on a store (GraphQL), pointing at the canonical app URL. Idempotent. */
 export async function registerWebhooks(storeUrl: string, accessToken: string) {
   const base = appUrl();
   const targets = [
-    ...ORDER_WEBHOOK_TOPICS.map((topic) => ({ topic, address: `${base}/api/webhooks/shopify/orders` })),
-    { topic: "app/uninstalled", address: `${base}/api/shopify/webhooks` },
+    ...ORDER_WEBHOOK_TOPICS.map((topic) => ({ topic, uri: `${base}/api/webhooks/shopify/orders` })),
+    { topic: "app/uninstalled", uri: `${base}/api/shopify/webhooks` },
   ];
-
-  const headers = { "Content-Type": "application/json", "X-Shopify-Access-Token": accessToken };
   const results: { topic: string; status: "registered" | "already_exists" | "failed" }[] = [];
 
-  // Drop webhooks pointing at old/temporary addresses so Shopify doesn't keep calling them.
+  // Existing subscriptions: keep the ones we want, drop ours that point at old addresses.
+  let existing: { id: string; topic: string; uri: string }[] = [];
   try {
-    const list = await fetch(`https://${storeUrl}/admin/api/${SHOPIFY_API_VERSION}/webhooks.json`, { headers });
-    if (list.ok) {
-      const { webhooks = [] } = (await list.json()) as { webhooks?: { id: number; topic: string; address: string }[] };
-      for (const w of webhooks) {
-        const wanted = targets.some((t) => t.topic === w.topic && t.address === w.address);
-        const ours = w.address.includes("/api/webhooks/shopify/orders") || w.address.includes("/api/shopify/webhooks");
-        if (ours && !wanted) {
-          await fetch(`https://${storeUrl}/admin/api/${SHOPIFY_API_VERSION}/webhooks/${w.id}.json`, { method: "DELETE", headers }).catch(() => {});
-        }
+    const d = await shopifyGraphql<{ webhookSubscriptions: { nodes: { id: string; topic: string; uri: string }[] } }>(
+      storeUrl, accessToken, `{ webhookSubscriptions(first: 100) { nodes { id topic uri } } }`);
+    existing = d.webhookSubscriptions?.nodes ?? [];
+    for (const w of existing) {
+      const wanted = targets.some(t => TOPIC_ENUM[t.topic] === w.topic && t.uri === w.uri);
+      const ours = w.uri.includes("/api/webhooks/shopify/orders") || w.uri.includes("/api/shopify/webhooks");
+      if (ours && !wanted) {
+        await shopifyGraphql(storeUrl, accessToken, `mutation($id: ID!) { webhookSubscriptionDelete(id: $id) { userErrors { message } } }`, { id: w.id }).catch(() => {});
       }
     }
   } catch {
@@ -269,13 +306,13 @@ export async function registerWebhooks(storeUrl: string, accessToken: string) {
   }
 
   for (const t of targets) {
+    if (existing.some(w => w.topic === TOPIC_ENUM[t.topic] && w.uri === t.uri)) { results.push({ topic: t.topic, status: "already_exists" }); continue; }
     try {
-      const res = await fetch(`https://${storeUrl}/admin/api/${SHOPIFY_API_VERSION}/webhooks.json`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ webhook: { topic: t.topic, address: t.address, format: "json" } }),
-      });
-      results.push({ topic: t.topic, status: res.ok ? "registered" : res.status === 422 ? "already_exists" : "failed" });
+      const d = await shopifyGraphql<{ webhookSubscriptionCreate: { userErrors: { message: string }[] } }>(storeUrl, accessToken,
+        `mutation($topic: WebhookSubscriptionTopic!, $sub: WebhookSubscriptionInput!) { webhookSubscriptionCreate(topic: $topic, webhookSubscription: $sub) { webhookSubscription { id } userErrors { message } } }`,
+        { topic: TOPIC_ENUM[t.topic], sub: { uri: t.uri, format: "JSON" } });
+      const errs = d.webhookSubscriptionCreate?.userErrors ?? [];
+      results.push({ topic: t.topic, status: errs.length === 0 ? "registered" : errs.some(e => /taken|exists/i.test(e.message)) ? "already_exists" : "failed" });
     } catch {
       results.push({ topic: t.topic, status: "failed" });
     }

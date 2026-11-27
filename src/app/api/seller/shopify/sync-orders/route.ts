@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { getShopifyAccessToken, SHOPIFY_API_VERSION, SellerActionError } from "@/lib/shopify";
+import { getShopifyAccessToken, shopifyGraphql } from "@/lib/shopify";
 import { OrderStatus, Prisma } from "@prisma/client";
 import { decrypt } from "@/lib/encrypt";
 import { inferPaymentMode } from "@/app/api/webhooks/shopify/orders/route";
@@ -32,43 +32,70 @@ function mapShopifyStatus(financial: string, fulfillment: string | null): OrderS
 // Orders in these states are locked — Shopify status does not overwrite AXQEN state.
 const LOCKED_STATUSES: OrderStatus[] = ["PROCESSING", "SHIPPED", "IN_TRANSIT", "DELIVERED", "CANCELLED", "RTO", "HIDDEN"];
 
-// Fetch all Shopify orders using cursor-based pagination (max 250/page).
-// Returns the complete order list across all pages.
+// Fetch all Shopify orders with the GraphQL Admin API (cursor pagination, 100 per page),
+// converted to the REST-style shape the rest of AXQEN (and stored rawData / webhooks) already uses.
+const ORDERS_QUERY = `query Orders($after: String) {
+  orders(first: 100, after: $after, sortKey: CREATED_AT, reverse: true) {
+    pageInfo { hasNextPage endCursor }
+    nodes {
+      id legacyResourceId name createdAt email currencyCode
+      displayFinancialStatus displayFulfillmentStatus paymentGatewayNames
+      totalPriceSet { shopMoney { amount } }
+      customerJourneySummary { firstVisit { landingPage } }
+      customer { firstName lastName defaultEmailAddress { emailAddress } defaultPhoneNumber { phoneNumber } }
+      shippingAddress { address1 address2 city province zip phone }
+      lineItems(first: 100) { nodes { title sku quantity originalUnitPriceSet { shopMoney { amount } } } }
+    }
+  }
+}`;
+
+type GqlOrder = {
+  id: string; legacyResourceId: string; name: string; createdAt: string; email: string | null; currencyCode: string;
+  displayFinancialStatus: string | null; displayFulfillmentStatus: string; paymentGatewayNames: string[];
+  totalPriceSet: { shopMoney: { amount: string } };
+  customerJourneySummary: { firstVisit: { landingPage: string | null } | null } | null;
+  customer: { firstName: string | null; lastName: string | null; defaultEmailAddress: { emailAddress: string } | null; defaultPhoneNumber: { phoneNumber: string } | null } | null;
+  shippingAddress: { address1: string | null; address2: string | null; city: string | null; province: string | null; zip: string | null; phone: string | null } | null;
+  lineItems: { nodes: { title: string; sku: string | null; quantity: number; originalUnitPriceSet: { shopMoney: { amount: string } } }[] };
+};
+
+const FULFILLMENT: Record<string, string> = { FULFILLED: "fulfilled", PARTIALLY_FULFILLED: "partial", RESTOCKED: "restocked" };
+
+/** GraphQL order → the REST-style object AXQEN stores and reads (same keys as order webhooks). */
+function toRestOrder(o: GqlOrder): Record<string, unknown> {
+  const gateways = (o.paymentGatewayNames ?? []).join(", ");
+  return {
+    id: Number(o.legacyResourceId), admin_graphql_api_id: o.id, name: o.name, created_at: o.createdAt,
+    email: o.email, currency: o.currencyCode,
+    financial_status: (o.displayFinancialStatus ?? "").toLowerCase(),
+    fulfillment_status: FULFILLMENT[o.displayFulfillmentStatus] ?? null,
+    payment_gateway: gateways.toLowerCase(), payment_gateway_names: o.paymentGatewayNames ?? [],
+    payment_details: { payment_method_name: gateways },
+    total_price: o.totalPriceSet?.shopMoney?.amount ?? "0",
+    landing_site: o.customerJourneySummary?.firstVisit?.landingPage ?? null,
+    customer: o.customer ? { first_name: o.customer.firstName, last_name: o.customer.lastName, email: o.customer.defaultEmailAddress?.emailAddress ?? null, phone: o.customer.defaultPhoneNumber?.phoneNumber ?? null } : null,
+    shipping_address: o.shippingAddress,
+    line_items: (o.lineItems?.nodes ?? []).map(li => ({ title: li.title, sku: li.sku, quantity: li.quantity, price: li.originalUnitPriceSet?.shopMoney?.amount ?? "0" })),
+    source: "graphql",
+  };
+}
+
 async function fetchAllShopifyOrders(
   storeUrl: string,
   accessToken: string,
 ): Promise<{ orders: Record<string, unknown>[]; pageCount: number }> {
   const orders: Record<string, unknown>[] = [];
-  let url: string | null = `https://${storeUrl}/admin/api/${SHOPIFY_API_VERSION}/orders.json?status=any&limit=250`;
+  let after: string | null = null;
   let pageCount = 0;
 
-  while (url) {
-    const shopRes = await fetch(url, {
-      headers: { "X-Shopify-Access-Token": accessToken },
-    });
-
-    if (!shopRes.ok) {
-      const body = await shopRes.text();
-      // 402 = the seller's Shopify store is paused or closed (unpaid Shopify plan, frozen store). Only the seller can fix it.
-      if (shopRes.status === 402) throw new SellerActionError("Your Shopify store is paused or closed on Shopify. Reactivate your Shopify plan, then sync again.");
-      // 401/403 = AXQEN's access was removed or expired.
-      if (shopRes.status === 401 || shopRes.status === 403) throw new SellerActionError("Shopify access has ended. Open Shopify in AXQEN and connect your store again.");
-      throw new Error(`Shopify ${shopRes.status}: ${body}`);
-    }
-
-    const data = await shopRes.json() as { orders?: Record<string, unknown>[] };
-    const pageOrders = data.orders ?? [];
-    orders.push(...pageOrders);
+  do {
+    const data: { orders: { pageInfo: { hasNextPage: boolean; endCursor: string | null }; nodes: GqlOrder[] } } =
+      await shopifyGraphql(storeUrl, accessToken, ORDERS_QUERY, { after });
+    orders.push(...data.orders.nodes.map(toRestOrder));
     pageCount++;
-
-    // Follow the Link header for cursor-based pagination
-    const linkHeader: string = shopRes.headers.get("Link") ?? "";
-    const nextMatch: RegExpMatchArray | null = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
-    url = nextMatch ? nextMatch[1] : null;
-
-    // Safety: bail out after 40 pages (~10,000 orders) to avoid runaway loops
-    if (pageCount >= 40) break;
-  }
+    after = data.orders.pageInfo.hasNextPage ? data.orders.pageInfo.endCursor : null;
+    // Safety: bail out after 100 pages (~10,000 orders) to avoid runaway loops
+  } while (after && pageCount < 100);
 
   return { orders, pageCount };
 }

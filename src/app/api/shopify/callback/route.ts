@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { encrypt, decrypt } from "@/lib/encrypt";
 import { getRouteSession } from "@/lib/session";
-import { SHOPIFY_API_VERSION, adminAppUrl, appUrl, clearPendingInstall, exchangeCodeForToken, normalizeShopDomain, registerWebhooks, savePendingInstall, tokenFields, verifyOAuthHmac, verifyState } from "@/lib/shopify";
+import { adminAppUrl, fetchShopName, appUrl, clearPendingInstall, exchangeCodeForToken, normalizeShopDomain, registerWebhooks, savePendingInstall, tokenFields, verifyOAuthHmac, verifyState } from "@/lib/shopify";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -40,11 +40,7 @@ export async function GET(req: NextRequest) {
   const owner = await prisma.shopifyStore.findFirst({ where: { storeUrl: shop }, select: { sellerId: true } });
   if (owner && owner.sellerId !== sellerId) return fail("store_in_use");
 
-  const shopRes = await fetch(`https://${shop}/admin/api/${SHOPIFY_API_VERSION}/shop.json`, {
-    headers: { "X-Shopify-Access-Token": accessToken },
-  });
-  const shopData = (await shopRes.json().catch(() => ({}))) as { shop?: { name?: string } };
-  const storeName = shopData.shop?.name ?? shop;
+  const storeName = await fetchShopName(shop, accessToken);
 
   const creds = state.mode === "platform" ? { clientId: null, clientSecret: null } : { clientId, clientSecret: encrypt(clientSecret) };
   await prisma.shopifyStore.upsert({
@@ -75,8 +71,7 @@ async function completeShopifyInstall(req: NextRequest, shop: string, code: stri
   const tokenData = await exchangeCodeForToken(shop, clientId, clientSecret, code);
   if (!tokenData.access_token) return failText("Shopify didn't return access. Please try installing again.");
 
-  const shopRes = await fetch(`https://${shop}/admin/api/${SHOPIFY_API_VERSION}/shop.json`, { headers: { "X-Shopify-Access-Token": tokenData.access_token } });
-  const storeName = ((await shopRes.json().catch(() => ({}))) as { shop?: { name?: string } }).shop?.name ?? shop;
+  const storeName = await fetchShopName(shop, tokenData.access_token);
 
   const owner = await prisma.shopifyStore.findFirst({ where: { storeUrl: shop }, select: { sellerId: true } });
   const session = await getRouteSession(req);

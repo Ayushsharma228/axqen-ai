@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { getShopifyAccessToken, SHOPIFY_API_VERSION } from "@/lib/shopify";
-import { decrypt } from "@/lib/encrypt";
+import { getShopifyAccessToken, shopifyGraphql } from "@/lib/shopify";
 
 export async function POST(req: NextRequest) {
   try {
@@ -32,55 +31,62 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: "Already pushed to Shopify", alreadyPushed: true });
     }
 
-    // Build variants: use ProductVariant records if they exist, else fall back to single variant
-    const sellPrice = (product.suggestedPrice ?? product.price).toString();
-    const shopifyVariants = product.variants.length > 0
-      ? product.variants.map((v) => ({
-          option1: v.name,
-          price:   (v.price > 0 ? v.price : product.suggestedPrice ?? product.price).toString(),
-          sku:     v.sku ?? product.sku ?? undefined,
-          inventory_quantity: v.stock,
-        }))
-      : [{ price: sellPrice, sku: product.sku ?? undefined, inventory_quantity: product.stock }];
+    // Create the product with the GraphQL Admin API (productSet). One "Variant" option when the
+    // catalogue product has variants, else Shopify's default single variant.
+    const token = await getShopifyAccessToken(shopifyStore.id);
+    const shop = shopifyStore.storeUrl;
+    const basePrice = product.suggestedPrice ?? product.price;
+    let locationId: string | null = null;
+    try {
+      const loc = await shopifyGraphql<{ locations: { nodes: { id: string }[] } }>(shop, token, `{ locations(first: 1) { nodes { id } } }`);
+      locationId = loc.locations.nodes[0]?.id ?? null;
+    } catch { /* stock is optional */ }
+    const stock = (qty: number) => (locationId ? { inventoryQuantities: [{ locationId, name: "available", quantity: Math.max(0, qty) }] } : {});
 
-    const shopifyOptions = product.variants.length > 0
-      ? [{ name: "Variant", values: product.variants.map((v) => v.name) }]
-      : undefined;
+    const hasVariants = product.variants.length > 0;
+    const optionName = hasVariants ? "Variant" : "Title";
+    const productSet = {
+      title: product.name,
+      descriptionHtml: product.description ?? "",
+      vendor: "Axiqen",
+      productType: product.category ?? "",
+      productOptions: [{ name: optionName, values: hasVariants ? product.variants.map(v => ({ name: v.name })) : [{ name: "Default Title" }] }],
+      variants: hasVariants
+        ? product.variants.map(v => ({
+            optionValues: [{ optionName, name: v.name }],
+            price: v.price > 0 ? v.price : basePrice,
+            inventoryItem: { sku: v.sku ?? product.sku ?? undefined, tracked: true },
+            ...stock(v.stock),
+          }))
+        : [{
+            optionValues: [{ optionName, name: "Default Title" }],
+            price: basePrice,
+            inventoryItem: { sku: product.sku ?? undefined, tracked: true },
+            ...stock(product.stock),
+          }],
+      files: product.images.filter(src => /^https:\/\//.test(src)).map(src => ({ originalSource: src, contentType: "IMAGE" })),
+    };
 
-    const shopifyRes = await fetch(
-      `https://${shopifyStore.storeUrl}/admin/api/${SHOPIFY_API_VERSION}/products.json`,
-      {
-        method:  "POST",
-        headers: {
-          "Content-Type":            "application/json",
-          "X-Shopify-Access-Token":  await getShopifyAccessToken(shopifyStore.id),
-        },
-        body: JSON.stringify({
-          product: {
-            title:        product.name,
-            body_html:    product.description ?? "",
-            vendor:       "Axiqen",
-            product_type: product.category ?? "",
-            variants:     shopifyVariants,
-            ...(shopifyOptions ? { options: shopifyOptions } : {}),
-            images:       product.images.map((src) => ({ src })),
-          },
-        }),
-      }
-    );
+    let shopifyProductId = "";
+    let pushError = "";
+    try {
+      const d = await shopifyGraphql<{ productSet: { product: { id: string; legacyResourceId: string } | null; userErrors: { message: string }[] } }>(shop, token,
+        `mutation($input: ProductSetInput!) { productSet(synchronous: true, input: $input) { product { id legacyResourceId } userErrors { message } } }`,
+        { input: productSet });
+      if (d.productSet.userErrors.length) pushError = d.productSet.userErrors.map(e => e.message).join("; ");
+      shopifyProductId = d.productSet.product?.legacyResourceId ?? "";
+    } catch (err) {
+      pushError = err instanceof Error ? err.message : "Shopify error";
+    }
 
-    if (!shopifyRes.ok) {
-      const err = await shopifyRes.json().catch(() => ({}));
-      console.error("Shopify error:", err);
+    if (pushError || !shopifyProductId) {
+      console.error("Shopify error:", pushError);
       // Record the failed attempt
       await prisma.listingRequest.create({
         data: { sellerId: session.user.id, productId, platform: "SHOPIFY", status: "FAILED" },
       }).catch(() => {});
       return NextResponse.json({ error: "Failed to push to Shopify. Check that your store is connected and has API access." }, { status: 500 });
     }
-
-    const shopifyData = await shopifyRes.json() as { product?: { id: number } };
-    const shopifyProductId = String(shopifyData.product?.id ?? "");
 
     // Record successful push
     await prisma.listingRequest.create({

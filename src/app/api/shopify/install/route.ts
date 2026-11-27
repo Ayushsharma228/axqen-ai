@@ -1,6 +1,6 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { appUrl, getShopifyAccessToken, installAuthorizeUrl, normalizeShopDomain, shopifyGraphql, verifyOAuthHmac } from "@/lib/shopify";
+import { appUrl, getPendingInstall, getShopifyAccessToken, installAuthorizeUrl, normalizeShopDomain, shopifyGraphql, topLevelRedirectResponse, verifyOAuthHmac } from "@/lib/shopify";
 
 // App URL for the AXQEN AI Shopify app. Shopify opens this when a merchant installs or opens the app.
 // Shopify's rule: authenticate with OAuth immediately after install AND reinstall, before showing anything. So:
@@ -31,21 +31,9 @@ export async function GET(req: NextRequest) {
       .then(() => true, () => false);
     if (works) return NextResponse.redirect(`${appUrl()}/shopify/app?${sp.toString()}`);
   }
+  // Just approved but not linked to an AXQEN seller yet: show the app ("Finish connecting"), don't loop back to OAuth.
+  if (!store && (await getPendingInstall(shop))) return NextResponse.redirect(`${appUrl()}/shopify/app?${sp.toString()}`);
 
-  // Loaded inside the Shopify admin frame: Shopify's permission page can't open in a frame, so App Bridge
-  // sends the whole admin window there.
-  const apiKey = process.env.SHOPIFY_API_KEY ?? "";
-  const html = `<!doctype html><html><head><meta charset="utf-8">
-<meta name="shopify-api-key" content="${apiKey}">
-<script src="https://cdn.shopify.com/shopifycloud/app-bridge.js"></script>
-</head><body style="font-family:Inter,Arial,sans-serif;padding:24px;color:#0F1729">
-<p>Taking you to Shopify to approve AXQEN AI…</p>
-<script>window.open(${JSON.stringify(authorize)}, "_top");</script>
-</body></html>`;
-  return new NextResponse(html, {
-    headers: {
-      "Content-Type": "text/html; charset=utf-8",
-      "Content-Security-Policy": `frame-ancestors https://${shop} https://admin.shopify.com;`,
-    },
-  });
+  // Inside the admin frame: Shopify's permission page can't open in a frame, so move the whole window.
+  return topLevelRedirectResponse(shop, authorize);
 }

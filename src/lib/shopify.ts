@@ -375,7 +375,28 @@ export function installAuthorizeUrl(shop: string) {
 
 /** Where Shopify shows AXQEN inside the merchant's admin. */
 export function adminAppUrl(shop: string) {
-  return `https://${shop}/admin/apps/${process.env.SHOPIFY_API_KEY ?? ""}`;
+  // Shopify's install check expects the app's admin URL by handle: admin.shopify.com/store/<store>/apps/<handle>
+  const store = shop.replace(/\.myshopify\.com$/, "");
+  return `https://admin.shopify.com/store/${store}/apps/${process.env.SHOPIFY_APP_HANDLE || "axqen-ai"}`;
+}
+
+/**
+ * Page for a request loaded inside the Shopify admin frame that has to go to Shopify's permission screen.
+ * That screen can't open in a frame (Shopify answers oauth_error=same_site_cookies), so App Bridge moves the
+ * whole admin window there. Never answer an embedded request with a plain 302 to /admin/oauth/authorize.
+ */
+export function topLevelRedirectResponse(shop: string, url: string) {
+  const apiKey = (process.env.SHOPIFY_API_KEY ?? "").replace(/[^a-zA-Z0-9]/g, "");
+  const html = `<!doctype html><html><head><meta charset="utf-8">
+<meta name="shopify-api-key" content="${apiKey}">
+<script src="https://cdn.shopify.com/shopifycloud/app-bridge.js"></script>
+</head><body style="font-family:Inter,Arial,sans-serif;padding:24px;color:#0F1729">
+<p>Taking you to Shopify to approve AXQEN AI…</p>
+<script>window.open(${JSON.stringify(url)}, "_top");</script>
+</body></html>`;
+  return new Response(html, {
+    headers: { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": `frame-ancestors https://${shop} https://admin.shopify.com;` },
+  });
 }
 
 

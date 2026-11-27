@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { appUrl, getPendingInstall, installAuthorizeUrl, normalizeShopDomain, signClaim, verifyOAuthHmac } from "@/lib/shopify";
+import { appUrl, getPendingInstall, installAuthorizeUrl, normalizeShopDomain, signClaim, topLevelRedirectResponse, verifyOAuthHmac } from "@/lib/shopify";
 
 // The AXQEN AI page inside the merchant's Shopify admin (embedded app). Served as plain HTML so the
 // App Bridge script is the first script on the page, as Shopify requires.
@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
   });
   // Not connected through the AXQEN AI app (or uninstalled and reopened): authenticate first.
   const pending = store ? null : await getPendingInstall(shop);
-  if (!store && !pending) return NextResponse.redirect(installAuthorizeUrl(shop));
+  if (!store && !pending) return topLevelRedirectResponse(shop, installAuthorizeUrl(shop));
 
   const base = appUrl();
   let body: string;

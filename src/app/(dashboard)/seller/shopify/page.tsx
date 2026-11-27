@@ -91,12 +91,22 @@ export default function ShopifyConnectPage() {
     if (err) setError(ERRORS[err] ?? `Connection failed: ${err}`);
     const connected = params.get("connected") === "1";
     if (connected) setJustConnected(true);
-    if (err || connected) window.history.replaceState({}, "", "/seller/shopify");
+    // Store installed from the Shopify admin: the link carries a signed claim to attach it to this account.
+    const claim = params.get("claim");
+    if (err || connected || claim) window.history.replaceState({}, "", "/seller/shopify");
 
-    loadStore().then((s) => {
+    (async () => {
+      let claimed = false;
+      if (claim) {
+        const res = await fetch("/api/seller/shopify/claim", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ t: claim }) });
+        const d = await res.json().catch(() => ({}));
+        if (res.ok) { claimed = !d.already; setJustConnected(true); }
+        else setError(d.error ?? "Couldn't finish connecting your Shopify store. Try the button in Shopify again.");
+      }
+      const s = await loadStore();
       // Pull in recent orders right after a fresh connection.
-      if (connected && s) syncOrders();
-    });
+      if ((connected || claimed) && s) syncOrders();
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

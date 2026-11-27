@@ -1,33 +1,44 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
-import { createHmac } from "crypto";
+import { prisma } from "@/lib/prisma";
+import { appUrl, installAuthorizeUrl, normalizeShopDomain, verifyOAuthHmac } from "@/lib/shopify";
 
+// App URL for the AXQEN AI Shopify app. Shopify opens this when a merchant installs or opens the app.
+// Shopify's rule: authenticate with OAuth immediately, before showing anything. So:
+//   - store not connected through the AXQEN AI app yet → straight to Shopify's permission screen
+//   - already connected → the AXQEN page inside Shopify admin (/shopify/app)
 export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const shop      = searchParams.get("shop");
-  const hmac      = searchParams.get("hmac");
-  const timestamp = searchParams.get("timestamp");
-
-  if (!shop || !hmac || !timestamp) {
-    return NextResponse.redirect(`${process.env.NEXTAUTH_URL}/auth/signin`);
+  const sp = new URL(req.url).searchParams;
+  const shop = normalizeShopDomain(sp.get("shop"));
+  const secret = process.env.SHOPIFY_API_SECRET ?? "";
+  if (!shop || !secret || !verifyOAuthHmac(sp, secret)) {
+    return new NextResponse("This link didn't come from Shopify. Open AXQEN AI from your Shopify admin.", { status: 400 });
+  }
+  const ts = Number(sp.get("timestamp") ?? 0);
+  if (!ts || Math.abs(Date.now() / 1000 - ts) > 600) {
+    return new NextResponse("This link has expired. Open AXQEN AI again from your Shopify admin.", { status: 400 });
   }
 
-  // Verify HMAC
-  const params: Record<string, string> = {};
-  searchParams.forEach((v, k) => { if (k !== "hmac") params[k] = v; });
-  const message = Object.keys(params).sort().map(k => `${k}=${params[k]}`).join("&");
-  const digest = createHmac("sha256", process.env.SHOPIFY_API_SECRET!).update(message).digest("hex");
+  // Connected through the platform app = no per-seller client id, and an expiring token (new-style).
+  const store = await prisma.shopifyStore.findFirst({ where: { storeUrl: shop, clientId: null, accessTokenExpiresAt: { not: null } }, select: { id: true } });
+  if (store) return NextResponse.redirect(`${appUrl()}/shopify/app?${sp.toString()}`);
 
-  if (digest !== hmac) {
-    return NextResponse.redirect(`${process.env.NEXTAUTH_URL}/auth/signin`);
-  }
+  const authorize = installAuthorizeUrl(shop);
+  if (sp.get("embedded") !== "1") return NextResponse.redirect(authorize);
 
-  // Reject stale requests (older than 10 minutes)
-  if (Date.now() / 1000 - parseInt(timestamp) > 600) {
-    return NextResponse.redirect(`${process.env.NEXTAUTH_URL}/auth/signin`);
-  }
-
-  // Seller must log in first — preserve shop in URL so login can auto-connect after
-  return NextResponse.redirect(
-    `${process.env.NEXTAUTH_URL}/auth/signin?shopify_install=${encodeURIComponent(shop)}`
-  );
+  // Loaded inside the Shopify admin frame: Shopify's permission page can't open in a frame, so App Bridge
+  // sends the whole admin window there.
+  const apiKey = process.env.SHOPIFY_API_KEY ?? "";
+  const html = `<!doctype html><html><head><meta charset="utf-8">
+<meta name="shopify-api-key" content="${apiKey}">
+<script src="https://cdn.shopify.com/shopifycloud/app-bridge.js"></script>
+</head><body style="font-family:Inter,Arial,sans-serif;padding:24px;color:#0F1729">
+<p>Taking you to Shopify to approve AXQEN AI…</p>
+<script>window.open(${JSON.stringify(authorize)}, "_top");</script>
+</body></html>`;
+  return new NextResponse(html, {
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Content-Security-Policy": `frame-ancestors https://${shop} https://admin.shopify.com;`,
+    },
+  });
 }

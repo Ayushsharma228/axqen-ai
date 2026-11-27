@@ -28,7 +28,12 @@ export async function middleware(req: NextRequest) {
 
   // ── Seller routes ─────────────────────────────────────────────────────────
   if (pathname.startsWith("/seller")) {
-    if (!token) return NextResponse.redirect(new URL("/login", req.url));
+    if (!token) {
+      // Remember the page (e.g. the Shopify claim link) so login can return there.
+      const login = new URL("/login", req.url);
+      login.searchParams.set("next", pathname + req.nextUrl.search);
+      return NextResponse.redirect(login);
+    }
     if (role !== "SELLER") return NextResponse.redirect(new URL("/login", req.url));
     if (!onboardingDone) return NextResponse.redirect(new URL("/onboarding", req.url));
     return NextResponse.next();

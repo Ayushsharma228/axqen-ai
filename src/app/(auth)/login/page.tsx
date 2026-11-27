@@ -82,7 +82,12 @@ function LoginContent() {
     if (role === "ADMIN") window.location.href = "/admin";
     else if (role === "SUPPLIER") window.location.href = "/supplier";
     else if (role === "SALES") window.location.href = "/sales";
-    else window.location.href = session?.user?.plan ? "/seller" : "/onboarding";
+    else {
+      // Return to the seller page they were sent from (e.g. finishing a Shopify connection), else the dashboard.
+      const next = new URLSearchParams(window.location.search).get("next");
+      const safeNext = next && next.startsWith("/seller") && !next.startsWith("//") ? next : null;
+      window.location.href = session?.user?.plan ? (safeNext ?? "/seller") : "/onboarding";
+    }
   }
 
   return (

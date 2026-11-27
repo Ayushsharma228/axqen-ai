@@ -172,7 +172,8 @@ export function normalizeShopDomain(input: string | null | undefined): string | 
 }
 
 // ── OAuth state: signed so the callback can trust which seller started the connection ──
-type StatePayload = { sellerId: string; shop: string; mode: "platform" | "custom"; exp: number };
+// mode "install": started from Shopify (App Store / admin install), so there is no AXQEN seller yet (sellerId "").
+type StatePayload = { sellerId: string; shop: string; mode: "platform" | "custom" | "install"; exp: number };
 
 function stateSecret() {
   const s = process.env.NEXTAUTH_SECRET;
@@ -194,7 +195,7 @@ export function verifyState(state: string | null): StatePayload | null {
   if (!safeEqual(sig, expected)) return null;
   try {
     const p = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as StatePayload;
-    if (!p.sellerId || !p.shop || p.exp < Date.now()) return null;
+    if ((!p.sellerId && p.mode !== "install") || !p.shop || p.exp < Date.now()) return null;
     return p;
   } catch {
     return null;
@@ -280,4 +281,68 @@ export async function registerWebhooks(storeUrl: string, accessToken: string) {
     }
   }
   return results;
+}
+
+// ── Installs started from Shopify (no AXQEN login yet) ────────────────────────
+// After OAuth, if the store isn't linked to a seller yet, its tokens wait here (PlatformConfig, encrypted)
+// until a seller logs in to AXQEN and claims the store with a signed link shown inside Shopify admin.
+const PENDING_TTL_MS = 7 * 24 * 60 * 60_000;
+const pendingKey = (shop: string) => `SHOPIFY_PENDING:${shop}`;
+type PendingInstall = { storeName: string; at: number } & ReturnType<typeof tokenFields>;
+
+export async function savePendingInstall(shop: string, storeName: string, t: TokenResponse) {
+  const fields = tokenFields(t);
+  const value = JSON.stringify({ storeName, at: Date.now(), ...fields });
+  await prisma.platformConfig.upsert({ where: { key: pendingKey(shop) }, create: { key: pendingKey(shop), value, label: "Shopify install waiting for an AXQEN seller" }, update: { value } });
+}
+
+export async function getPendingInstall(shop: string): Promise<PendingInstall | null> {
+  const row = await prisma.platformConfig.findUnique({ where: { key: pendingKey(shop) }, select: { value: true } });
+  if (!row) return null;
+  try {
+    const p = JSON.parse(row.value) as PendingInstall & { accessTokenExpiresAt: string | null; refreshTokenExpiresAt: string | null };
+    if (Date.now() - p.at > PENDING_TTL_MS) return null;
+    return { ...p, accessTokenExpiresAt: p.accessTokenExpiresAt ? new Date(p.accessTokenExpiresAt) : null, refreshTokenExpiresAt: p.refreshTokenExpiresAt ? new Date(p.refreshTokenExpiresAt) : null };
+  } catch { return null; }
+}
+
+export async function clearPendingInstall(shop: string) {
+  await prisma.platformConfig.deleteMany({ where: { key: pendingKey(shop) } });
+}
+
+/** Signed, 7-day link payload that lets a logged-in seller claim a store installed from Shopify. */
+export function signClaim(shop: string) {
+  const body = Buffer.from(JSON.stringify({ shop, exp: Date.now() + PENDING_TTL_MS, k: "claim" })).toString("base64url");
+  return `${body}.${createHmac("sha256", stateSecret()).update(body).digest("base64url")}`;
+}
+
+export function verifyClaim(token: string | null | undefined): string | null {
+  if (!token) return null;
+  const [body, sig] = token.split(".");
+  if (!body || !sig || !safeEqual(sig, createHmac("sha256", stateSecret()).update(body).digest("base64url"))) return null;
+  try {
+    const p = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as { shop?: string; exp?: number; k?: string };
+    return p.k === "claim" && p.shop && (p.exp ?? 0) > Date.now() ? normalizeShopDomain(p.shop) : null;
+  } catch { return null; }
+}
+
+/** Shopify's OAuth permission page for the AXQEN AI app, for an install started from Shopify. */
+export function installAuthorizeUrl(shop: string) {
+  const url = new URL(`https://${shop}/admin/oauth/authorize`);
+  url.searchParams.set("client_id", process.env.SHOPIFY_API_KEY ?? "");
+  url.searchParams.set("scope", PLATFORM_SCOPES);
+  url.searchParams.set("redirect_uri", `${appUrl()}/api/shopify/callback`);
+  url.searchParams.set("state", signState({ sellerId: "", shop, mode: "install" }));
+  return url.toString();
+}
+
+/** Where Shopify shows AXQEN inside the merchant's admin. */
+export function adminAppUrl(shop: string) {
+  return `https://${shop}/admin/apps/${process.env.SHOPIFY_API_KEY ?? ""}`;
+}
+
+
+/** Decrypts a stored (encrypted) token, e.g. from a pending install. */
+export function decryptToken(value: string) {
+  return decrypt(value);
 }

@@ -1,0 +1,37 @@
+# Shopify app configuration for AXQEN AI (public app, embedded in the Shopify admin).
+# Upload with: npx @shopify/cli@latest app deploy
+# Keep this in step with the Dev Dashboard: a deploy replaces the app's configuration with this file.
+
+client_id = "bb71982d2f4cdb7440d38d07371f2566"
+name = "AXQEN AI"
+application_url = "https://www.axqen.app/api/shopify/install"
+embedded = true
+
+[access_scopes]
+# Must match PLATFORM_SCOPES in src/lib/shopify.ts
+scopes = "read_orders,write_products,write_inventory,read_locations,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders"
+# AXQEN runs the authorization-code OAuth flow itself (/api/shopify/install → /api/shopify/callback)
+use_legacy_install_flow = true
+
+[auth]
+redirect_urls = [ "https://www.axqen.app/api/shopify/callback" ]
+
+[webhooks]
+api_version = "2026-10"
+
+  # Mandatory privacy (compliance) webhooks: verified with HMAC, 401 on a bad signature
+  [[webhooks.subscriptions]]
+  compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
+  uri = "https://www.axqen.app/api/shopify/webhooks"
+
+  # Uninstall, for every store (order webhooks are registered per store by AXQEN after connecting)
+  [[webhooks.subscriptions]]
+  topics = [ "app/uninstalled" ]
+  uri = "https://www.axqen.app/api/shopify/webhooks"
+
+[pos]
+embedded = false
+
+[build]
+include_config_on_deploy = true
+automatically_update_urls_on_dev = false

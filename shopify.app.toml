@@ -24,14 +24,11 @@ api_version = "2026-10"
   compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
   uri = "https://www.axqen.app/api/shopify/webhooks"
 
-  # Uninstall, for every store (order webhooks are registered per store by AXQEN after connecting)
-  [[webhooks.subscriptions]]
-  topics = [ "app/uninstalled" ]
-  uri = "https://www.axqen.app/api/shopify/webhooks"
+  # Order and app/uninstalled webhooks are registered per store by AXQEN after connecting
+  # (app-wide topic subscriptions aren't allowed with use_legacy_install_flow).
 
 [pos]
 embedded = false
 
 [build]
-include_config_on_deploy = true
 automatically_update_urls_on_dev = false

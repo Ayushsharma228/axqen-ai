@@ -210,7 +210,7 @@ export default function ShopifyConnectPage() {
                 <p className="text-[12px] text-[#6B7280] mt-1.5 flex items-center gap-x-3 gap-y-1 flex-wrap">
                   <span className="flex items-center gap-1">
                     <ShoppingCart className="w-3.5 h-3.5 text-[#9CA3AF]" />
-                    {stats?.lastOrderAt ? <>Last order <b className="text-[#0C1220]">#{stats.lastOrderNumber}</b> · {ago(stats.lastOrderAt)}</> : "No orders received yet"}
+                    {stats?.lastOrderAt ? <>Last order <b className="text-[#0C1220]">#{String(stats.lastOrderNumber ?? "").replace(/^#/, "")}</b> · {ago(stats.lastOrderAt)}</> : "No orders received yet"}
                   </span>
                   <span className="flex items-center gap-1">
                     <Clock className="w-3.5 h-3.5 text-[#9CA3AF]" />

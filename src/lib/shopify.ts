@@ -375,9 +375,9 @@ export function installAuthorizeUrl(shop: string) {
 
 /** Where Shopify shows AXQEN inside the merchant's admin. */
 export function adminAppUrl(shop: string) {
-  // Shopify's install check expects the app's admin URL by handle: admin.shopify.com/store/<store>/apps/<handle>
-  const store = shop.replace(/\.myshopify\.com$/, "");
-  return `https://admin.shopify.com/store/${store}/apps/${process.env.SHOPIFY_APP_HANDLE || "axqen-ai"}`;
+  // {shop}/admin/apps/{client id}: Shopify resolves it to the app's page in the admin
+  // (admin.shopify.com/store/<store>/apps/<handle>) whatever the handle is.
+  return `https://${shop}/admin/apps/${process.env.SHOPIFY_API_KEY ?? ""}`;
 }
 
 /**

@@ -54,6 +54,8 @@ export default function ShopifyConnectPage() {
   const [shop, setShop] = useState("");
   const [error, setError] = useState("");
   const [justConnected, setJustConnected] = useState(false);
+  // After finishing a connection started in the Shopify admin: link back into AXQEN AI there.
+  const [backToShopify, setBackToShopify] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [disconnecting, setDisconnecting] = useState(false);
@@ -100,7 +102,7 @@ export default function ShopifyConnectPage() {
       if (claim) {
         const res = await fetch("/api/seller/shopify/claim", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ t: claim }) });
         const d = await res.json().catch(() => ({}));
-        if (res.ok) { claimed = !d.already; setJustConnected(true); }
+        if (res.ok) { claimed = !d.already; setJustConnected(true); if (d.adminUrl) setBackToShopify(d.adminUrl); }
         else setError(d.error ?? "Couldn't finish connecting your Shopify store. Try the button in Shopify again.");
       }
       const s = await loadStore();
@@ -155,7 +157,10 @@ export default function ShopifyConnectPage() {
       {justConnected && (
         <div className="flex items-center gap-3 bg-[#ECFDF5] border border-[#BBF7D0] text-[#047857] px-4 py-3 rounded-xl">
           <CheckCircle className="w-5 h-5 flex-shrink-0" />
-          <p className="text-[13px] font-medium">Store connected. Recent orders are being pulled in now.</p>
+          <p className="text-[13px] font-medium flex-1">Store connected. Recent orders are being pulled in now.</p>
+          {backToShopify && (
+            <a href={backToShopify} className="px-3 py-1.5 rounded-lg text-[12.5px] font-bold text-white bg-[#047857] whitespace-nowrap">Back to Shopify admin</a>
+          )}
         </div>
       )}
       {error && (

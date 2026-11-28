@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRouteSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { clearPendingInstall, decryptToken, getPendingInstall, registerWebhooks, verifyClaim } from "@/lib/shopify";
+import { adminAppUrl, clearPendingInstall, decryptToken, getPendingInstall, registerWebhooks, verifyClaim } from "@/lib/shopify";
 
 // POST { t } — the logged-in seller links a Shopify store that was installed from Shopify
 // (the signed link comes from the AXQEN page inside the merchant's Shopify admin).
@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
   const owner = await prisma.shopifyStore.findFirst({ where: { storeUrl: shop }, select: { sellerId: true } });
   if (owner) {
     return owner.sellerId === sellerId
-      ? NextResponse.json({ ok: true, shop, already: true })
+      ? NextResponse.json({ ok: true, shop, already: true, adminUrl: adminAppUrl(shop) })
       : NextResponse.json({ error: "This Shopify store is already connected to another AXQEN account. Contact AXQEN support." }, { status: 409 });
   }
   const mine = await prisma.shopifyStore.findUnique({ where: { sellerId }, select: { storeUrl: true } });
@@ -35,5 +35,5 @@ export async function POST(req: NextRequest) {
   });
   await clearPendingInstall(shop);
   await registerWebhooks(shop, decryptToken(pending.accessToken)).catch(err => console.error("[shopify/claim] webhook registration failed:", err));
-  return NextResponse.json({ ok: true, shop, storeName: pending.storeName });
+  return NextResponse.json({ ok: true, shop, storeName: pending.storeName, adminUrl: adminAppUrl(shop) });
 }

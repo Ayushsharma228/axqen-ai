@@ -17,12 +17,12 @@ async function readFailures(email: string): Promise<FailState | null> {
   try { return JSON.parse(row.value) as FailState; } catch { return null; }
 }
 
-async function isLoginLocked(email: string) {
+export async function isLoginLocked(email: string) {
   const s = await readFailures(email);
   return !!s?.lockedUntil && s.lockedUntil > Date.now();
 }
 
-async function recordLoginFailure(email: string) {
+export async function recordLoginFailure(email: string) {
   const now = Date.now();
   const prev = await readFailures(email);
   // Count failures within a rolling 15-minute window.
@@ -33,7 +33,7 @@ async function recordLoginFailure(email: string) {
   await prisma.platformConfig.upsert({ where: { key: failKey(email) }, create: { key: failKey(email), value, label: "Failed login attempts" }, update: { value } }).catch(() => null);
 }
 
-async function clearLoginFailures(email: string) {
+export async function clearLoginFailures(email: string) {
   await prisma.platformConfig.deleteMany({ where: { key: failKey(email) } }).catch(() => null);
 }
 

@@ -19,6 +19,28 @@ document.querySelectorAll("a[data-open]").forEach(function (a) {
     window.open(a.href, "_top"); // App Bridge moves the whole window to AXQEN (new tabs are blocked in the admin frame)
   });
 });
+// Log in inside the admin: the session token proves the store, the password proves the AXQEN account.
+var form = document.getElementById("link-form");
+if (form) form.addEventListener("submit", async function (e) {
+  e.preventDefault();
+  var btn = document.getElementById("link-submit"), err = document.getElementById("link-error");
+  err.hidden = true; btn.disabled = true; btn.textContent = "Connecting…";
+  try {
+    if (!window.shopify || !shopify.idToken) throw new Error("Open AXQEN AI from your Shopify admin and try again.");
+    var token = await shopify.idToken();
+    var r = await fetch("/api/shopify/link", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+      body: JSON.stringify({ email: form.email.value, password: form.password.value }),
+    });
+    var d = await r.json().catch(function () { return {}; });
+    if (!r.ok) throw new Error(d.error || "Couldn't connect. Try again.");
+    location.reload();
+  } catch (x) {
+    err.textContent = x.message; err.hidden = false;
+    btn.disabled = false; btn.textContent = "Connect to my AXQEN account";
+  }
+});
 (async function () {
   async function status() {
     if (!window.shopify || !shopify.idToken) return null;
@@ -83,11 +105,18 @@ export async function GET(req: NextRequest) {
     body = `
       <p class="eyebrow">One more step</p>
       <h1>Finish connecting ${esc(pending!.storeName)} to AXQEN</h1>
-      <p>Shopify has approved AXQEN AI for your store. Log in to your AXQEN seller account to link this store to it. New to AXQEN? Create an account first, then come back and click the button again.</p>
-      <a class="btn" data-open href="${claimUrl}" target="_top">Log in to AXQEN to finish</a>
-      <a class="link" data-open href="${base}/signup" target="_top">Create an AXQEN account</a>
-      <p class="muted">If nothing happens, copy this link into your browser:<br><span class="copy">${esc(claimUrl)}</span></p>
-      <p class="muted">This link works for 7 days. Need help? Write to connect@vrinandyaventures.in</p>`;
+      <p>Shopify has approved AXQEN AI for your store. Log in with your AXQEN seller account to link this store to it.</p>
+      <form id="link-form" class="form" autocomplete="on">
+        <label for="link-email">AXQEN email</label>
+        <input id="link-email" name="email" type="email" autocomplete="username" required>
+        <label for="link-password">Password</label>
+        <input id="link-password" name="password" type="password" autocomplete="current-password" required>
+        <p id="link-error" class="err" role="alert" hidden></p>
+        <button id="link-submit" class="btn" type="submit">Connect to my AXQEN account</button>
+      </form>
+      <p class="muted">New to AXQEN? Create an account at <b>www.axqen.app/signup</b>, then come back here and log in.</p>
+      <p class="muted">Prefer the website? Open this link in your browser: <span class="copy">${esc(claimUrl)}</span></p>
+      <p class="muted">Need help? Write to connect@vrinandyaventures.in</p>`;
   }
 
   const html = `<!doctype html>
@@ -107,6 +136,13 @@ export async function GET(req: NextRequest) {
   p { font-size:14px; line-height:1.55; color:var(--muted); margin:0; }
   .ok { color:#047857; } .warn { color:#B45309; background:#FFFBEB; padding:10px 12px; border-radius:10px; }
   .muted { font-size:12px; color:#8A94A8; }
+  .form { display:flex; flex-direction:column; gap:6px; margin-top:4px; }
+  .form label { font-size:13px; font-weight:600; color:var(--ink); margin-top:6px; }
+  .form input { font:inherit; font-size:14px; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:#fff; color:var(--ink); }
+  .form input:focus-visible { outline:2px solid var(--blue); outline-offset:1px; border-color:var(--blue); }
+  .form button { border:0; cursor:pointer; margin-top:10px; }
+  .form button:disabled { opacity:.6; cursor:default; }
+  .err { color:#B91C1C; background:#FEF2F2; padding:10px 12px; border-radius:10px; font-size:13px; }
   .stats div { display:inline-flex; flex-direction:column; font-size:12px; color:var(--muted); background:#F0F4FF; border-radius:10px; padding:10px 14px; }
   .stats span { font-size:22px; font-weight:800; color:var(--ink); }
   .btn { display:inline-block; align-self:flex-start; background:var(--blue); color:#fff; font-weight:700; font-size:14px; text-decoration:none; padding:11px 18px; border-radius:10px; margin-top:6px; }

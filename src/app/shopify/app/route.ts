@@ -10,6 +10,15 @@ const when = (d: Date) => d.toLocaleString("en-IN", { timeZone: "Asia/Kolkata", 
 // Refreshes the page's status from AXQEN using an App Bridge session token (Authorization: Bearer <JWT>).
 // While a store is waiting to be linked, it checks every few seconds and reloads once the seller has logged in.
 const LIVE_SCRIPT = `
+// Links to AXQEN: plain target=_blank links are blocked in the admin's sandboxed frame, so inside the admin
+// they open through App Bridge's window.open. A copyable link is shown as a last resort.
+document.querySelectorAll("a[data-open]").forEach(function (a) {
+  a.addEventListener("click", function (e) {
+    if (!window.shopify) return; // not inside the admin: the normal link works
+    e.preventDefault();
+    window.open(a.href, "_blank"); // App Bridge opens it in a new browser tab
+  });
+});
 (async function () {
   async function status() {
     if (!window.shopify || !shopify.idToken) return null;
@@ -67,15 +76,17 @@ export async function GET(req: NextRequest) {
       <div id="live-status">${status}</div>
       <div class="stats"><div><span id="live-orders">${orders}</span>Shopify orders in AXQEN</div></div>
       <p>Order confirmation calls, shipping, NDR and returns, payouts and profit reports are run from your AXQEN dashboard.</p>
-      <a class="btn" href="${base}/seller" target="_blank" rel="noopener">Open AXQEN dashboard</a>
-      <a class="link" href="${base}/seller/shopify" target="_blank" rel="noopener">Store connection settings</a>`;
+      <a class="btn" data-open href="${base}/seller" target="_blank" rel="noopener">Open AXQEN dashboard</a>
+      <a class="link" data-open href="${base}/seller/shopify" target="_blank" rel="noopener">Store connection settings</a>`;
   } else {
+    const claimUrl = `${base}/seller/shopify?claim=${encodeURIComponent(signClaim(shop))}`;
     body = `
       <p class="eyebrow">One more step</p>
       <h1>Finish connecting ${esc(pending!.storeName)} to AXQEN</h1>
       <p>Shopify has approved AXQEN AI for your store. Log in to your AXQEN seller account to link this store to it. New to AXQEN? Create an account first, then come back and click the button again.</p>
-      <a class="btn" href="${base}/seller/shopify?claim=${encodeURIComponent(signClaim(shop))}" target="_blank" rel="noopener">Log in to AXQEN to finish</a>
-      <a class="link" href="${base}/signup" target="_blank" rel="noopener">Create an AXQEN account</a>
+      <a class="btn" data-open href="${claimUrl}" target="_blank" rel="noopener">Log in to AXQEN to finish</a>
+      <a class="link" data-open href="${base}/signup" target="_blank" rel="noopener">Create an AXQEN account</a>
+      <p class="muted">If no new tab opens, copy this link into a new browser tab:<br><span class="copy">${esc(claimUrl)}</span></p>
       <p class="muted">This link works for 7 days. Need help? Write to connect@vrinandyaventures.in</p>`;
   }
 
@@ -101,6 +112,7 @@ export async function GET(req: NextRequest) {
   .btn { display:inline-block; align-self:flex-start; background:var(--blue); color:#fff; font-weight:700; font-size:14px; text-decoration:none; padding:11px 18px; border-radius:10px; margin-top:6px; }
   .btn:focus-visible, .link:focus-visible { outline:2px solid var(--blue); outline-offset:2px; }
   .link { font-size:13px; color:var(--blue); font-weight:600; }
+  .copy { display:block; margin-top:4px; padding:8px 10px; background:#EEF2FB; border-radius:8px; font-family:ui-monospace,Consolas,monospace; font-size:11px; color:#0F1729; word-break:break-all; user-select:all; }
 </style>
 </head><body><main>${body}</main>
 <script>${LIVE_SCRIPT}</script>
